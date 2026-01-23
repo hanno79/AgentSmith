@@ -1,0 +1,338 @@
+<!-- Agent Office Overview Dashboard -->
+<!DOCTYPE html>
+<html class="dark" lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>Agent Office Overview Dashboard</title>
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com" rel="preconnect"/>
+    <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&amp;display=swap" rel="stylesheet"/>
+    <!-- Material Symbols -->
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <!-- Tailwind Config -->
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#137fec",
+                        "background-light": "#f6f7f8",
+                        "background-dark": "#101922",
+                        "card-dark": "#1c2127",
+                        "border-dark": "#283039",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"],
+                        "mono": ["monospace"] // Simple fallback for logs
+                    },
+                    borderRadius: { "DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px" },
+                    backgroundImage: {
+                        'grid-pattern': "linear-gradient(to right, #283039 1px, transparent 1px), linear-gradient(to bottom, #283039 1px, transparent 1px)",
+                    }
+                },
+            },
+        }
+    </script>
+    <style>
+        /* Custom scrollbar for terminals */
+        .terminal-scroll::-webkit-scrollbar {
+            width: 6px;
+        }
+        .terminal-scroll::-webkit-scrollbar-track {
+            background: #111418; 
+        }
+        .terminal-scroll::-webkit-scrollbar-thumb {
+            background: #3b4754; 
+            border-radius: 4px;
+        }
+        .terminal-scroll::-webkit-scrollbar-thumb:hover {
+            background: #566474; 
+        }
+        
+        .grid-bg {
+            background-size: 40px 40px;
+            mask-image: linear-gradient(to bottom, black 40%, transparent 100%);
+            -webkit-mask-image: linear-gradient(to bottom, black 40%, transparent 100%);
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-white font-display overflow-hidden h-screen flex flex-col">
+<!-- Top Navigation -->
+<header class="flex-none flex items-center justify-between whitespace-nowrap border-b border-solid border-border-dark px-6 py-3 bg-[#111418] z-20">
+    <div class="flex items-center gap-4 text-white">
+        <div class="size-8 flex items-center justify-center rounded bg-primary/20 text-primary">
+            <span class="material-symbols-outlined">dataset</span>
+        </div>
+        <div>
+            <h2 class="text-white text-lg font-bold leading-tight tracking-[-0.015em]">Agent Office</h2>
+            <div class="text-xs text-slate-400 font-medium tracking-wide">PROJECT: ALPHA-1</div>
+        </div>
+    </div>
+    <div class="flex gap-3">
+        <div class="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#1c2127] border border-[#283039]">
+            <span class="material-symbols-outlined text-green-500 text-[16px]">wifi</span>
+            <span class="text-xs font-semibold text-white">System Online</span>
+        </div>
+        <button class="flex cursor-pointer items-center justify-center overflow-hidden rounded-lg h-9 px-4 bg-primary text-white text-sm font-bold leading-normal tracking-[0.015em] hover:bg-blue-600 transition-colors">
+            <span class="truncate">Connect Wallet</span>
+        </button>
+        <button class="flex size-9 cursor-pointer items-center justify-center overflow-hidden rounded-lg bg-[#283039] hover:bg-[#3b4754] text-white transition-colors">
+            <span class="material-symbols-outlined text-[20px]">settings</span>
+        </button>
+        <button class="flex size-9 cursor-pointer items-center justify-center overflow-hidden rounded-lg bg-[#283039] hover:bg-[#3b4754] text-white transition-colors">
+            <span class="material-symbols-outlined text-[20px]">notifications</span>
+        </button>
+    </div>
+</header>
+<!-- Main Content Area -->
+<div class="flex flex-1 overflow-hidden relative">
+    <!-- Office Floor (Left Panel) -->
+    <main class="flex-1 overflow-y-auto relative flex flex-col items-center bg-[#101922]">
+        <!-- Grid Background Effect -->
+        <div class="absolute inset-0 bg-grid-pattern grid-bg opacity-[0.07] pointer-events-none"></div>
+        <div class="w-full max-w-[1000px] px-6 py-8 pb-32 flex flex-col gap-8 z-10">
+            <!-- Section Header -->
+            <div class="flex items-center justify-between">
+                <div>
+                    <h1 class="text-2xl font-bold text-white tracking-tight">Mission Control Floor</h1>
+                    <p class="text-slate-400 text-sm mt-1">Real-time agent orchestration and task delegation view.</p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="flex items-center gap-2 text-sm text-slate-400 bg-[#1c2127] px-3 py-1 rounded border border-[#283039]">
+                        <span class="material-symbols-outlined text-[18px]">token</span>
+                        <span>Tokens: 45,201 / 100k</span>
+                    </div>
+                </div>
+            </div>
+            <!-- Orchestrator Desk (Central Hub) -->
+            <div class="w-full relative group">
+                <div class="absolute -inset-0.5 bg-gradient-to-r from-primary to-purple-600 rounded-xl opacity-30 group-hover:opacity-50 blur transition duration-500"></div>
+                <div class="relative w-full rounded-xl border border-[#3b4754] bg-[#1c2127] p-6 shadow-2xl">
+                    <div class="flex flex-col md:flex-row gap-6 items-start md:items-center justify-between mb-4 border-b border-[#283039] pb-4">
+                        <div class="flex items-center gap-4">
+                            <div class="size-12 rounded-lg bg-primary/10 flex items-center justify-center border border-primary/30 shadow-[0_0_15px_rgba(19,127,236,0.3)]">
+                                <span class="material-symbols-outlined text-primary text-[28px]">alt_route</span>
+                            </div>
+                            <div>
+                                <h2 class="text-xl font-bold text-white">Orchestrator Desk</h2>
+                                <p class="text-primary text-sm font-medium animate-pulse">Routing Task #8821...</p>
+                            </div>
+                        </div>
+                        <div class="flex gap-2">
+                            <span class="px-2 py-1 rounded text-xs font-bold bg-primary/20 text-primary border border-primary/20">MASTER NODE</span>
+                            <span class="px-2 py-1 rounded text-xs font-bold bg-[#283039] text-white">UPTIME: 12h 4m</span>
+                        </div>
+                    </div>
+                    <div class="bg-[#0d1116] rounded-lg p-4 font-mono text-xs text-slate-300 h-24 overflow-hidden border-l-2 border-primary">
+                        <div class="opacity-50 mb-1">&gt; Initializing sequence...</div>
+                        <div class="opacity-70 mb-1">&gt; Received user input: "Create a landing page for a coffee shop"</div>
+                        <div class="mb-1 text-white">&gt; Analyzing intent components...</div>
+                        <div class="text-primary">&gt; Delegating UI structure to <span class="font-bold underline">Agent:Designer</span></div>
+                    </div>
+                </div>
+            </div>
+            <!-- Connecting Lines Visualization (Abstract) -->
+            <div class="w-full h-8 flex justify-center relative opacity-50">
+                <div class="w-0.5 h-full bg-gradient-to-b from-primary/50 to-transparent"></div>
+            </div>
+            <!-- Agent Workstations Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
+                <!-- Coder Agent -->
+                <div class="flex flex-col rounded-lg border border-[#3b4754] bg-[#1c2127] p-4 relative overflow-hidden transition-all hover:border-primary/50 group/agent">
+                    <div class="absolute top-0 right-0 p-3 opacity-10 group-hover/agent:opacity-20 transition-opacity">
+                        <span class="material-symbols-outlined text-[80px]">code</span>
+                    </div>
+                    <div class="flex justify-between items-start mb-4 z-10">
+                        <div class="flex items-center gap-3">
+                            <div class="size-10 rounded-md bg-[#283039] flex items-center justify-center border border-[#3b4754]">
+                                <span class="material-symbols-outlined text-blue-400 text-[24px]">terminal</span>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-white">CODER</h3>
+                                <div class="text-xs text-slate-400">Front-end Specialist</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-1.5 px-2 py-1 rounded-full bg-blue-500/10 border border-blue-500/20">
+                            <div class="size-1.5 rounded-full bg-blue-500 animate-pulse"></div>
+                            <span class="text-[10px] font-bold text-blue-400 uppercase">Coding</span>
+                        </div>
+                    </div>
+                    <div class="bg-black/50 rounded p-3 h-32 terminal-scroll overflow-y-auto font-mono text-[11px] text-green-400/90 leading-relaxed border border-[#283039] z-10 shadow-inner">
+                        <p class="opacity-60 text-slate-500">// Generating React components</p>
+                        <p>const Hero = () =&gt; {</p>
+                        <p class="pl-4">return (</p>
+                        <p class="pl-8">&lt;div className="hero"&gt;</p>
+                        <p class="pl-12 text-white">Coffee for the soul...</p>
+                        <p class="pl-8">&lt;/div&gt;</p>
+                        <p class="pl-4">);</p>
+                        <p>}</p>
+                        <p class="animate-pulse">_</p>
+                    </div>
+                </div>
+                <!-- Designer Agent -->
+                <div class="flex flex-col rounded-lg border border-[#3b4754] bg-[#1c2127] p-4 relative overflow-hidden transition-all hover:border-purple-500/50 group/agent">
+                    <div class="absolute top-0 right-0 p-3 opacity-10 group-hover/agent:opacity-20 transition-opacity">
+                        <span class="material-symbols-outlined text-[80px]">brush</span>
+                    </div>
+                    <div class="flex justify-between items-start mb-4 z-10">
+                        <div class="flex items-center gap-3">
+                            <div class="size-10 rounded-md bg-[#283039] flex items-center justify-center border border-[#3b4754]">
+                                <span class="material-symbols-outlined text-purple-400 text-[24px]">palette</span>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-white">DESIGNER</h3>
+                                <div class="text-xs text-slate-400">UI/UX Systems</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-1.5 px-2 py-1 rounded-full bg-purple-500/10 border border-purple-500/20">
+                            <div class="size-1.5 rounded-full bg-purple-500 animate-pulse"></div>
+                            <span class="text-[10px] font-bold text-purple-400 uppercase">Drafting</span>
+                        </div>
+                    </div>
+                    <div class="bg-black/50 rounded p-3 h-32 terminal-scroll overflow-y-auto font-mono text-[11px] text-purple-300/90 leading-relaxed border border-[#283039] z-10 shadow-inner">
+                        <p>&gt; Selecting color palette...</p>
+                        <p>&gt; Primary: #6F4E37 (Coffee Brown)</p>
+                        <p>&gt; Secondary: #F5F5DC (Beige)</p>
+                        <p>&gt; Generating wireframe layout v1.2</p>
+                        <p>&gt; Exporting assets to Coder agent...</p>
+                    </div>
+                </div>
+                <!-- Reviewer Agent -->
+                <div class="flex flex-col rounded-lg border border-[#3b4754] bg-[#1c2127] p-4 relative overflow-hidden transition-all hover:border-yellow-500/50 group/agent opacity-80">
+                    <div class="absolute top-0 right-0 p-3 opacity-10 group-hover/agent:opacity-20 transition-opacity">
+                        <span class="material-symbols-outlined text-[80px]">policy</span>
+                    </div>
+                    <div class="flex justify-between items-start mb-4 z-10">
+                        <div class="flex items-center gap-3">
+                            <div class="size-10 rounded-md bg-[#283039] flex items-center justify-center border border-[#3b4754]">
+                                <span class="material-symbols-outlined text-yellow-400 text-[24px]">fact_check</span>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-white">REVIEWER</h3>
+                                <div class="text-xs text-slate-400">QA &amp; Security</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-1.5 px-2 py-1 rounded-full bg-[#283039] border border-[#3b4754]">
+                            <div class="size-1.5 rounded-full bg-yellow-500"></div>
+                            <span class="text-[10px] font-bold text-slate-300 uppercase">Waiting</span>
+                        </div>
+                    </div>
+                    <div class="bg-black/50 rounded p-3 h-32 terminal-scroll overflow-y-auto font-mono text-[11px] text-slate-500 leading-relaxed border border-[#283039] z-10 shadow-inner">
+                        <p>... Waiting for input ...</p>
+                    </div>
+                </div>
+                <!-- Tester Agent -->
+                <div class="flex flex-col rounded-lg border border-[#3b4754] bg-[#1c2127] p-4 relative overflow-hidden transition-all hover:border-red-500/50 group/agent opacity-80">
+                    <div class="absolute top-0 right-0 p-3 opacity-10 group-hover/agent:opacity-20 transition-opacity">
+                        <span class="material-symbols-outlined text-[80px]">bug_report</span>
+                    </div>
+                    <div class="flex justify-between items-start mb-4 z-10">
+                        <div class="flex items-center gap-3">
+                            <div class="size-10 rounded-md bg-[#283039] flex items-center justify-center border border-[#3b4754]">
+                                <span class="material-symbols-outlined text-red-400 text-[24px]">bug_report</span>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-white">TESTER</h3>
+                                <div class="text-xs text-slate-400">Unit Tests</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-1.5 px-2 py-1 rounded-full bg-[#283039] border border-[#3b4754]">
+                            <div class="size-1.5 rounded-full bg-slate-500"></div>
+                            <span class="text-[10px] font-bold text-slate-300 uppercase">Idle</span>
+                        </div>
+                    </div>
+                    <div class="bg-black/50 rounded p-3 h-32 terminal-scroll overflow-y-auto font-mono text-[11px] text-slate-500 leading-relaxed border border-[#283039] z-10 shadow-inner">
+                        <p>... System Standby ...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Floating Command Bar -->
+        <div class="absolute bottom-6 w-full px-6 flex justify-center z-50">
+            <div class="w-full max-w-[800px] flex items-center gap-2 p-2 rounded-xl bg-[#1c2127]/90 backdrop-blur-md border border-[#3b4754] shadow-2xl ring-1 ring-white/5">
+                <button class="p-2 text-slate-400 hover:text-white transition-colors rounded-lg hover:bg-[#283039]">
+                    <span class="material-symbols-outlined">add_circle</span>
+                </button>
+                <input class="flex-1 bg-transparent border-none text-white placeholder-slate-500 focus:ring-0 text-sm" placeholder="Describe the task for the team (e.g., 'Update the navigation bar to be sticky')..." type="text"/>
+                <button class="p-2 text-slate-400 hover:text-white transition-colors rounded-lg hover:bg-[#283039]">
+                    <span class="material-symbols-outlined">mic</span>
+                </button>
+                <button class="px-4 py-2 bg-primary hover:bg-blue-600 text-white text-sm font-bold rounded-lg transition-colors flex items-center gap-2">
+                    <span>Deploy</span>
+                    <span class="material-symbols-outlined text-[16px]">send</span>
+                </button>
+            </div>
+        </div>
+    </main>
+    <!-- Global Canvas (Right Panel) -->
+    <aside class="w-[400px] border-l border-[#283039] bg-[#0d1216] hidden lg:flex flex-col z-20">
+        <!-- Canvas Header -->
+        <div class="h-14 border-b border-[#283039] flex items-center justify-between px-4 bg-[#111418]">
+            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                <span class="material-symbols-outlined text-slate-400 text-[18px]">visibility</span>
+                Live Canvas
+            </h3>
+            <div class="flex gap-2">
+                <button class="text-slate-400 hover:text-white"><span class="material-symbols-outlined text-[18px]">refresh</span></button>
+                <button class="text-slate-400 hover:text-white"><span class="material-symbols-outlined text-[18px]">open_in_new</span></button>
+            </div>
+        </div>
+        <!-- Canvas Content -->
+        <div class="flex-1 overflow-y-auto p-4 bg-[#1e1e1e]">
+            <!-- Simulated Browser/Output Window -->
+            <div class="w-full h-full bg-white rounded overflow-hidden shadow-lg flex flex-col">
+                <!-- Fake Browser Bar -->
+                <div class="bg-gray-100 border-b border-gray-200 px-3 py-2 flex items-center gap-2">
+                    <div class="flex gap-1.5">
+                        <div class="size-2.5 rounded-full bg-red-400"></div>
+                        <div class="size-2.5 rounded-full bg-yellow-400"></div>
+                        <div class="size-2.5 rounded-full bg-green-400"></div>
+                    </div>
+                    <div class="flex-1 bg-white rounded border border-gray-200 h-5 mx-2"></div>
+                </div>
+                <!-- Mock Website Content (The 'Output') -->
+                <div class="flex-1 relative bg-slate-50 overflow-hidden">
+                    <div class="h-48 w-full bg-cover bg-center relative" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuAqgaeP4PAjYj1mmy0GLfnODe7XTz9l11Icru8jwYaTJTYaKLIRpwF9cbc33xoBUdcurNyKIHUff16Y5tWwA37ZXltEWljLdCjdFqBKl2BausSEcGHpoYlxTb-VElU6eiFGEW5EOhmvV48SBekZkBXKVLerHl0CwxmNmN8n6kNnv6BGsjMzH-DFAQgfYkpZMkosdm4eAfvCG89GbFLAb410CoLad5xQC9AxMnAZCGjiN-aihI27LSEKlqzBkaGj9i7HJu4qHtb-ZsGj');">
+                        <div class="absolute inset-0 bg-black/40 flex items-center justify-center">
+                            <h1 class="text-3xl font-serif text-white text-center">The Daily Grind</h1>
+                        </div>
+                    </div>
+                    <!-- Mock Content -->
+                    <div class="p-6">
+                        <div class="h-4 w-3/4 bg-gray-200 rounded mb-3"></div>
+                        <div class="h-4 w-1/2 bg-gray-200 rounded mb-6"></div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="h-24 bg-gray-200 rounded"></div>
+                            <div class="h-24 bg-gray-200 rounded"></div>
+                        </div>
+                    </div>
+                    <!-- Overlay for "Generating" State -->
+                    <div class="absolute inset-0 bg-black/60 backdrop-blur-[2px] flex flex-col items-center justify-center text-white z-10">
+                        <div class="size-8 border-2 border-white/20 border-t-primary rounded-full animate-spin mb-3"></div>
+                        <p class="text-sm font-medium">Updating Styles...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Canvas Footer (Console) -->
+        <div class="h-32 border-t border-[#283039] bg-[#111418] flex flex-col">
+            <div class="px-3 py-2 border-b border-[#283039] flex items-center justify-between">
+                <span class="text-xs font-bold text-slate-400 uppercase">System Output</span>
+                <span class="size-2 bg-green-500 rounded-full animate-pulse"></span>
+            </div>
+            <div class="p-3 font-mono text-[10px] text-slate-400 overflow-y-auto terminal-scroll">
+                <p class="mb-1">[10:42:01] Build started...</p>
+                <p class="mb-1 text-blue-400">[10:42:02] Compiling modules...</p>
+                <p class="mb-1">[10:42:04] 54 modules transformed.</p>
+                <p class="mb-1 text-green-400">[10:42:05] Hot Reload connected.</p>
+            </div>
+        </div>
+    </aside>
+</div>
+</body>
+</html>

@@ -1,0 +1,17 @@
+
+> frontend@0.0.0 build
+> vite build
+
+failed to load config from C:\Temp\multi_agent_poc\frontend\vite.config.js
+error during build:
+Error: Cannot find native binding. npm has a bug related to optional dependencies (https://github.com/npm/cli/issues/4828). Please try `npm i` again after removing both package-lock.json and node_modules directory.
+    at Object.<anonymous> (C:\Temp\multi_agent_poc\frontend\node_modules\@tailwindcss\oxide\index.js:559:11)
+    at Module._compile (node:internal/modules/cjs/loader:1730:14)
+    at Object..js (node:internal/modules/cjs/loader:1895:10)
+    at Module.load (node:internal/modules/cjs/loader:1465:32)
+    at Function._load (node:internal/modules/cjs/loader:1282:12)
+    at TracingChannel.traceSync (node:diagnostics_channel:322:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:235:24)
+    at cjsLoader (node:internal/modules/esm/translators:266:5)
+    at ModuleWrap.<anonymous> (node:internal/modules/esm/translators:200:7)
+    at ModuleJob.run (node:internal/modules/esm/module_job:329:25)

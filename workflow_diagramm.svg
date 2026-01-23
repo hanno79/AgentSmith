@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <style>
+    text { font-family: 'Segoe UI', Arial, sans-serif; fill: #222; font-size: 18px; }
+    rect { stroke: #555; stroke-width: 2; rx: 10; ry: 10; }
+    line, path { stroke: #555; stroke-width: 2; fill: none; }
+  </style>
+  <rect x="780" y="40" width="360" height="80" fill="#FFD54F"/>
+  <text x="960" y="90" text-anchor="middle">👑 META-ORCHESTRATOR</text>
+
+  <line x1="960" y1="120" x2="960" y2="180" />
+
+  <rect x="760" y="180" width="400" height="80" fill="#64B5F6"/>
+  <text x="960" y="230" text-anchor="middle">🧭 ORCHESTRATOR</text>
+
+  <line x1="960" y1="260" x2="700" y2="340"/>
+  <line x1="960" y1="260" x2="960" y2="340"/>
+  <line x1="960" y1="260" x2="1220" y2="340"/>
+
+  <rect x="580" y="340" width="240" height="80" fill="#81C784"/>
+  <text x="700" y="390" text-anchor="middle">💻 CODER</text>
+
+  <rect x="860" y="340" width="200" height="80" fill="#81C784"/>
+  <text x="960" y="390" text-anchor="middle">🕵️ REVIEWER</text>
+
+  <rect x="1120" y="340" width="240" height="80" fill="#81C784"/>
+  <text x="1240" y="390" text-anchor="middle">🎨 DESIGNER</text>
+
+  <line x1="700" y1="420" x2="960" y2="500"/>
+  <line x1="960" y1="420" x2="960" y2="500"/>
+  <line x1="1240" y1="420" x2="960" y2="500"/>
+
+  <rect x="760" y="500" width="400" height="100" fill="#BA68C8"/>
+  <text x="960" y="550" text-anchor="middle">🧪 TESTER & 🔐 SANDBOX</text>
+
+  <line x1="960" y1="600" x2="960" y2="700"/>
+
+  <rect x="760" y="700" width="400" height="80" fill="#FFB74D"/>
+  <text x="960" y="750" text-anchor="middle">🧠 MEMORY</text>
+
+  <line x1="960" y1="780" x2="960" y2="880"/>
+
+  <rect x="760" y="880" width="400" height="80" fill="#FFB74D"/>
+  <text x="960" y="930" text-anchor="middle">📈 FEEDBACK LOOP</text>
+</svg>

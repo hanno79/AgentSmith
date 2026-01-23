@@ -1,0 +1,114 @@
+# =====================================================================
+# Multi-Agent Proof of Concept – Konfiguration mit Regelüberwachung
+# =====================================================================
+
+openai_api_base: "https://openrouter.ai/api/v1"
+openai_api_key: "${OPENAI_API_KEY}"
+
+mode: "test"              # test oder production
+project_type: "webapp"       # cli | webapp | ml
+include_designer: true   # true = Designer-Agent wird aktiviert
+
+# Iterations-Einstellungen
+max_retries: 5
+security_max_retries: 10  # Höheres Limit für Sicherheitsfixes
+
+models:
+  test:
+    meta_orchestrator: "nousresearch/hermes-3-llama-3.1-405b"
+    orchestrator: "nvidia/nemotron-3-nano-30b-a3b:free"
+    coder: "qwen/qwen3-coder:free"
+    reviewer: "meta-llama/llama-3.3-70b-instruct:free"
+    designer: "google/gemma-3-27b-it:free"
+    researcher: "mistralai/mixtral-8x7b-instruct:free"
+    database_designer: "meta-llama/llama-3.3-70b-instruct:free"
+    techstack_architect: "meta-llama/llama-3.3-70b-instruct:free"
+    security: "meta-llama/llama-3.3-70b-instruct:free"
+
+  production:
+    meta_orchestrator: "anthropic/claude-4.5-sonnet"
+    orchestrator: "anthropic/claude-4.5-sonnet"
+    coder: "openai/gpt-4-turbo"
+    reviewer: "anthropic/claude-4.5-sonnet"
+    designer: "anthropic/claude-4.5-haiku"
+    researcher: "openai/gpt-4-turbo"
+    database_designer: "anthropic/claude-4.5-sonnet"
+    techstack_architect: "anthropic/claude-4.5-sonnet"
+    security: "anthropic/claude-4.5-sonnet"
+
+# =====================================================================
+# 📘 Regel-Templates für unterschiedliche Projekttypen
+# =====================================================================
+templates:
+  cli:
+    global:
+      - "Folge PEP8-Konventionen."
+      - "Nutze argparse für CLI-Argumente."
+      - "Füge eine --help-Funktion hinzu."
+      - "Vermeide externe Abhängigkeiten."
+    security:
+      - "Prüfe auf unsichere subprocess-Aufrufe."
+    coder:
+      - "Strukturiere Code in Funktionen statt in langen Scripts."
+      - "Verwende logging statt print für Statusmeldungen."
+    reviewer:
+      - "Prüfe, ob CLI-Hilfe und Fehlermeldungen korrekt funktionieren."
+    orchestrator:
+      - "Stelle sicher, dass CLI-Befehle nachvollziehbar dokumentiert sind."
+
+  webapp:
+    global:
+      - "Nutze MVC-Struktur oder ähnliche Schichtenarchitektur."
+      - "Halte HTML/CSS getrennt von Logik."
+      - "UI-Komponenten müssen responsiv sein."
+      - "Achte auf Barrierefreiheit und semantisches HTML."
+    security:
+      - "Prüfe auf SQL-Injection (parametrized queries)."
+      - "Prüfe auf XSS (kein unsafe innerHTML)."
+      - "Prüfe auf CSRF-Schutz."
+      - "Warne vor eval() oder unsafe-inline CSS/JS."
+    coder:
+      - "Nutze moderne Frameworks (Flask, FastAPI, React o.Ä.)."
+      - "Trenne Backend- und Frontend-Code sauber."
+      - "Füge Beispielrouten und Unit Tests hinzu."
+      - "WICHTIG: Nutze 'with app.app_context():' statt '@app.before_first_request' (Flask 2.3+ deprecated)."
+      - "WICHTIG: Importiere Markup von 'markupsafe', NICHT von 'flask'."
+      - "Stelle sicher, dass 'enumerate' in Templates verfügbar ist (z.B. app.jinja_env.globals.update(enumerate=enumerate))."
+    reviewer:
+      - "Prüfe Code auf XSS/CSRF-Schutz und saubere API-Trennung."
+    designer:
+      - "Vermeide KI-typische Farbverläufe."
+      - "Verwende klare Kontraste und einfache Layouts."
+    orchestrator:
+      - "Sorge dafür, dass UI, Backend und Tests konsistent dokumentiert sind."
+    researcher:
+      - "Prüfe Quellen auf Aktualität (Datum der Doku)."
+      - "Fasse lange technische Inhalte präzise zusammen."
+      - "Gib Quellenangaben (URLs) an."
+    database_designer:
+      - "Erstelle immer ein normalisiertes Schema (mindestens 3NF)."
+      - "Definiere PRIMARY KEY für jede Tabelle."
+      - "Nutze FOREIGN KEY mit ON DELETE/ON UPDATE Aktionen."
+      - "Erstelle ein Mermaid ERD-Diagramm zur Visualisierung."
+      - "Empfehle sinnvolle Indexes für häufige Abfragen."
+      - "Dokumentiere das Schema mit Kommentaren."
+    techstack_architect:
+      - "Analysiere die Anforderungen gründlich vor der Entscheidung."
+      - "Wähle den passendsten Tech-Stack (Python, Node.js, C++, etc.)."
+      - "Gib IMMER komplette install_command und run_command an."
+      - "Gib IMMER einen gültigen JSON-Block als Output."
+      - "Begründe deine Entscheidung kurz im reasoning-Feld."
+
+  ml:
+    global:
+      - "Strukturiere Code in Data, Model, Train, Evaluate."
+      - "Speichere Modelle reproduzierbar ab (z. B. joblib/pickle)."
+      - "Implementiere Logging der Metriken."
+    coder:
+      - "Trenne Trainingslogik vom Datapreprocessing."
+      - "Verwende argparse für Parametersteuerung."
+    reviewer:
+      - "Prüfe Trainings- und Testcode auf Reproduzierbarkeit."
+    orchestrator:
+      - "Erstelle Dokumentation mit Trainingsparametern und Ergebnissen."
+

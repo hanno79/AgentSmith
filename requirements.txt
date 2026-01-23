@@ -1,0 +1,11 @@
+crewai
+rich
+PyYAML
+playwright
+Pillow
+duckduckgo-search
+langchain_community
+fastapi
+uvicorn
+python-multipart
+websockets
