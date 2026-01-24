@@ -29,6 +29,7 @@ const MainframeHub = () => {
   const [selectedAgent, setSelectedAgent] = useState(null);
   const [showModelSelector, setShowModelSelector] = useState(false);
   const [serverTime, setServerTime] = useState(new Date());
+  const [maxRetries, setMaxRetries] = useState(5);
 
   // Fetch all data on mount
   useEffect(() => {
@@ -50,6 +51,7 @@ const MainframeHub = () => {
       setAgents(agentsRes.data.agents);
       setAvailableModels(modelsRes.data);
       setRouterStatus(routerRes.data);
+      setMaxRetries(configRes.data.max_retries || 5);
     } catch (err) {
       console.error('Failed to fetch data:', err);
     } finally {
@@ -86,6 +88,15 @@ const MainframeHub = () => {
       fetchData();
     } catch (err) {
       console.error('Failed to clear rate limits:', err);
+    }
+  };
+
+  const updateMaxRetries = async (value) => {
+    setMaxRetries(value);
+    try {
+      await axios.put(`${API_BASE}/config/max-retries`, { max_retries: value });
+    } catch (err) {
+      console.error('Failed to update max retries:', err);
     }
   };
 
@@ -249,11 +260,11 @@ const MainframeHub = () => {
           <div className="xl:col-span-4 flex flex-col gap-6">
             <div className="bg-[#111813] rounded-xl border border-[#28392e] overflow-hidden flex-1 relative flex flex-col items-center justify-end shadow-[0_0_30px_rgba(13,242,89,0.05)]">
               {/* Background Grid */}
-              <div className="absolute inset-0 opacity-10"
+              <div className="absolute inset-0 opacity-10 pointer-events-none"
                 style={{ backgroundImage: 'radial-gradient(#0df259 1px, transparent 1px)', backgroundSize: '20px 20px' }}
               />
               {/* Core Glow */}
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 bg-primary/20 rounded-full blur-[60px] animate-pulse" />
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 bg-primary/20 rounded-full blur-[60px] animate-pulse pointer-events-none" />
 
               {/* Core Visual */}
               <div className="relative z-10 w-full flex-1 flex flex-col items-center justify-center p-6">
@@ -326,6 +337,35 @@ const MainframeHub = () => {
                   </div>
                 </div>
               </div>
+
+              {/* System Settings - Max Retries */}
+              <div className="w-full bg-[#0d120f] border-t border-[#28392e] p-4">
+                <div className="flex justify-between items-center mb-3">
+                  <h4 className="text-[#9cbaa6] text-xs font-bold uppercase tracking-widest flex items-center gap-2">
+                    <RefreshCw size={14} className="text-primary" />
+                    Retry Configuration
+                  </h4>
+                  <span className="text-primary font-mono font-bold text-lg">{maxRetries}</span>
+                </div>
+
+                <div className="bg-[#1b271f] p-3 rounded-lg border border-[#28392e]">
+                  <div className="flex items-center gap-4">
+                    <span className="text-[10px] text-[#9cbaa6] font-mono w-6">1</span>
+                    <input
+                      type="range"
+                      min="1"
+                      max="100"
+                      value={maxRetries}
+                      onChange={(e) => updateMaxRetries(parseInt(e.target.value))}
+                      className="flex-1 mainframe-slider"
+                    />
+                    <span className="text-[10px] text-[#9cbaa6] font-mono w-8">100</span>
+                  </div>
+                  <p className="text-[10px] text-[#5c856b] mt-2 text-center">
+                    Maximum retry attempts for agent operations
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -389,10 +429,7 @@ const MainframeHub = () => {
               </div>
 
               {/* Footer Stats */}
-              <div className="border-t border-[#28392e] bg-[#0d120f] p-3 flex justify-between items-center text-[10px] font-mono text-[#5c856b]">
-                <div className="flex gap-4">
-                  <span>Max Retries: {config?.max_retries}</span>
-                </div>
+              <div className="border-t border-[#28392e] bg-[#0d120f] p-3 flex justify-end items-center text-[10px] font-mono text-[#5c856b]">
                 <div className="flex items-center gap-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
                   <span>LIVE_SYNC</span>

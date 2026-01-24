@@ -261,3 +261,61 @@ body {
     mask-image: linear-gradient(to bottom, black 40%, transparent 100%);
     -webkit-mask-image: linear-gradient(to bottom, black 40%, transparent 100%);
 }
+
+/* Mainframe Hub Slider - green theme */
+.mainframe-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 8px;
+    background: #28392e;
+    border-radius: 9999px;
+    outline: none;
+    cursor: pointer;
+}
+
+.mainframe-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    background: #0df259;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 3px solid #0d120f;
+    box-shadow: 0 0 10px rgba(13, 242, 89, 0.5), 0 0 20px rgba(13, 242, 89, 0.3);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.mainframe-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.1);
+    box-shadow: 0 0 15px rgba(13, 242, 89, 0.7), 0 0 30px rgba(13, 242, 89, 0.4);
+}
+
+.mainframe-slider::-webkit-slider-thumb:active {
+    transform: scale(0.95);
+    box-shadow: 0 0 20px rgba(13, 242, 89, 0.9), 0 0 40px rgba(13, 242, 89, 0.5);
+}
+
+/* Firefox */
+.mainframe-slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    background: #0df259;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 3px solid #0d120f;
+    box-shadow: 0 0 10px rgba(13, 242, 89, 0.5), 0 0 20px rgba(13, 242, 89, 0.3);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.mainframe-slider::-moz-range-thumb:hover {
+    transform: scale(1.1);
+    box-shadow: 0 0 15px rgba(13, 242, 89, 0.7), 0 0 30px rgba(13, 242, 89, 0.4);
+}
+
+.mainframe-slider::-moz-range-track {
+    background: #28392e;
+    height: 8px;
+    border-radius: 9999px;
+}

@@ -111,6 +111,9 @@ class ModeRequest(BaseModel):
 class ModelRequest(BaseModel):
     model: str
 
+class MaxRetriesRequest(BaseModel):
+    max_retries: int
+
 @app.get("/config")
 def get_config():
     """Gibt die aktuelle Konfiguration zurück."""
@@ -131,6 +134,15 @@ def set_mode(request: ModeRequest):
     manager.config["mode"] = request.mode
     _save_config()
     return {"status": "ok", "mode": request.mode}
+
+@app.put("/config/max-retries")
+def set_max_retries(request: MaxRetriesRequest):
+    """Setzt die maximale Anzahl an Retries (1-100)."""
+    if not 1 <= request.max_retries <= 100:
+        raise HTTPException(status_code=400, detail="max_retries must be between 1 and 100")
+    manager.config["max_retries"] = request.max_retries
+    _save_config()
+    return {"status": "ok", "max_retries": request.max_retries}
 
 @app.put("/config/model/{agent_role}")
 def set_agent_model(agent_role: str, request: ModelRequest):
