@@ -1,13 +1,46 @@
+# -*- coding: utf-8 -*-
+"""
+Security Agent ("The Guardian"): Prüft Code auf Sicherheitslücken.
+Fokus: OWASP Top 10, SQL Injection, XSS, CSRF, Dependency-Audits.
+"""
+
+from typing import Any, Dict, List, Optional
 from crewai import Agent
 
-def create_security_agent(config, project_rules):
+
+def _get_model_from_config(config: Dict[str, Any], role: str, fallback_role: str = None) -> str:
+    """Hilfsfunktion: Extrahiert Modell aus Config (unterstützt String und Dict-Format)."""
+    mode = config["mode"]
+    model_config = config["models"][mode].get(role)
+
+    # Falls Rolle nicht gefunden, versuche Fallback
+    if model_config is None and fallback_role:
+        model_config = config["models"][mode].get(fallback_role)
+
+    if isinstance(model_config, str):
+        return model_config
+    elif isinstance(model_config, dict):
+        return model_config.get("primary", "")
+    return ""
+
+
+def create_security_agent(config: Dict[str, Any], project_rules: Dict[str, List[str]], router=None) -> Agent:
     """
     Erstellt den Security-Agenten ("The Guardian"), der Code auf Sicherheitslücken prüft.
     Fokus: OWASP Top 10, Dependency-Audits (Simulation), Injection-Prevention.
+
+    Args:
+        config: Anwendungskonfiguration mit mode und models
+        project_rules: Dictionary mit globalen und rollenspezifischen Regeln
+        router: Optional ModelRouter für Fallback bei Rate Limits
+
+    Returns:
+        Konfigurierte CrewAI Agent-Instanz
     """
-    mode = config["mode"]
-    # Fallback to reviewer model if security model not explicitly set (though we added it to config)
-    model = config["models"][mode].get("security", config["models"][mode]["reviewer"])
+    if router:
+        model = router.get_model("security")
+    else:
+        model = _get_model_from_config(config, "security", fallback_role="reviewer")
 
     global_rules = "\n".join(project_rules.get("global", []))
     role_rules = "\n".join(project_rules.get("security", [])) # Specific security rules
@@ -29,7 +62,7 @@ def create_security_agent(config, project_rules):
             "Antworte mit 'SECURE', wenn alles sicher ist, oder einer Liste von 'VULNERABILITY: ...', wenn nicht.\n\n"
             f"{combined_rules}"
         ),
-        model=model,
+        llm=model,
         verbose=True,
         allow_delegation=False
     )

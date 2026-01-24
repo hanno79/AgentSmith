@@ -1,13 +1,41 @@
+# -*- coding: utf-8 -*-
+"""
+Researcher Agent: Web-Recherche mit DuckDuckGo für technische Informationen.
+"""
+
+from typing import Any, Dict, List, Union, Optional
 from crewai import Agent
 from langchain_community.tools import DuckDuckGoSearchRun
 
-def create_researcher(config, project_rules):
+
+def _get_model_from_config(config: Dict[str, Any], role: str) -> str:
+    """Hilfsfunktion: Extrahiert Modell aus Config (unterstützt String und Dict-Format)."""
+    mode = config.get("mode", "test")
+    model_config = config.get("models", {}).get(mode, {}).get(role)
+    if isinstance(model_config, str):
+        return model_config
+    elif isinstance(model_config, dict):
+        return model_config.get("primary", "gpt-4")
+    return "gpt-4"
+
+
+def create_researcher(config: Dict[str, Any], project_rules: Dict[str, List[str]], router=None) -> Agent:
     """
     Erstellt den Researcher-Agenten, der das Web nach Informationen durchsucht.
     Nutzt DuckDuckGoSearchRun als Tool.
+
+    Args:
+        config: Anwendungskonfiguration mit mode und models
+        project_rules: Dictionary mit globalen und rollenspezifischen Regeln
+        router: Optional ModelRouter für Fallback bei Rate Limits
+
+    Returns:
+        Konfigurierte CrewAI Agent-Instanz mit Search-Tool
     """
-    mode = config.get("mode", "test")
-    model = config.get("models", {}).get(mode, {}).get("researcher", "gpt-4")
+    if router:
+        model = router.get_model("researcher")
+    else:
+        model = _get_model_from_config(config, "researcher")
 
     # Tool initialisieren
     from crewai.tools import BaseTool
@@ -66,6 +94,6 @@ def create_researcher(config, project_rules):
             f"{combined_rules}"
         ),
         tools=[search_tool],
-        model=model,
+        llm=model,
         verbose=True
     )

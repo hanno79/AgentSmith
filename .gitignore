@@ -21,6 +21,12 @@ memory/
 *.jsonl
 crew_log.jsonl
 
+# Environment files (contain secrets!)
+.env
+.env.local
+.env.*.local
+!.env.example
+
 # OS
 .DS_Store
 Thumbs.db

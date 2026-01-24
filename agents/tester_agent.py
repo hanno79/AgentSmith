@@ -1,12 +1,33 @@
+# -*- coding: utf-8 -*-
+"""
+Tester Agent: Führt UI-Tests mit Playwright durch und erkennt visuelle Unterschiede.
+"""
+
 from pathlib import Path
+from typing import Any, Dict, List, Optional, TypedDict
 from playwright.sync_api import sync_playwright
 from PIL import Image, ImageChops
 import time
 from crewai import Agent
 
-def create_tester(config, project_rules):
+
+class UITestResult(TypedDict):
+    """Typdefinition für UI-Testergebnisse."""
+    status: str  # "OK", "FAIL", "REVIEW", "BASELINE", "ERROR"
+    issues: List[str]
+    screenshot: Optional[str]
+
+
+def create_tester(config: Dict[str, Any], project_rules: Dict[str, List[str]]) -> Agent:
     """
     Erstellt den Tester-Agenten, der UI-Tests durchführt.
+
+    Args:
+        config: Anwendungskonfiguration mit mode und models
+        project_rules: Dictionary mit globalen und rollenspezifischen Regeln
+
+    Returns:
+        Konfigurierte CrewAI Agent-Instanz
     """
     mode = config["mode"]
     # Fallback to reviewer model if tester model not specified
@@ -19,11 +40,11 @@ def create_tester(config, project_rules):
             "Du bist ein detailgenauer Tester. Du nutzt Tools wie Playwright, "
             "um Screenshots zu vergleichen und die Funktionalität von Webseiten zu prüfen."
         ),
-        model=model,
+        llm=model,
         verbose=True
     )
 
-def test_web_ui(file_path: str) -> dict:
+def test_web_ui(file_path: str) -> UITestResult:
     """
     Führt UI-Tests mit Playwright durch, erstellt Screenshots und erkennt visuelle Unterschiede.
     Gibt ein Dictionary mit Testergebnissen zurück.
@@ -47,10 +68,21 @@ def test_web_ui(file_path: str) -> dict:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             page = browser.new_page()
+
+            # KRITISCH: Global Timeout setzen, um Hänger zu verhindern
+            page.set_default_timeout(10000)  # 10 Sekunden max
+
             console_errors = []
             page.on("console", lambda msg: console_errors.append(msg.text))
-            page.goto(file_url)
-            page.wait_for_load_state("networkidle")
+
+            # Goto mit Timeout und schnellerem wait_until (domcontentloaded statt networkidle)
+            page.goto(file_url, timeout=10000, wait_until="domcontentloaded")
+
+            # Optionales networkidle mit kurzem Timeout (3s) - blockiert nicht bei fehlenden Ressourcen
+            try:
+                page.wait_for_load_state("networkidle", timeout=3000)
+            except Exception:
+                pass  # OK, DOM ist bereits geladen - Screenshot kann trotzdem erstellt werden
 
             # Screenshot
             page.screenshot(path=screenshot_path, full_page=True)
@@ -85,14 +117,14 @@ def test_web_ui(file_path: str) -> dict:
         return {"status": "ERROR", "issues": [f"❌ Playwright-Fehler: {e}"], "screenshot": None}
 
 
-def compare_images(baseline_path: Path, new_path: Path):
+def compare_images(baseline_path: Path, new_path: Path) -> Optional[Image.Image]:
     """Vergleicht zwei Screenshots Pixel-für-Pixel und gibt eine Differenz-Map zurück, falls Unterschiede existieren."""
     base_img = Image.open(baseline_path).convert("RGB")
     new_img = Image.open(new_path).convert("RGB")
     diff = ImageChops.difference(base_img, new_img)
     return diff if diff.getbbox() else None
 
-def summarize_ui_result(ui_result: dict) -> str:
+def summarize_ui_result(ui_result: UITestResult) -> str:
     """
     Liefert eine kurze textuelle Zusammenfassung der Testergebnisse
     für den Designer-Agenten oder den Memory-Agenten.

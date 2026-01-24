@@ -31,7 +31,45 @@ body {
     border-radius: 4px;
 }
 .terminal-scroll::-webkit-scrollbar-thumb:hover {
-    background: #566474; 
+    background: #566474;
+}
+
+/* Page-level scrollbar - elegant green theme for MainframeHub & BudgetDashboard */
+.page-scrollbar::-webkit-scrollbar {
+    width: 8px;
+}
+.page-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+.page-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(13, 242, 89, 0.2);
+    border-radius: 4px;
+}
+.page-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(13, 242, 89, 0.4);
+}
+.page-scrollbar::-webkit-scrollbar-thumb:active {
+    background: rgba(13, 242, 89, 0.6);
+}
+/* Firefox support */
+.page-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(13, 242, 89, 0.2) transparent;
+}
+
+/* Custom scrollbar for panels within pages */
+.custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: #111813;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #28392e;
+    border-radius: 3px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #0df259;
 }
 
 .grid-bg {

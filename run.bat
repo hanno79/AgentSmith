@@ -1,4 +1,6 @@
 @echo off
+chcp 65001 >nul
+set PYTHONIOENCODING=utf-8
 echo Starting Multi-Agent System (v3.1)...
 .\venv\Scripts\python.exe main.py
 if %errorlevel% neq 0 (

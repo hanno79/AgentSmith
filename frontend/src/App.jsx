@@ -20,11 +20,20 @@ import {
   ExternalLink,
   Search,
   Cpu,
-  Lock
+  Lock,
+  Server,
+  Users
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import MainframeHub from './MainframeHub';
+import BudgetDashboard from './BudgetDashboard';
+import { DollarSign } from 'lucide-react';
 
 const App = () => {
+  // Navigation State
+  const [currentRoom, setCurrentRoom] = useState('mission-control');
+
+  // Mission Control State
   const [goal, setGoal] = useState('');
   const [logs, setLogs] = useState([]);
   const [status, setStatus] = useState('Idle');
@@ -87,18 +96,108 @@ const App = () => {
     }
   };
 
+  // Render Mainframe Hub or Budget Dashboard if selected
+  if (currentRoom === 'mainframe' || currentRoom === 'budget-dashboard') {
+    return (
+      <div className="bg-background-dark text-white font-sans overflow-hidden h-screen flex flex-col">
+        {/* Navigation Header */}
+        <header className="flex-none flex items-center justify-between border-b border-border-dark px-6 py-3 bg-[#111418] z-20">
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-4">
+              <div className="p-2 rounded bg-primary/20 text-primary">
+                <LayoutDashboard size={24} />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold leading-tight">Agent Office</h2>
+                <div className="text-xs text-slate-400 font-medium">PROJECT: ALPHA-WEB-INTEGRATION</div>
+              </div>
+            </div>
+
+            {/* Navigation Tabs */}
+            <nav className="hidden md:flex items-center gap-1 ml-8 bg-[#1c2127] rounded-lg p-1 border border-[#283039]">
+              <button
+                onClick={() => setCurrentRoom('mission-control')}
+                className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all text-slate-400 hover:text-white hover:bg-white/5"
+              >
+                <Users size={16} />
+                <span>Mission Control</span>
+              </button>
+              <button
+                onClick={() => setCurrentRoom('mainframe')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${currentRoom === 'mainframe' ? 'bg-primary/20 text-primary border border-primary/30' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
+              >
+                <Server size={16} />
+                <span>Mainframe Hub</span>
+              </button>
+              <button
+                onClick={() => setCurrentRoom('budget-dashboard')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${currentRoom === 'budget-dashboard' ? 'bg-primary/20 text-primary border border-primary/30' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
+              >
+                <DollarSign size={16} />
+                <span>Budget</span>
+              </button>
+            </nav>
+          </div>
+
+          <div className="flex gap-3 items-center">
+            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#1c2127] border border-[#283039]">
+              <Wifi size={14} className="text-green-500" />
+              <span className="text-xs font-semibold text-white">System Online</span>
+            </div>
+            <Settings size={20} className="text-slate-400 cursor-pointer hover:text-white" />
+            <Bell size={20} className="text-slate-400 cursor-pointer hover:text-white" />
+          </div>
+        </header>
+
+        {/* Content based on current room */}
+        <div className="flex-1 overflow-y-auto overflow-x-hidden page-scrollbar">
+          {currentRoom === 'mainframe' && <MainframeHub />}
+          {currentRoom === 'budget-dashboard' && <BudgetDashboard />}
+        </div>
+      </div>
+    );
+  }
+
+  // Default: Mission Control
   return (
     <div className="bg-background-dark text-white font-sans overflow-hidden h-screen flex flex-col">
       {/* Header */}
       <header className="flex-none flex items-center justify-between border-b border-border-dark px-6 py-3 bg-[#111418] z-20">
-        <div className="flex items-center gap-4">
-          <div className="p-2 rounded bg-primary/20 text-primary">
-            <LayoutDashboard size={24} />
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-4">
+            <div className="p-2 rounded bg-primary/20 text-primary">
+              <LayoutDashboard size={24} />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold leading-tight">Agent Office</h2>
+              <div className="text-xs text-slate-400 font-medium">PROJECT: ALPHA-WEB-INTEGRATION</div>
+            </div>
           </div>
-          <div>
-            <h2 className="text-lg font-bold leading-tight">Agent Office</h2>
-            <div className="text-xs text-slate-400 font-medium">PROJECT: ALPHA-WEB-INTEGRATION</div>
-          </div>
+
+          {/* Navigation Tabs */}
+          <nav className="hidden md:flex items-center gap-1 ml-8 bg-[#1c2127] rounded-lg p-1 border border-[#283039]">
+            <button
+              onClick={() => setCurrentRoom('mission-control')}
+              className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all bg-primary/20 text-primary border border-primary/30"
+            >
+              <Users size={16} />
+              <span>Mission Control</span>
+            </button>
+            <button
+              onClick={() => setCurrentRoom('mainframe')}
+              className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all text-slate-400 hover:text-white hover:bg-white/5"
+            >
+              <Server size={16} />
+              <span>Mainframe Hub</span>
+            </button>
+            <button
+              onClick={() => setCurrentRoom('budget-dashboard')}
+              className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all text-slate-400 hover:text-white hover:bg-white/5"
+            >
+              <DollarSign size={16} />
+              <span>Budget</span>
+            </button>
+          </nav>
         </div>
 
         <div className="flex gap-3 items-center">
@@ -116,7 +215,7 @@ const App = () => {
 
       <div className="flex flex-1 overflow-hidden relative">
         {/* Left Side: Mission Control */}
-        <main className="flex-1 overflow-y-auto relative flex flex-col items-center bg-[#101922] p-6 lg:p-8">
+        <main className="flex-1 overflow-y-auto page-scrollbar relative flex flex-col items-center bg-[#101922] p-6 lg:p-8">
           <div className="absolute inset-0 bg-grid-pattern opacity-[0.05] pointer-events-none"></div>
 
           <div className="w-full max-w-[1000px] flex flex-col gap-8 z-10">

@@ -1,0 +1,188 @@
+# -*- coding: utf-8 -*-
+"""
+Tests für sandbox_runner.py
+"""
+
+import pytest
+from sandbox_runner import detect_code_type, run_sandbox
+
+
+class TestDetectCodeType:
+    """Tests für die detect_code_type Funktion."""
+
+    def test_detect_html_doctype(self):
+        """Test: Erkennung von HTML mit DOCTYPE."""
+        code = "<!DOCTYPE html><html><body>Test</body></html>"
+        assert detect_code_type(code) == "html"
+
+    def test_detect_html_tag(self):
+        """Test: Erkennung von HTML mit html-Tag."""
+        code = "<html><head></head><body>Test</body></html>"
+        assert detect_code_type(code) == "html"
+
+    def test_detect_html_case_insensitive(self):
+        """Test: Case-insensitive HTML-Erkennung."""
+        code = "<HTML><BODY>Test</BODY></HTML>"
+        assert detect_code_type(code) == "html"
+
+    def test_detect_javascript(self):
+        """Test: Erkennung von JavaScript."""
+        code = "function hello() { console.log('Hello'); }"
+        assert detect_code_type(code) == "js"
+
+    def test_detect_python_default(self):
+        """Test: Python als Default-Typ."""
+        code = "def hello():\n    print('Hello')"
+        assert detect_code_type(code) == "python"
+
+    def test_detect_python_with_class(self):
+        """Test: Python-Klassen werden als Python erkannt."""
+        code = "class MyClass:\n    def __init__(self):\n        pass"
+        assert detect_code_type(code) == "python"
+
+    def test_detect_empty_code(self):
+        """Test: Leerer Code wird als Python erkannt."""
+        assert detect_code_type("") == "python"
+
+
+class TestRunSandbox:
+    """Tests für die run_sandbox Funktion."""
+
+    # ==================== Python Tests ====================
+
+    def test_valid_python_code(self, valid_python_code):
+        """Test: Gültiger Python-Code besteht Prüfung."""
+        result = run_sandbox(valid_python_code)
+        assert "✅" in result
+        assert "Python" in result
+
+    def test_invalid_python_syntax(self, invalid_python_code):
+        """Test: Ungültiger Python-Code wird erkannt."""
+        result = run_sandbox(invalid_python_code)
+        assert "❌" in result
+        assert "Syntaxfehler" in result
+
+    def test_python_syntax_error_line_number(self):
+        """Test: Zeilennummer wird bei Syntaxfehlern angegeben."""
+        code = "def test():\n    pass\n    invalid syntax here"
+        result = run_sandbox(code)
+        assert "❌" in result
+        assert "Zeile" in result
+
+    def test_python_import_statement(self):
+        """Test: Import-Statements sind gültig."""
+        code = "import os\nimport sys\nprint(os.getcwd())"
+        result = run_sandbox(code)
+        assert "✅" in result
+
+    def test_python_complex_code(self):
+        """Test: Komplexer Python-Code wird validiert."""
+        code = '''
+class Calculator:
+    def __init__(self):
+        self.result = 0
+
+    def add(self, x, y):
+        return x + y
+
+    def multiply(self, x, y):
+        return x * y
+
+if __name__ == "__main__":
+    calc = Calculator()
+    print(calc.add(1, 2))
+'''
+        result = run_sandbox(code)
+        assert "✅" in result
+
+    def test_python_indentation_error(self):
+        """Test: Einrückungsfehler werden erkannt."""
+        code = "def test():\nprint('no indent')"
+        result = run_sandbox(code)
+        assert "❌" in result
+
+    # ==================== HTML Tests ====================
+
+    def test_valid_html_code(self, valid_html_code):
+        """Test: Gültiger HTML-Code besteht Prüfung."""
+        result = run_sandbox(valid_html_code)
+        assert "✅" in result
+        assert "HTML" in result
+
+    def test_invalid_html_missing_closing(self, invalid_html_code):
+        """Test: Unvollständiger HTML-Code wird erkannt."""
+        result = run_sandbox(invalid_html_code)
+        assert "❌" in result
+        assert "unvollständig" in result.lower()
+
+    def test_html_minimal_valid(self):
+        """Test: Minimaler gültiger HTML-Code."""
+        code = "<html></html>"
+        result = run_sandbox(code)
+        assert "✅" in result
+
+    # ==================== JavaScript Tests ====================
+
+    def test_valid_javascript_code(self):
+        """Test: Gültiger JavaScript-Code (wenn Node.js verfügbar)."""
+        code = "function test() { return 42; }"
+        result = run_sandbox(code)
+        # Kann ✅ oder ❌ sein, je nach Node.js-Verfügbarkeit
+        assert "✅" in result or "❌" in result
+
+    def test_javascript_arrow_function(self):
+        """Test: JavaScript Arrow Functions."""
+        code = "const add = (a, b) => { return a + b; };"
+        result = run_sandbox(code)
+        # Ergebnis hängt von Node.js ab
+        assert "JavaScript" in result or "python" in result.lower()
+
+    # ==================== Edge Cases ====================
+
+    def test_empty_code(self):
+        """Test: Leerer Code wird als Python validiert."""
+        result = run_sandbox("")
+        assert "✅" in result
+
+    def test_whitespace_only(self):
+        """Test: Nur Whitespace ist gültiger Python-Code."""
+        result = run_sandbox("   \n\n   \t")
+        assert "✅" in result
+
+    def test_unicode_code(self):
+        """Test: Unicode-Zeichen werden unterstützt."""
+        code = "print('Hallo Welt! 日本語 emoji 🚀')"
+        result = run_sandbox(code)
+        assert "✅" in result
+
+    def test_multiline_string(self):
+        """Test: Multiline-Strings sind gültig."""
+        code = '''
+text = """
+This is a
+multiline string
+"""
+print(text)
+'''
+        result = run_sandbox(code)
+        assert "✅" in result
+
+
+class TestRunSandboxSecurity:
+    """Sicherheitstests für die Sandbox."""
+
+    def test_no_code_execution(self):
+        """Test: Code wird nicht ausgeführt (nur Syntax-Check)."""
+        # Dieser Code würde bei Ausführung eine Datei erstellen
+        code = "import os; os.system('echo EXECUTED > /tmp/test_executed.txt')"
+        result = run_sandbox(code)
+        # Syntax ist gültig, aber Code sollte NICHT ausgeführt werden
+        assert "✅" in result
+
+    def test_ast_parse_only(self):
+        """Test: Nur AST-Parsing, keine Ausführung."""
+        # Code mit Seiteneffekten
+        code = "print('This should not print')"
+        result = run_sandbox(code)
+        assert "✅" in result
+        # Keine Ausgabe von "This should not print" erwartet

@@ -7,9 +7,35 @@ Speichert Erkenntnisse aus Code-, Review- und Sandbox-Ergebnissen.
 import os
 import json
 from datetime import datetime
+from typing import Any, Dict, List, Optional, TypedDict
 
 
-def load_memory(memory_path: str):
+class MemoryEntry(TypedDict):
+    """Typdefinition für einen Memory-Eintrag."""
+    timestamp: str
+    coder_output_preview: str
+    review_feedback: Optional[str]
+    sandbox_feedback: Optional[str]
+
+
+class Lesson(TypedDict, total=False):
+    """Typdefinition für eine Lesson."""
+    pattern: str
+    category: str
+    action: str
+    tags: List[str]
+    count: int
+    first_seen: str
+    last_seen: str
+
+
+class MemoryData(TypedDict):
+    """Typdefinition für Memory-Daten."""
+    history: List[MemoryEntry]
+    lessons: List[Lesson]
+
+
+def load_memory(memory_path: str) -> MemoryData:
     """Lädt bestehendes Memory oder erstellt ein leeres."""
     if os.path.exists(memory_path):
         with open(memory_path, "r", encoding="utf-8") as f:
@@ -17,14 +43,19 @@ def load_memory(memory_path: str):
     return {"history": [], "lessons": []}
 
 
-def save_memory(memory_path: str, memory_data: dict):
+def save_memory(memory_path: str, memory_data: MemoryData) -> None:
     """Speichert das Memory dauerhaft als JSON."""
     os.makedirs(os.path.dirname(memory_path), exist_ok=True)
     with open(memory_path, "w", encoding="utf-8") as f:
         json.dump(memory_data, f, indent=2, ensure_ascii=False)
 
 
-def update_memory(memory_path: str, coder_output: str, review_output: str, sandbox_output: str = None):
+def update_memory(
+    memory_path: str,
+    coder_output: str,
+    review_output: Optional[str],
+    sandbox_output: Optional[str] = None
+) -> MemoryEntry:
     """
     Fügt neue Erkenntnisse ins Memory hinzu.
     """
@@ -79,7 +110,7 @@ def get_lessons_for_prompt(memory_path: str, tech_stack: str = None) -> str:
     return "\n".join([f"- [MEMORY]: {l}" for l in relevant_lessons])
 
 
-def learn_from_error(memory_path: str, error_msg: str, tags: list):
+def learn_from_error(memory_path: str, error_msg: str, tags: List[str]) -> str:
     """
     Fügt eine neue Lektion basierend auf einem Fehler hinzu.
     """

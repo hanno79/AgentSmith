@@ -1,12 +1,40 @@
+# -*- coding: utf-8 -*-
+"""
+Coder Agent: Generiert Production-Ready Code basierend auf Projektanforderungen.
+"""
+
+from typing import Any, Dict, List, Optional
 from crewai import Agent
 
-def create_coder(config, project_rules):
+
+def _get_model_from_config(config: Dict[str, Any], role: str) -> str:
+    """Hilfsfunktion: Extrahiert Modell aus Config (unterstützt String und Dict-Format)."""
+    mode = config["mode"]
+    model_config = config["models"][mode].get(role)
+    if isinstance(model_config, str):
+        return model_config
+    elif isinstance(model_config, dict):
+        return model_config.get("primary", "")
+    return ""
+
+
+def create_coder(config: Dict[str, Any], project_rules: Dict[str, List[str]], router=None) -> Agent:
     """
     Erstellt den Coder-Agenten, der auf Basis des Plans und Feedbacks
     funktionierenden, sauberen Code schreibt.
+
+    Args:
+        config: Anwendungskonfiguration mit mode und models
+        project_rules: Dictionary mit globalen und rollenspezifischen Regeln
+        router: Optional ModelRouter für Fallback bei Rate Limits
+
+    Returns:
+        Konfigurierte CrewAI Agent-Instanz
     """
-    mode = config["mode"]
-    model = config["models"][mode]["coder"]
+    if router:
+        model = router.get_model("coder")
+    else:
+        model = _get_model_from_config(config, "coder")
 
     global_rules = "\n".join(project_rules.get("global", []))
     role_rules = "\n".join(project_rules.get("coder", []))
@@ -26,6 +54,6 @@ def create_coder(config, project_rules):
             "Nutze das Format ### FILENAME: Pfad/Datei.ext für JEDE Datei.\n\n"
             f"{combined_rules}"
         ),
-        model=model,
+        llm=model,
         verbose=True
     )

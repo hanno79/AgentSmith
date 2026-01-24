@@ -1,0 +1,15 @@
+{
+  "global_monthly_cap": 3000.0,
+  "global_daily_cap": 100.0,
+  "auto_pause": true,
+  "alert_thresholds": [
+    50,
+    75,
+    90,
+    100
+  ],
+  "slack_webhook_url": null,
+  "discord_webhook_url": null,
+  "email_alerts": false,
+  "email_recipients": []
+}

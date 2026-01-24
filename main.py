@@ -10,6 +10,13 @@ import json
 import time
 import yaml
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Lade .env aus dem Projektverzeichnis (nicht CWD!)
+# Dies stellt sicher, dass die .env gefunden wird, unabhängig vom Arbeitsverzeichnis
+_project_root = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(_project_root, ".env"), override=True)
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress
@@ -29,6 +36,8 @@ from agents.security_agent import create_security_agent
 from agents.memory_agent import update_memory, get_lessons_for_prompt, learn_from_error
 from sandbox_runner import run_sandbox
 from logger_utils import log_event # Added Logger
+from security_utils import safe_join_path, sanitize_filename, validate_shell_command
+from exceptions import SecurityError
 
 # CrewAI Imports
 from crewai import Task, Crew
@@ -67,23 +76,20 @@ def save_multi_file_output(project_path: str, code_output: str, default_filename
     created_files = []
     # Start bei Index 1, da Index 0 der Preamble ist
     for i in range(1, len(parts), 2):
-        filename = parts[i].strip()
+        raw_filename = parts[i].strip()
         content = parts[i+1].strip()
 
-        # Sicherheits-Check: Falls doch noch Präfixe im Filename gelandet sind
-        for prefix in ["FILENAME:", "FILE:", "PATH:", "File:", "Path:"]:
-            if filename.upper().startswith(prefix.upper()):
-                filename = filename[len(prefix):].strip()
+        # SECURITY FIX: Nutze sichere Sanitization (entfernt Präfixe, .., illegale Zeichen)
+        filename = sanitize_filename(raw_filename)
 
-        # Bugfix: Führende Slashes/Backslashes entfernen, damit os.path.join nicht als absoluter Pfad interpretiert wird
-        filename = filename.lstrip("/\\")
+        # Überspringe leere Dateinamen nach Sanitization
+        if not filename:
+            console.print(f"[yellow]⚠️ Ungültiger Dateiname übersprungen: {raw_filename[:50]}[/yellow]")
+            continue
 
-        # Windows-Sanitizing: Doppelpunkte in Pfaden (außer Drive) sind illegal
-        filename = filename.replace(":", "_").replace("*", "_").replace("?", "_").replace("\"", "_").replace("<", "_").replace(">", "_").replace("|", "_")
-        
         # Code-Blöcke entfernen
         content = content.replace("```html", "").replace("```python", "").replace("```css", "").replace("```javascript", "").replace("```json", "").replace("```", "")
-        
+
         # Markdown-Artefakte (---, ***, ===) an Zeilenanfang/-ende entfernen
         lines = content.splitlines()
         cleaned_lines = []
@@ -95,16 +101,22 @@ def save_multi_file_output(project_path: str, code_output: str, default_filename
             cleaned_lines.append(line)
         content = "\n".join(cleaned_lines).strip()
 
-        full_path = os.path.join(project_path, filename)
-        
+        # SECURITY FIX: Nutze safe_join_path mit Containment-Check
+        try:
+            full_path = safe_join_path(project_path, filename)
+        except SecurityError as e:
+            console.print(f"[red]⚠️ Sicherheitswarnung - Datei übersprungen: {e}[/red]")
+            log_event("Security", "Path Traversal Blocked", f"Filename: {raw_filename}")
+            continue
+
         # Sicherstellen, dass der Ordner existiert
         dir_name = os.path.dirname(full_path)
         if dir_name:
             os.makedirs(dir_name, exist_ok=True)
-        
+
         with open(full_path, "w", encoding="utf-8") as f:
             f.write(content)
-        
+
         created_files.append(filename)
         
     return created_files
@@ -211,21 +223,45 @@ def main():
                     dependencies = tech_blueprint.get("dependencies", [])
                     package_file = tech_blueprint.get("package_file", "requirements.txt")
                     if dependencies:
-                        req_path = os.path.join(project_path, package_file)
+                        # SECURITY FIX: Validiere package_file gegen Path Traversal
+                        try:
+                            req_path = safe_join_path(project_path, sanitize_filename(package_file))
+                        except SecurityError as e:
+                            console.print(f"[yellow]⚠️ Ungültiger package_file Pfad ignoriert: {e}[/yellow]")
+                            req_path = os.path.join(project_path, "requirements.txt")  # Sicherer Fallback
+                            package_file = "requirements.txt"
+
                         if package_file == "package.json":
                             pkg_content = {"name": project_name, "version": "1.0.0", "dependencies": {dep: "*" for dep in dependencies}}
                             with open(req_path, "w", encoding="utf-8") as f: json.dump(pkg_content, f, indent=2)
                         else:
                             with open(req_path, "w", encoding="utf-8") as f: f.write("\n".join(dependencies))
-                    
-                    # run.bat
+
+                    # run.bat - SECURITY FIX: Validiere Befehle gegen Command Injection
                     run_cmd = tech_blueprint.get("run_command", "")
+                    install_cmd = tech_blueprint.get("install_command", "")
+
+                    # Validiere run_command
+                    if run_cmd and not validate_shell_command(run_cmd):
+                        console.print(f"[yellow]⚠️ Ungültiger run_command ignoriert: {run_cmd[:50]}[/yellow]")
+                        log_event("Security", "Command Injection Blocked", f"run_command: {run_cmd}")
+                        run_cmd = ""
+
+                    # Validiere install_command
+                    if install_cmd and not validate_shell_command(install_cmd):
+                        console.print(f"[yellow]⚠️ Ungültiger install_command ignoriert: {install_cmd[:50]}[/yellow]")
+                        log_event("Security", "Command Injection Blocked", f"install_command: {install_cmd}")
+                        install_cmd = ""
+
                     run_bat_content = "@echo off\n"
                     if tech_blueprint.get("language") == "python":
                         run_bat_content += "if not exist venv ( python -m venv venv )\ncall venv\\Scripts\\activate\n"
-                    if tech_blueprint.get("install_command"): run_bat_content += f"call {tech_blueprint['install_command']}\n"
-                    if run_cmd: run_bat_content += f"{run_cmd}\n"
-                    else: run_bat_content += f"start {project_name}.html\n"
+                    if install_cmd:
+                        run_bat_content += f"call {install_cmd}\n"
+                    if run_cmd:
+                        run_bat_content += f"{run_cmd}\n"
+                    else:
+                        run_bat_content += f"start {project_name}.html\n"
                     run_bat_content += "pause\n"
                     with open(os.path.join(project_path, "run.bat"), "w", encoding="utf-8") as f: f.write(run_bat_content)
 
@@ -323,6 +359,35 @@ def main():
             is_first_run = False
             if success:
                 console.print("[bold green]✅ Erfolg![/bold green]")
+
+                # 🛡️ SECURITY SCAN (nach erfolgreichem Review)
+                try:
+                    console.print(Panel.fit("Security Agent prüft Code...", title="🛡️ Security Scan", border_style="red"))
+                    security_task = Task(
+                        description=f"Prüfe den folgenden Code auf Sicherheitslücken (SQL Injection, XSS, CSRF, Hardcoded Secrets):\n\n{current_code[:3000]}",
+                        expected_output="SECURE oder Liste von VULNERABILITY: ...",
+                        agent=agent_security
+                    )
+                    security_result = str(security_task.execute_sync())
+                    log_event("Security", "Scan Complete", security_result[:1000])
+
+                    if "VULNERABILITY" in security_result.upper():
+                        console.print(Panel.fit(
+                            security_result[:2000],
+                            title="⚠️ Sicherheitswarnung",
+                            border_style="yellow"
+                        ))
+                        # Optional: Speichere Security-Report
+                        security_report_path = os.path.join(project_path, "SECURITY_REPORT.md")
+                        with open(security_report_path, "w", encoding="utf-8") as f:
+                            f.write(f"# Security Report\n\n{security_result}")
+                        console.print(f"[yellow]Security-Report gespeichert: {security_report_path}[/yellow]")
+                    else:
+                        console.print("[bold green]🛡️ Security Check: SECURE[/bold green]")
+                except Exception as e:
+                    console.print(f"[yellow]⚠️ Security-Scan übersprungen: {e}[/yellow]")
+
+                # 📝 README generieren
                 if agent_orchestrator:
                     doc_task = Task(description=f"README für {user_goal}", expected_output="Markdown", agent=agent_orchestrator)
                     doc = doc_task.execute_sync()
