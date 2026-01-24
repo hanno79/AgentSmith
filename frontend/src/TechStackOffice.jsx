@@ -1,4 +1,12 @@
-import React, { useRef, useEffect } from 'react';
+/**
+ * Author: rahn
+ * Datum: 24.01.2026
+ * Version: 1.0
+ * Beschreibung: TechStack Office - Detailansicht für den TechStack-Architekten mit Stack-Übersicht.
+ */
+
+import React, { useRef } from 'react';
+import { useOfficeCommon } from './hooks/useOfficeCommon';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft,
@@ -24,34 +32,20 @@ import {
 } from 'lucide-react';
 
 const TechStackOffice = ({ agentName = "Tech-Stack", status = "Idle", logs = [], onBack, color = "purple" }) => {
-  const terminalLogRef = useRef(null);
+  const { logRef, getStatusBadge, formatTime } = useOfficeCommon(logs);
   const deploymentLogRef = useRef(null);
 
-  // Auto-scroll logs
-  useEffect(() => {
-    if (terminalLogRef.current) {
-      terminalLogRef.current.scrollTop = terminalLogRef.current.scrollHeight;
-    }
-  }, [logs]);
-
-  // Status badge styling
-  const getStatusBadge = () => {
-    const isActive = status !== 'Idle' && status !== 'Success' && status !== 'Failure';
-    if (isActive) {
-      return (
-        <span className="px-1.5 py-0.5 rounded text-[10px] bg-violet-500/20 text-violet-300 border border-violet-500/20 uppercase tracking-wide font-semibold shadow-[0_0_8px_rgba(139,92,246,0.2)]">
-          System Status: Stable
-        </span>
-      );
-    }
+  // Status Badge Rendering Helper
+  const renderStatusBadge = () => {
+    const badge = getStatusBadge(status, 'bg-violet-500/20 text-violet-300 border-violet-500/20 font-semibold shadow-[0_0_8px_rgba(139,92,246,0.2)]');
     return (
-      <span className="px-1.5 py-0.5 rounded text-[10px] bg-slate-500/20 text-slate-400 border border-slate-500/20 uppercase tracking-wide">
-        {status}
+      <span className={badge.className}>
+        {badge.isActive ? 'System Status: Stable' : badge.text}
       </span>
     );
   };
 
-  // Mock dependency data
+  // MOCK-DATEN: Demo-Dependency-Daten
   const dependencies = [
     { id: 1, type: 'updating', name: 'React Core Framework v19', source: 'NPM Registry', progress: 62 },
     { id: 2, type: 'compatibility', name: 'Webpack Config Mismatch', detail: 'Dep: css-loader v6.2.0 (Legacy)' },
@@ -59,7 +53,7 @@ const TechStackOffice = ({ agentName = "Tech-Stack", status = "Idle", logs = [],
     { id: 4, type: 'indexing', name: 'Node_Modules Indexing...' },
   ];
 
-  // Mock terminal entries
+  // MOCK-DATEN: Demo-Terminal-Einträge
   const terminalEntries = [
     { time: '09:14:02', type: 'info', message: 'Initializing Docker container', highlight: 'api-gateway-v2' },
     { time: '09:14:05', type: 'info', message: 'Pulling image:', highlight: 'registry.internal/node-alpine:18' },
@@ -67,7 +61,7 @@ const TechStackOffice = ({ agentName = "Tech-Stack", status = "Idle", logs = [],
     { time: '09:14:15', type: 'success', message: 'Verifying network bridge -', highlight: 'Connected' },
   ];
 
-  // Mock deployment targets
+  // MOCK-DATEN: Demo-Deployment-Ziele
   const deploymentTargets = [
     {
       title: 'Target: Production Cluster A',
@@ -85,20 +79,13 @@ const TechStackOffice = ({ agentName = "Tech-Stack", status = "Idle", logs = [],
     }
   ];
 
-  // Mock stack health data
+  // MOCK-DATEN: Demo-Stack-Health-Daten
   const stackHealth = [
     { name: 'FE', value: 99, status: 'healthy' },
     { name: 'API', value: 95, status: 'healthy' },
     { name: 'DB', value: 85, status: 'warning', label: 'LOAD' },
     { name: 'CDN', value: 100, status: 'optimal' },
   ];
-
-  // Format timestamp
-  const formatTime = (index) => {
-    const now = new Date();
-    now.setSeconds(now.getSeconds() - (logs.length - index) * 3);
-    return now.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  };
 
   return (
     <div className="bg-[#0f172a] text-white font-display overflow-hidden h-screen flex flex-col">
@@ -119,7 +106,7 @@ const TechStackOffice = ({ agentName = "Tech-Stack", status = "Idle", logs = [],
             <div>
               <h2 className="text-white text-lg font-bold leading-tight tracking-[-0.015em] flex items-center gap-2">
                 {agentName}
-                {getStatusBadge()}
+                {renderStatusBadge()}
               </h2>
               <div className="text-xs text-slate-400 font-medium tracking-wide">WORKSTATION ID: AGENT-04-TCH</div>
             </div>
@@ -258,7 +245,7 @@ const TechStackOffice = ({ agentName = "Tech-Stack", status = "Idle", logs = [],
             </div>
 
             <div
-              ref={terminalLogRef}
+              ref={logRef}
               className="flex-1 p-5 overflow-y-auto techstack-scrollbar font-mono text-xs space-y-4"
             >
               {logs.length === 0 ? (

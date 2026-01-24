@@ -1,4 +1,12 @@
-import React, { useRef, useEffect } from 'react';
+/**
+ * Author: rahn
+ * Datum: 24.01.2026
+ * Version: 1.0
+ * Beschreibung: DB Designer Office - Detailansicht für den Datenbank-Designer mit Schema-Übersicht.
+ */
+
+import React, { useRef } from 'react';
+import { useOfficeCommon } from './hooks/useOfficeCommon';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft,
@@ -22,34 +30,20 @@ import {
 } from 'lucide-react';
 
 const DBDesignerOffice = ({ agentName = "Database Designer", status = "Idle", logs = [], onBack, color = "green" }) => {
-  const terminalLogRef = useRef(null);
+  const { logRef, getStatusBadge, formatTime } = useOfficeCommon(logs);
   const migrationLogRef = useRef(null);
 
-  // Auto-scroll logs
-  useEffect(() => {
-    if (terminalLogRef.current) {
-      terminalLogRef.current.scrollTop = terminalLogRef.current.scrollHeight;
-    }
-  }, [logs]);
-
-  // Status badge styling
-  const getStatusBadge = () => {
-    const isActive = status !== 'Idle' && status !== 'Success' && status !== 'Failure';
-    if (isActive) {
-      return (
-        <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/20 uppercase tracking-wide font-semibold shadow-[0_0_8px_rgba(16,185,129,0.2)]">
-          System Status: Optimized
-        </span>
-      );
-    }
+  // Status Badge Rendering Helper
+  const renderStatusBadge = () => {
+    const badge = getStatusBadge(status, 'bg-emerald-500/20 text-emerald-300 border-emerald-500/20 font-semibold shadow-[0_0_8px_rgba(16,185,129,0.2)]');
     return (
-      <span className="px-1.5 py-0.5 rounded text-[10px] bg-slate-500/20 text-slate-400 border border-slate-500/20 uppercase tracking-wide">
-        {status}
+      <span className={badge.className}>
+        {badge.isActive ? 'System Status: Optimized' : badge.text}
       </span>
     );
   };
 
-  // Mock schema data
+  // MOCK-DATEN: Nur für Demo-Zwecke - Echte Schema-Daten kommen vom DB-Designer-Agenten
   const schemaItems = [
     {
       id: 1,
@@ -81,7 +75,7 @@ const DBDesignerOffice = ({ agentName = "Database Designer", status = "Idle", lo
     },
   ];
 
-  // Mock SQL code lines
+  // MOCK-DATEN: Nur für Demo-Zwecke - Echter SQL-Code kommt vom DB-Designer-Agenten
   const sqlCode = [
     { line: 1, type: 'normal', content: 'CREATE TABLE public.users_auth_log (', parts: [{ text: 'CREATE TABLE', class: 'text-emerald-400' }, { text: ' public.users_auth_log (', class: 'text-slate-300' }] },
     { line: 2, type: 'normal', content: '  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),', indent: true },
@@ -92,7 +86,7 @@ const DBDesignerOffice = ({ agentName = "Database Designer", status = "Idle", lo
     { line: 7, type: 'normal', content: ');' },
   ];
 
-  // Mock migration log entries
+  // MOCK-DATEN: Demo-Migrations-Log-Einträge
   const migrationEntries = [
     {
       title: 'Transaction 0X88A2 (Committed)',
@@ -110,19 +104,12 @@ const DBDesignerOffice = ({ agentName = "Database Designer", status = "Idle", lo
     }
   ];
 
-  // Mock cluster health data
+  // MOCK-DATEN: Demo-Cluster-Health-Daten
   const clusterHealth = [
     { name: 'PRIMARY', value: 92, status: 'OK' },
     { name: 'REPL-1', value: 99, status: 'OK' },
     { name: 'REPL-2', value: 100, status: 'SYNC', isSync: true },
   ];
-
-  // Format timestamp
-  const formatTime = (index) => {
-    const now = new Date();
-    now.setSeconds(now.getSeconds() - (logs.length - index) * 3);
-    return now.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  };
 
   return (
     <div className="bg-[#0f172a] text-white font-display overflow-hidden h-screen flex flex-col">
@@ -143,7 +130,7 @@ const DBDesignerOffice = ({ agentName = "Database Designer", status = "Idle", lo
             <div>
               <h2 className="text-white text-lg font-bold leading-tight tracking-[-0.015em] flex items-center gap-2">
                 {agentName}
-                {getStatusBadge()}
+                {renderStatusBadge()}
               </h2>
               <div className="text-xs text-slate-400 font-medium tracking-wide">WORKSTATION ID: AGENT-05-DB</div>
             </div>
@@ -296,7 +283,7 @@ const DBDesignerOffice = ({ agentName = "Database Designer", status = "Idle", lo
             </div>
 
             <div
-              ref={terminalLogRef}
+              ref={logRef}
               className="flex-1 p-5 overflow-y-auto dbdesigner-scrollbar font-mono text-xs space-y-1"
             >
               {logs.length === 0 ? (

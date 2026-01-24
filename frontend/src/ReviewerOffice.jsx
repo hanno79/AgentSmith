@@ -1,4 +1,12 @@
-import React, { useRef, useEffect } from 'react';
+/**
+ * Author: rahn
+ * Datum: 24.01.2026
+ * Version: 1.0
+ * Beschreibung: Reviewer Office - Detailansicht für den Reviewer-Agenten mit Code-Qualitätsprüfung.
+ */
+
+import React, { useRef } from 'react';
+import { useOfficeCommon } from './hooks/useOfficeCommon';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft,
@@ -22,23 +30,13 @@ import {
 } from 'lucide-react';
 
 const ReviewerOffice = ({ agentName = "Reviewer", status = "Idle", logs = [], onBack, color = "yellow" }) => {
-  const analysisLogRef = useRef(null);
+  const { logRef, getStatusBadge, formatTime } = useOfficeCommon(logs);
   const reviewLogRef = useRef(null);
 
-  // Auto-scroll logs
-  useEffect(() => {
-    if (analysisLogRef.current) {
-      analysisLogRef.current.scrollTop = analysisLogRef.current.scrollHeight;
-    }
-    if (reviewLogRef.current) {
-      reviewLogRef.current.scrollTop = reviewLogRef.current.scrollHeight;
-    }
-  }, [logs]);
-
-  // Status badge styling
-  const getStatusBadge = () => {
-    const isActive = status !== 'Idle' && status !== 'Success' && status !== 'Failure';
-    if (isActive) {
+  // Status Badge Rendering Helper (with pulse indicator for active state)
+  const renderStatusBadge = () => {
+    const badge = getStatusBadge(status, 'bg-yellow-500/20 text-yellow-400 border-yellow-500/20');
+    if (badge.isActive) {
       return (
         <span className="px-1.5 py-0.5 rounded text-[10px] bg-yellow-500/20 text-yellow-400 border border-yellow-500/20 uppercase tracking-wide flex items-center gap-1">
           <span className="size-1.5 rounded-full bg-yellow-400 animate-pulse"></span>
@@ -47,13 +45,13 @@ const ReviewerOffice = ({ agentName = "Reviewer", status = "Idle", logs = [], on
       );
     }
     return (
-      <span className="px-1.5 py-0.5 rounded text-[10px] bg-slate-500/20 text-slate-400 border border-slate-500/20 uppercase tracking-wide">
-        {status}
+      <span className={badge.className}>
+        {badge.text}
       </span>
     );
   };
 
-  // Mock diff data
+  // MOCK-DATEN: Demo-Diff-Daten
   const diffFiles = [
     {
       name: 'src/components/Auth.tsx',
@@ -76,7 +74,7 @@ const ReviewerOffice = ({ agentName = "Reviewer", status = "Idle", logs = [], on
     }
   ];
 
-  // Mock status cards
+  // MOCK-DATEN: Demo-Status-Karten
   const statusCards = [
     { title: 'Security', icon: Shield, status: 'passed', value: 'Passed', color: 'green' },
     { title: 'Performance', icon: Gauge, status: 'passed', value: '98/100', color: 'green' },
@@ -84,15 +82,8 @@ const ReviewerOffice = ({ agentName = "Reviewer", status = "Idle", logs = [], on
     { title: 'Test Coverage', icon: FlaskConical, status: 'pending', value: 'Calculating...', color: 'slate' },
   ];
 
-  // Confidence score
+  // MOCK-DATEN: Konfidenz-Bewertung
   const confidenceScore = 92;
-
-  // Format timestamp
-  const formatTime = (index) => {
-    const now = new Date();
-    now.setSeconds(now.getSeconds() - (logs.length - index) * 2);
-    return now.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  };
 
   return (
     <div className="bg-[#010409] text-white font-display overflow-hidden h-screen flex flex-col">
@@ -113,7 +104,7 @@ const ReviewerOffice = ({ agentName = "Reviewer", status = "Idle", logs = [], on
             <div>
               <h2 className="text-white text-lg font-bold leading-tight tracking-[-0.015em] flex items-center gap-2">
                 {agentName} Workstation
-                {getStatusBadge()}
+                {renderStatusBadge()}
               </h2>
               <div className="text-xs text-slate-400 font-medium tracking-wide">AGENT: REVIEW-09</div>
             </div>
@@ -299,7 +290,7 @@ const ReviewerOffice = ({ agentName = "Reviewer", status = "Idle", logs = [], on
               </div>
 
               <div
-                ref={analysisLogRef}
+                ref={logRef}
                 className="p-6 font-mono text-sm overflow-y-auto reviewer-scrollbar relative flex-1"
               >
                 <div className="space-y-4">

@@ -1,0 +1,13 @@
+[
+  {
+    "timestamp": "2026-01-24T12:00:00.000000",
+    "agent": "Coder",
+    "model": "meta-llama/llama-3.3-70b-instruct:free",
+    "prompt_tokens": 1000,
+    "completion_tokens": 2000,
+    "total_tokens": 3000,
+    "cost_usd": 0.0,
+    "project_id": "project_example",
+    "task_description": null
+  }
+]

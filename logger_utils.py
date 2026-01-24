@@ -1,3 +1,11 @@
+# -*- coding: utf-8 -*-
+"""
+Author: rahn
+Datum: 24.01.2026
+Version: 1.0
+Beschreibung: Logger Utilities - JSON-basiertes Event-Logging für die Agenten-Crew.
+"""
+
 import json
 from datetime import datetime
 

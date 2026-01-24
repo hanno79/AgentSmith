@@ -1,19 +1,17 @@
 # -*- coding: utf-8 -*-
 """
-Budget Tracker: Echtes Kosten-Tracking mit OpenRouter API Integration.
-
-Features:
-- Echte Kosten von OpenRouter API
-- Historische Daten mit Persistenz
-- Kostenprognose mit linearer Regression
-- Alert-System (Slack/Discord Webhooks)
-- Per-Project Budget Tracking
+Author: rahn
+Datum: 24.01.2026
+Version: 1.0
+Beschreibung: Budget Tracker - Echtes Kosten-Tracking mit OpenRouter API Integration.
+              Features: API-Kosten, Persistenz, Kostenprognose, Alert-System, Per-Project Tracking.
 """
 
 import os
 import json
 import time
 import requests
+import threading
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any, Callable
 from dataclasses import dataclass, asdict, field
@@ -124,8 +122,15 @@ class BudgetTracker:
 
     def _save_usage_history(self):
         """Speichert Nutzungshistorie in Datei."""
-        with open(self.usage_file, "w", encoding="utf-8") as f:
-            json.dump([asdict(r) for r in self.usage_history], f, indent=2)
+        try:
+            with open(self.usage_file, "w", encoding="utf-8") as f:
+                json.dump([asdict(r) for r in self.usage_history], f, indent=2)
+        except (OSError, IOError, TypeError, ValueError) as e:
+            # Fehlerbehandlung für Schreibfehler
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Fehler beim Speichern der Usage History: {e}. Datei: {self.usage_file}")
+            # Nicht crashen, nur loggen
 
     def _load_config(self) -> BudgetConfig:
         """Lädt Budget-Konfiguration aus Datei."""
@@ -747,13 +752,17 @@ class BudgetTracker:
         return result
 
 
-# Singleton-Instance
+# Singleton-Instance mit Thread-Sicherheit
 _budget_tracker: Optional[BudgetTracker] = None
+_budget_tracker_lock = threading.Lock()
 
 
 def get_budget_tracker() -> BudgetTracker:
-    """Gibt die Singleton-Instanz des BudgetTrackers zurück."""
+    """Gibt die Singleton-Instanz des BudgetTrackers zurück (thread-safe)."""
     global _budget_tracker
     if _budget_tracker is None:
-        _budget_tracker = BudgetTracker()
+        with _budget_tracker_lock:
+            # Double-checked locking pattern
+            if _budget_tracker is None:
+                _budget_tracker = BudgetTracker()
     return _budget_tracker

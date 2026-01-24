@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-Tester Agent: Führt UI-Tests mit Playwright durch und erkennt visuelle Unterschiede.
+Author: rahn
+Datum: 24.01.2026
+Version: 1.0
+Beschreibung: Tester Agent - Führt UI-Tests mit Playwright durch und erkennt visuelle Unterschiede.
 """
 
 from pathlib import Path
@@ -121,6 +124,19 @@ def compare_images(baseline_path: Path, new_path: Path) -> Optional[Image.Image]
     """Vergleicht zwei Screenshots Pixel-für-Pixel und gibt eine Differenz-Map zurück, falls Unterschiede existieren."""
     base_img = Image.open(baseline_path).convert("RGB")
     new_img = Image.open(new_path).convert("RGB")
+    
+    # Normalisiere Bildgrößen falls unterschiedlich
+    if base_img.size != new_img.size:
+        target_size = (max(base_img.width, new_img.width), max(base_img.height, new_img.height))
+        # Erstelle neue Leinwände mit schwarzem Hintergrund
+        normalized_base = Image.new("RGB", target_size, (0, 0, 0))
+        normalized_new = Image.new("RGB", target_size, (0, 0, 0))
+        # Füge Bilder in die Leinwände ein (oben links)
+        normalized_base.paste(base_img, (0, 0))
+        normalized_new.paste(new_img, (0, 0))
+        base_img = normalized_base
+        new_img = normalized_new
+    
     diff = ImageChops.difference(base_img, new_img)
     return diff if diff.getbbox() else None
 

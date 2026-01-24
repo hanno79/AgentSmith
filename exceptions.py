@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-AgentSmith Exception Hierarchy
-Standardisierte Exceptions für konsistente Fehlerbehandlung.
+Author: rahn
+Datum: 24.01.2026
+Version: 1.0
+Beschreibung: Exception Hierarchy - Standardisierte Exceptions für konsistente Fehlerbehandlung.
 """
 
 from typing import Optional, Any
@@ -206,7 +208,7 @@ class ConfigValidationError(ConfigurationError):
 
 # ==================== Memory Exceptions ====================
 
-class MemoryError(AgentSmithError):
+class AgentMemoryError(AgentSmithError):
     """Wird ausgelöst bei Fehlern im Memory-System."""
 
     def __init__(self, message: str, memory_path: Optional[str] = None):
@@ -215,7 +217,7 @@ class MemoryError(AgentSmithError):
         super().__init__(f"Memory-Fehler: {message}", details=details)
 
 
-class MemoryLoadError(MemoryError):
+class MemoryLoadError(AgentMemoryError):
     """Wird ausgelöst, wenn Memory nicht geladen werden kann."""
 
     def __init__(self, memory_path: str, original_error: Optional[Exception] = None):
@@ -223,7 +225,7 @@ class MemoryLoadError(MemoryError):
         super().__init__(f"Kann Memory nicht laden: {original_error}", memory_path)
 
 
-class MemorySaveError(MemoryError):
+class MemorySaveError(AgentMemoryError):
     """Wird ausgelöst, wenn Memory nicht gespeichert werden kann."""
 
     def __init__(self, memory_path: str, original_error: Optional[Exception] = None):

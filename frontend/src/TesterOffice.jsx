@@ -1,4 +1,12 @@
-import React, { useRef, useEffect } from 'react';
+/**
+ * Author: rahn
+ * Datum: 24.01.2026
+ * Version: 1.0
+ * Beschreibung: Tester Office - Detailansicht für den Tester-Agenten mit UI-Tests und Coverage.
+ */
+
+import React from 'react';
+import { useOfficeCommon } from './hooks/useOfficeCommon';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft,
@@ -20,19 +28,12 @@ import {
 } from 'lucide-react';
 
 const TesterOffice = ({ agentName = "Tester", status = "Idle", logs = [], onBack, color = "orange" }) => {
-  const terminalRef = useRef(null);
+  const { logRef, getStatusBadge, formatTime } = useOfficeCommon(logs);
 
-  // Auto-scroll terminal
-  useEffect(() => {
-    if (terminalRef.current) {
-      terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
-    }
-  }, [logs]);
-
-  // Status badge styling
-  const getStatusBadge = () => {
-    const isActive = status !== 'Idle' && status !== 'Success' && status !== 'Failure';
-    if (isActive) {
+  // Status Badge Rendering Helper (with Activity icon for active state)
+  const renderStatusBadge = () => {
+    const badge = getStatusBadge(status, 'bg-green-500/20 text-green-400 border-green-500/20');
+    if (badge.isActive) {
       return (
         <span className="px-2 py-0.5 rounded text-[10px] bg-green-500/20 text-green-400 border border-green-500/20 uppercase tracking-wide flex items-center gap-1">
           <Activity size={10} className="animate-pulse" />
@@ -41,13 +42,13 @@ const TesterOffice = ({ agentName = "Tester", status = "Idle", logs = [], onBack
       );
     }
     return (
-      <span className="px-2 py-0.5 rounded text-[10px] bg-slate-500/20 text-slate-400 border border-slate-500/20 uppercase tracking-wide">
-        {status}
+      <span className={badge.className}>
+        {badge.text}
       </span>
     );
   };
 
-  // Mock defects data
+  // MOCK-DATEN: Nur für Demo-Zwecke - Echte Defects kommen vom Tester-Agenten
   const defects = [
     { id: 'bug-4921', severity: 'CRITICAL', title: 'Auth Token Timeout', time: '12m ago', color: 'red' },
     { id: 'bug-4882', severity: 'HIGH', title: 'Checkout Flow Deadlock', time: '1h ago', color: 'orange' },
@@ -55,20 +56,13 @@ const TesterOffice = ({ agentName = "Tester", status = "Idle", logs = [], onBack
     { id: 'bug-4811', severity: 'NORMAL', title: 'Mobile Menu Z-Index', time: '4h ago', color: 'blue' },
   ];
 
-  // Mock coverage data
+  // MOCK-DATEN: Nur für Demo-Zwecke - Echte Coverage-Daten kommen vom Tester-Agenten
   const coverage = [
     { path: '/src/auth', percent: 98, color: 'green' },
     { path: '/src/api/routes', percent: 92, color: 'green' },
     { path: '/src/components/ui', percent: 74, color: 'orange' },
     { path: '/src/legacy', percent: 32, color: 'red' },
   ];
-
-  // Format timestamp
-  const formatTime = (index) => {
-    const now = new Date();
-    now.setSeconds(now.getSeconds() - (logs.length - index) * 2);
-    return now.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  };
 
   const getSeverityColors = (severity) => {
     switch (severity) {
@@ -96,7 +90,7 @@ const TesterOffice = ({ agentName = "Tester", status = "Idle", logs = [], onBack
           <div>
             <h2 className="text-white text-lg font-bold leading-tight tracking-[-0.015em] flex items-center gap-2">
               {agentName} Agent Workstation
-              {getStatusBadge()}
+              {renderStatusBadge()}
             </h2>
             <div className="text-xs text-slate-400 font-medium tracking-wide flex items-center gap-2">
               <span>PROJECT: ALPHA-1</span>
@@ -265,7 +259,7 @@ const TesterOffice = ({ agentName = "Tester", status = "Idle", logs = [], onBack
 
               {/* Terminal Output */}
               <div
-                ref={terminalRef}
+                ref={logRef}
                 className="flex-1 overflow-y-auto tester-scrollbar p-4 font-mono text-xs space-y-1 text-slate-400"
               >
                 {logs.length === 0 ? (

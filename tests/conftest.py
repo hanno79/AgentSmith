@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-Pytest Fixtures für AgentSmith Tests
+Author: rahn
+Datum: 24.01.2026
+Version: 1.0
+Beschreibung: Pytest Fixtures - Gemeinsame Test-Konfiguration und Fixtures für AgentSmith Tests.
 """
 
 import os
@@ -26,6 +29,10 @@ def temp_dir():
 def temp_memory_file(temp_dir):
     """Erstellt eine temporäre Memory-Datei."""
     memory_path = os.path.join(temp_dir, "memory", "test_memory.json")
+    # Erstelle Verzeichnis falls nicht vorhanden
+    memory_dir = os.path.dirname(memory_path)
+    if memory_dir:
+        os.makedirs(memory_dir, exist_ok=True)
     yield memory_path
 
 

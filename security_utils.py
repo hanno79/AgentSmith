@@ -1,14 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-Security Utilities: Sichere Pfad- und Befehlsoperationen.
-
-Dieses Modul bietet Funktionen zur sicheren Verarbeitung von:
-- Dateipfaden (Path Traversal Prevention)
-- Shell-Befehlen (Command Injection Prevention)
-- Dateinamen-Sanitization
-
-Alle Funktionen sind darauf ausgelegt, untrusted Input (z.B. aus AI-Output)
-sicher zu verarbeiten.
+Author: rahn
+Datum: 24.01.2026
+Version: 1.0
+Beschreibung: Security Utilities - Sichere Pfad- und Befehlsoperationen.
+              Features: Path Traversal Prevention, Command Injection Prevention, Dateinamen-Sanitization.
 """
 
 import os

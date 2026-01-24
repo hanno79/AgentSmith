@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-Config Validator: Pydantic-basierte Validierung der config.yaml
-Stellt sicher, dass alle erforderlichen Felder vorhanden und korrekt typisiert sind.
+Author: rahn
+Datum: 24.01.2026
+Version: 1.0
+Beschreibung: Config Validator - Pydantic-basierte Validierung der config.yaml.
+              Stellt sicher, dass alle erforderlichen Felder vorhanden und korrekt typisiert sind.
 """
 
 import os
@@ -12,7 +15,13 @@ from exceptions import ConfigurationError, ConfigKeyMissingError, ConfigValidati
 
 
 class ModelConfig(BaseModel):
-    """Konfiguration für Modelle pro Agent."""
+    """
+    Konfiguration für Modelle pro Agent.
+
+    FALLBACK-WERTE: Die Default-Werte "gpt-4" werden verwendet wenn in config.yaml
+    keine Modelle definiert sind. In Produktion sollten immer explizite Werte aus
+    der config.yaml verwendet werden.
+    """
     meta_orchestrator: str = Field(default="gpt-4", description="Modell für Meta-Orchestrator")
     orchestrator: str = Field(default="gpt-4", description="Modell für Orchestrator")
     coder: str = Field(default="gpt-4", description="Modell für Coder")
@@ -154,6 +163,9 @@ class AppConfig(BaseModel):
             "designer": template.designer,
             "security": template.security,
             "orchestrator": template.orchestrator,
+            "techstack_architect": template.techstack_architect,
+            "database_designer": template.database_designer,
+            "researcher": template.researcher,
         }
 
     def resolve_env_vars(self) -> "AppConfig":

@@ -1,3 +1,11 @@
+# -*- coding: utf-8 -*-
+"""
+Author: rahn
+Datum: 24.01.2026
+Version: 1.0
+Beschreibung: FastAPI Backend - REST API und WebSocket-Endpunkte für das Multi-Agent System.
+"""
+
 import asyncio
 import os
 import yaml
@@ -9,6 +17,11 @@ from pydantic import BaseModel
 from typing import Optional
 from .orchestration_manager import OrchestrationManager
 import json
+try:
+    from ruamel.yaml import YAML
+    RUAMEL_AVAILABLE = True
+except ImportError:
+    RUAMEL_AVAILABLE = False
 
 # Füge Projektroot zum Path hinzu für model_router Import
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -114,6 +127,9 @@ class ModelRequest(BaseModel):
 class MaxRetriesRequest(BaseModel):
     max_retries: int
 
+class ResearchTimeoutRequest(BaseModel):
+    research_timeout_minutes: int
+
 @app.get("/config")
 def get_config():
     """Gibt die aktuelle Konfiguration zurück."""
@@ -121,6 +137,7 @@ def get_config():
         "mode": manager.config.get("mode", "test"),
         "project_type": manager.config.get("project_type", "webapp"),
         "max_retries": manager.config.get("max_retries", 5),
+        "research_timeout_minutes": manager.config.get("research_timeout_minutes", 5),
         "include_designer": manager.config.get("include_designer", True),
         "models": manager.config.get("models", {}),
         "available_modes": ["test", "production"]
@@ -144,6 +161,36 @@ def set_max_retries(request: MaxRetriesRequest):
     _save_config()
     return {"status": "ok", "max_retries": request.max_retries}
 
+@app.put("/config/research-timeout")
+def set_research_timeout(request: ResearchTimeoutRequest):
+    """Setzt den Research Timeout in Minuten (1-60)."""
+    if not 1 <= request.research_timeout_minutes <= 60:
+        raise HTTPException(status_code=400, detail="research_timeout_minutes must be between 1 and 60")
+    manager.config["research_timeout_minutes"] = request.research_timeout_minutes
+    _save_config()
+    return {"status": "ok", "research_timeout_minutes": request.research_timeout_minutes}
+
+def _is_valid_model(model_name: str) -> bool:
+    """Validiert ob ein Modellname gültig ist."""
+    if not model_name or not isinstance(model_name, str):
+        return False
+    # Prüfe gegen verfügbare Modelle oder OpenRouter-Format
+    if model_name.startswith("openrouter/"):
+        return True
+    # Erlaube auch andere bekannte Formate
+    if model_name.startswith("gpt-") or model_name.startswith("claude-"):
+        return True
+    # Prüfe gegen verfügbare Modelle aus der Config
+    available_models = manager.config.get("available_models", [])
+    if available_models and model_name in available_models:
+        return True
+    # Prüfe ob allow_unlisted_models aktiviert ist
+    allow_unlisted = manager.config.get("allow_unlisted_models", False)
+    if allow_unlisted:
+        return len(model_name.strip()) > 0
+    # Standard: Nur konfigurierte Modelle erlauben
+    return False
+
 @app.put("/config/model/{agent_role}")
 def set_agent_model(agent_role: str, request: ModelRequest):
     """Setzt das Modell für einen bestimmten Agenten."""
@@ -151,6 +198,10 @@ def set_agent_model(agent_role: str, request: ModelRequest):
 
     if agent_role not in manager.config.get("models", {}).get(mode, {}):
         raise HTTPException(status_code=404, detail=f"Agent role '{agent_role}' not found")
+
+    # Validiere Modellname
+    if not _is_valid_model(request.model):
+        raise HTTPException(status_code=400, detail=f"Invalid model name: '{request.model}'. Model must be a valid OpenRouter model ID or configured model.")
 
     manager.config["models"][mode][agent_role] = request.model
     _save_config()
@@ -245,10 +296,40 @@ def _save_config():
     """Speichert Konfiguration zurück in config.yaml."""
     config_path = os.path.join(manager.base_dir, "config.yaml")
 
-    # Lade existierende Config um Kommentare nicht zu verlieren
-    # Aktualisiere nur die relevanten Felder
-    with open(config_path, "w", encoding="utf-8") as f:
-        yaml.dump(manager.config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+    if RUAMEL_AVAILABLE:
+        # Verwende ruamel.yaml um Kommentare zu erhalten
+        yaml_loader = YAML()
+        yaml_loader.preserve_quotes = True
+        try:
+            # Lade existierende Datei
+            with open(config_path, "r", encoding="utf-8") as f:
+                existing_data = yaml_loader.load(f) or {}
+            
+            # Aktualisiere nur geänderte Felder
+            if "mode" in manager.config:
+                existing_data["mode"] = manager.config["mode"]
+            if "models" in manager.config:
+                existing_data["models"] = manager.config["models"]
+            if "max_retries" in manager.config:
+                existing_data["max_retries"] = manager.config["max_retries"]
+            if "research_timeout_minutes" in manager.config:
+                existing_data["research_timeout_minutes"] = manager.config["research_timeout_minutes"]
+            if "include_designer" in manager.config:
+                existing_data["include_designer"] = manager.config["include_designer"]
+            if "project_type" in manager.config:
+                existing_data["project_type"] = manager.config["project_type"]
+            
+            # Speichere zurück
+            with open(config_path, "w", encoding="utf-8") as f:
+                yaml_loader.dump(existing_data, f)
+        except Exception as e:
+            # Fallback zu normalem yaml.dump bei Fehlern
+            with open(config_path, "w", encoding="utf-8") as f:
+                yaml.dump(manager.config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+    else:
+        # Fallback zu normalem yaml.dump wenn ruamel.yaml nicht verfügbar
+        with open(config_path, "w", encoding="utf-8") as f:
+            yaml.dump(manager.config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
 
 
 # =====================================================================

@@ -1,4 +1,12 @@
-import React, { useRef, useEffect } from 'react';
+/**
+ * Author: rahn
+ * Datum: 24.01.2026
+ * Version: 1.0
+ * Beschreibung: Designer Office - Detailansicht für den Designer-Agenten mit UI/UX-Konzepten.
+ */
+
+import React from 'react';
+import { useOfficeCommon } from './hooks/useOfficeCommon';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft,
@@ -17,33 +25,19 @@ import {
 } from 'lucide-react';
 
 const DesignerOffice = ({ agentName = "Designer", status = "Idle", logs = [], onBack, color = "pink" }) => {
-  const thoughtLogRef = useRef(null);
+  const { logRef, getStatusBadge, formatTime } = useOfficeCommon(logs);
 
-  // Auto-scroll logs
-  useEffect(() => {
-    if (thoughtLogRef.current) {
-      thoughtLogRef.current.scrollTop = thoughtLogRef.current.scrollHeight;
-    }
-  }, [logs]);
-
-  // Status badge styling
-  const getStatusBadge = () => {
-    const isActive = status !== 'Idle' && status !== 'Success' && status !== 'Failure';
-    if (isActive) {
-      return (
-        <span className="px-1.5 py-0.5 rounded text-[10px] bg-pink-500/20 text-pink-400 border border-pink-500/20 uppercase tracking-wide">
-          Creative Mode
-        </span>
-      );
-    }
+  // Status Badge Rendering Helper
+  const renderStatusBadge = () => {
+    const badge = getStatusBadge(status, 'bg-pink-500/20 text-pink-400 border-pink-500/20');
     return (
-      <span className="px-1.5 py-0.5 rounded text-[10px] bg-slate-500/20 text-slate-400 border border-slate-500/20 uppercase tracking-wide">
-        {status}
+      <span className={badge.className}>
+        {badge.isActive ? 'Creative Mode' : badge.text}
       </span>
     );
   };
 
-  // Mock design system data
+  // MOCK-DATEN: Demo-Design-System-Daten
   const colorPalette = [
     { name: 'Primary', hex: '#6366F1', tw: 'bg-indigo-500' },
     { name: 'Secondary', hex: '#EC4899', tw: 'bg-pink-500' },
@@ -64,15 +58,8 @@ const DesignerOffice = ({ agentName = "Designer", status = "Idle", logs = [], on
     { name: 'Modal Dialog', status: 'wip' },
   ];
 
-  // Visual quality score (mock data)
+  // MOCK-DATEN: Visuelle Qualitätsbewertung
   const qualityScore = 87;
-
-  // Format timestamp
-  const formatTime = (index) => {
-    const now = new Date();
-    now.setSeconds(now.getSeconds() - (logs.length - index) * 2);
-    return now.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  };
 
   return (
     <div className="bg-[#0d1117] text-white font-display overflow-hidden h-screen flex flex-col">
@@ -93,7 +80,7 @@ const DesignerOffice = ({ agentName = "Designer", status = "Idle", logs = [], on
             <div>
               <h2 className="text-white text-lg font-bold leading-tight tracking-[-0.015em] flex items-center gap-2">
                 {agentName} Agent
-                {getStatusBadge()}
+                {renderStatusBadge()}
               </h2>
               <div className="text-xs text-slate-400 font-medium tracking-wide">CREATIVE STATION ID: AGENT-03</div>
             </div>
@@ -356,7 +343,7 @@ const DesignerOffice = ({ agentName = "Designer", status = "Idle", logs = [], on
               <span className="text-[10px] text-slate-500 font-mono">STREAMING</span>
             </div>
             <div
-              ref={thoughtLogRef}
+              ref={logRef}
               className="flex-1 p-4 overflow-y-auto designer-scrollbar font-mono text-xs space-y-2"
             >
               {logs.length === 0 ? (

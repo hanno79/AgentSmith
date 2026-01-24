@@ -21,8 +21,8 @@ AgentSmith orchestriert spezialisierte KI-Agenten, die zusammenarbeiten, um funk
 
 ```bash
 # Repository klonen
-git clone <repo-url>
-cd multi_agent_poc
+git clone https://github.com/hanno79/AgentSmith.git
+cd AgentSmith
 
 # Virtual Environment erstellen
 python -m venv venv
@@ -57,6 +57,8 @@ include_designer: true
 max_retries: 5
 ```
 
+**Budget-Tracking:** Die Datei `budget_data/usage_history.json` wird automatisch erstellt und enthält lokale Nutzungsdaten. Sie ist in `.gitignore` eingetragen und wird nicht versioniert. Eine Beispiel-Datei (`budget_data/usage_history.example.json`) zeigt das erwartete Format.
+
 ### 3. Ausführung
 
 **CLI-Modus:**
@@ -74,6 +76,8 @@ cd frontend
 npm install
 npm run dev
 ```
+
+> **Hinweis:** Der Vite Dev-Server läuft standardmäßig auf Port **5173**. Nach dem Start von `npm run dev` ist die Web-UI unter `http://localhost:5173` erreichbar. Um den Port anzupassen, kann entweder die `vite.config.js` erweitert werden (`server: { port: 3000 }`) oder der Dev-Server mit `npm run dev -- --port 3000` gestartet werden.
 
 ## Architektur
 
@@ -133,7 +137,7 @@ npm run dev
 ## Projektstruktur
 
 ```
-multi_agent_poc/
+AgentSmith/
 ├── agents/                    # 10+ spezialisierte Python-Agenten
 │   ├── meta_orchestrator_agent.py
 │   ├── coder_agent.py

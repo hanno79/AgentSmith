@@ -1,4 +1,12 @@
+/**
+ * Author: rahn
+ * Datum: 24.01.2026
+ * Version: 1.0
+ * Beschreibung: Coder Office - Detailansicht für den Coder-Agenten mit Code-Ausgabe.
+ */
+
 import React, { useRef, useEffect } from 'react';
+import { useOfficeCommon } from './hooks/useOfficeCommon';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft,
@@ -17,70 +25,71 @@ import {
   MessageSquarePlus
 } from 'lucide-react';
 
-const CoderOffice = ({ agentName = "Coder", status = "Idle", logs = [], onBack, color = "blue" }) => {
-  const thoughtLogRef = useRef(null);
+const CoderOffice = ({
+  agentName = "Coder",
+  status = "Idle",
+  logs = [],
+  onBack,
+  color = "blue",
+  // Live-Daten Props
+  code = '',
+  files = [],
+  iteration = 0,
+  maxIterations = 3,
+  model = ''
+}) => {
+  const { logRef, getStatusBadge, formatTime } = useOfficeCommon(logs);
   const codeOutputRef = useRef(null);
 
-  // Auto-scroll logs
+  // Auto-Scroll zur Code-Ausgabe bei Änderungen
   useEffect(() => {
-    if (thoughtLogRef.current) {
-      thoughtLogRef.current.scrollTop = thoughtLogRef.current.scrollHeight;
+    if (codeOutputRef.current) {
+      codeOutputRef.current.scrollTop = 0; // Nach oben scrollen bei neuem Code
     }
-  }, [logs]);
+  }, [code]);
 
-  // Status badge styling
-  const getStatusBadge = () => {
-    const isActive = status !== 'Idle' && status !== 'Success' && status !== 'Failure';
-    if (isActive) {
-      return (
-        <span className="px-1.5 py-0.5 rounded text-[10px] bg-green-500/20 text-green-400 border border-green-500/20 uppercase tracking-wide">
-          Active
-        </span>
-      );
-    }
-    return (
-      <span className="px-1.5 py-0.5 rounded text-[10px] bg-slate-500/20 text-slate-400 border border-slate-500/20 uppercase tracking-wide">
-        {status}
-      </span>
-    );
-  };
-
-  // Mock task data - in real implementation, this would come from backend
-  const tasks = [
-    { id: 'T-8821-A', title: 'Generate Hero Component', status: 'current', steps: [
-      { text: 'Analyze requirements', done: true },
-      { text: 'Setup props interface', done: true },
-      { text: 'Implement responsive layout', current: true },
-      { text: 'Add tailwind classes', done: false },
-    ]},
-    { id: 'T-8822', title: 'Create Navigation Bar', status: 'next', dependency: 'Designer Assets' },
-    { id: 'T-8823', title: 'Hook up State Management', status: 'queued' },
+  // Dynamische Task-Generierung basierend auf echten Daten
+  const tasks = iteration > 0 ? [
+    {
+      id: `T-${iteration}`,
+      title: `Code Generation - Iteration ${iteration}/${maxIterations}`,
+      status: 'current',
+      steps: [
+        { text: 'Analyze requirements', done: true },
+        { text: 'Generate code', done: status === 'Files' || status === 'CodeOutput' || status === 'Success' },
+        { text: 'Create files', done: files.length > 0, current: status === 'Files' },
+        { text: 'Await review', done: status === 'Success', current: status !== 'Success' && files.length > 0 },
+      ]
+    },
+    ...(iteration < maxIterations ? [{
+      id: `T-${iteration + 1}`,
+      title: `Next Iteration (if needed)`,
+      status: 'queued',
+      dependency: 'Review Feedback'
+    }] : [])
+  ] : [
+    { id: 'T-0', title: 'Waiting for task...', status: 'queued' }
   ];
 
-  // Extract code from logs (messages containing code blocks)
-  const getLatestCode = () => {
-    const codeLog = [...logs].reverse().find(l =>
-      l.message && (l.message.includes('```') || l.message.includes('def ') || l.message.includes('function ') || l.message.includes('class '))
+  // FALLBACK: Platzhalter-Code wenn noch kein echter Code vom Coder-Agenten vorhanden ist
+  const displayCode = code || `// Warte auf Code-Generierung...
+// Der Coder-Agent gibt hier Code aus wenn Aufgaben verarbeitet werden.
+//
+// Status: ${status}
+// Iteration: ${iteration}/${maxIterations}
+// Dateien: ${files.length > 0 ? files.join(', ') : 'noch keine'}`;
+
+  // Fortschrittsberechnung
+  const progressPercent = maxIterations > 0 ? Math.round((iteration / maxIterations) * 100) : 0;
+
+  // Status Badge Rendering Helper
+  const renderStatusBadge = () => {
+    const badge = getStatusBadge(status, 'bg-green-500/20 text-green-400 border-green-500/20');
+    return (
+      <span className={badge.className}>
+        {badge.isActive ? 'Active' : badge.text}
+      </span>
     );
-    return codeLog?.message || `// Waiting for code generation...
-// The Coder Agent will output code here when processing tasks.
-
-import React from 'react';
-
-export const Component = () => {
-  return (
-    <div className="flex items-center justify-center">
-      <span>Loading...</span>
-    </div>
-  );
-};`;
-  };
-
-  // Format timestamp
-  const formatTime = (index) => {
-    const now = new Date();
-    now.setSeconds(now.getSeconds() - (logs.length - index) * 2);
-    return now.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
   };
 
   return (
@@ -102,7 +111,7 @@ export const Component = () => {
             <div>
               <h2 className="text-white text-lg font-bold leading-tight tracking-[-0.015em] flex items-center gap-2">
                 {agentName} Agent
-                {getStatusBadge()}
+                {renderStatusBadge()}
               </h2>
               <div className="text-xs text-slate-400 font-medium tracking-wide">WORKSTATION ID: AGENT-02</div>
             </div>
@@ -191,11 +200,14 @@ export const Component = () => {
           <div className="p-3 border-t border-[#334155] bg-[#0f172a]">
             <div className="flex items-center gap-2 text-xs text-slate-400">
               <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                <div className="h-full w-[65%] bg-blue-500 rounded-full"></div>
+                <div
+                  className="h-full bg-blue-500 rounded-full transition-all duration-500"
+                  style={{ width: `${progressPercent}%` }}
+                ></div>
               </div>
-              <span>65%</span>
+              <span>{iteration}/{maxIterations}</span>
             </div>
-            <p className="text-[10px] text-slate-500 mt-1 text-center">Batch Progress</p>
+            <p className="text-[10px] text-slate-500 mt-1 text-center">Iteration Progress</p>
           </div>
         </aside>
 
@@ -211,7 +223,7 @@ export const Component = () => {
               <span className="text-[10px] text-slate-500 font-mono">LOG_STREAM: ACTIVE</span>
             </div>
             <div
-              ref={thoughtLogRef}
+              ref={logRef}
               className="flex-1 p-4 overflow-y-auto office-scrollbar font-mono text-xs space-y-3"
             >
               {logs.length === 0 ? (
@@ -264,8 +276,10 @@ export const Component = () => {
               ref={codeOutputRef}
               className="flex-1 p-6 overflow-y-auto office-scrollbar font-mono text-sm leading-6"
             >
-              <pre className="text-slate-300 whitespace-pre-wrap">{getLatestCode()}</pre>
-              <span className="animate-pulse text-blue-400">|</span>
+              <pre className="text-slate-300 whitespace-pre-wrap">{displayCode}</pre>
+              {status !== 'Idle' && status !== 'Success' && (
+                <span className="animate-pulse text-blue-400">|</span>
+              )}
             </div>
             <div className="p-4 bg-[#161b22] border-t border-[#334155] flex gap-3">
               <button className="flex-1 bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 group">
@@ -328,7 +342,7 @@ export const Component = () => {
             <div className="bg-[#1e293b] rounded-lg p-4 border border-[#334155]">
               <div className="flex justify-between items-center mb-3">
                 <span className="text-xs font-bold text-slate-300">ACTIVE MODEL</span>
-                <span className="px-2 py-0.5 bg-purple-500/20 text-purple-300 text-[10px] rounded font-mono border border-purple-500/30">GPT-4-Turbo</span>
+                <span className="px-2 py-0.5 bg-purple-500/20 text-purple-300 text-[10px] rounded font-mono border border-purple-500/30">{model || 'Waiting...'}</span>
               </div>
               <div className="space-y-2">
                 <div className="flex justify-between text-xs">

@@ -1,30 +1,32 @@
+/**
+ * Author: rahn
+ * Datum: 24.01.2026
+ * Version: 1.2
+ * Beschreibung: App Hauptkomponente - Zentrale UI mit WebSocket-Verbindung und Agenten-Steuerung.
+ *               Refaktoriert: WebSocket, Config, AgentCard und NavigationHeader extrahiert.
+ */
+
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import {
-  Terminal,
-  Settings,
-  Bell,
-  Wifi,
   Database,
   Send,
   Mic,
   PlusCircle,
   BarChart3,
-  LayoutDashboard,
   Code2,
   Palette,
   ShieldCheck,
   Bug,
   Scaling,
   RefreshCw,
-  ExternalLink,
   Search,
   Cpu,
-  Lock,
-  Server,
-  Users
+  Lock
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
+
+// Eigene Komponenten und Hooks
 import MainframeHub from './MainframeHub';
 import BudgetDashboard from './BudgetDashboard';
 import CoderOffice from './CoderOffice';
@@ -35,7 +37,11 @@ import ResearcherOffice from './ResearcherOffice';
 import SecurityOffice from './SecurityOffice';
 import TechStackOffice from './TechStackOffice';
 import DBDesignerOffice from './DBDesignerOffice';
-import { DollarSign } from 'lucide-react';
+import AgentCard from './components/AgentCard';
+import NavigationHeader from './components/NavigationHeader';
+import useWebSocket from './hooks/useWebSocket';
+import useConfig from './hooks/useConfig';
+import { API_BASE } from './constants/config';
 
 const App = () => {
   // Navigation State
@@ -57,49 +63,42 @@ const App = () => {
     security: { status: 'Idle', lastUpdate: '' },
   });
 
+  // Strukturierte Agent-Daten für Live-Anzeige in Agent Offices
+  const [agentData, setAgentData] = useState({
+    coder: { code: '', files: [], iteration: 0, maxIterations: 3, model: '' },
+    reviewer: { feedback: '', metrics: {} },
+    tester: { results: [], metrics: {} },
+    designer: { concept: '', metrics: {} },
+    security: { report: '', metrics: {} },
+    researcher: { query: '', result: '', status: '', model: '', error: '' },
+  });
+
   const logEndRef = useRef(null);
-  const ws = useRef(null);
 
-  useEffect(() => {
-    // WebSocket Setup
-    ws.current = new WebSocket(`ws://${window.location.hostname}:8000/ws`);
+  // Custom Hooks für WebSocket und Konfiguration
+  useWebSocket(setLogs, activeAgents, setActiveAgents, setAgentData, setStatus);
+  const {
+    researchTimeoutMinutes,
+    maxRetriesConfig,
+    handleResearchTimeoutChange,
+    handleMaxRetriesChange
+  } = useConfig(setAgentData);
 
-    ws.current.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      setLogs((prev) => [...prev, data]);
-
-      // Update Agent Status
-      const agentKey = data.agent.toLowerCase();
-      if (activeAgents[agentKey]) {
-        setActiveAgents(prev => ({
-          ...prev,
-          [agentKey]: {
-            status: data.event,
-            lastUpdate: data.message
-          }
-        }));
-      }
-
-      if (data.agent === 'System' && data.event === 'Success') setStatus('Success');
-      if (data.agent === 'System' && data.event === 'Failure') setStatus('Error');
-    };
-
-    return () => ws.current?.close();
-  }, []);
-
+  // Auto-Scroll bei neuen Logs
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [logs]);
 
+  // Deploy-Handler: Startet die Agenten-Pipeline
   const handleDeploy = async () => {
     if (!goal) return;
     setStatus('Working');
     setLogs([]);
     try {
-      await axios.post('http://localhost:8000/run', { goal });
+      await axios.post(`${API_BASE}/run`, { goal });
     } catch (err) {
-      console.error("Failed to start task:", err);
-      setLogs(prev => [...prev, { agent: 'System', event: 'Error', message: 'Could not connect to backend.' }]);
+      console.error("Backend-Verbindung fehlgeschlagen:", err);
+      setLogs(prev => [...prev, { agent: 'System', event: 'Error', message: 'Keine Verbindung zum Backend.' }]);
       setStatus('Error');
     }
   };
@@ -108,155 +107,53 @@ const App = () => {
   if (currentRoom === 'agent-coder') {
     return (
       <CoderOffice
-        agentName="Coder"
-        status={activeAgents.coder.status}
-        logs={logs.filter(l => l.agent === 'Coder')}
-        onBack={() => setCurrentRoom('mission-control')}
-        color="blue"
+        agentName="Coder" status={activeAgents.coder.status}
+        logs={logs.filter(l => l.agent === 'Coder')} onBack={() => setCurrentRoom('mission-control')}
+        color="blue" code={agentData.coder.code} files={agentData.coder.files}
+        iteration={agentData.coder.iteration} maxIterations={agentData.coder.maxIterations} model={agentData.coder.model}
       />
     );
   }
-
   if (currentRoom === 'agent-tester') {
-    return (
-      <TesterOffice
-        agentName="Tester"
-        status={activeAgents.tester.status}
-        logs={logs.filter(l => l.agent === 'Tester')}
-        onBack={() => setCurrentRoom('mission-control')}
-        color="orange"
-      />
-    );
+    return <TesterOffice agentName="Tester" status={activeAgents.tester.status} logs={logs.filter(l => l.agent === 'Tester')} onBack={() => setCurrentRoom('mission-control')} color="orange" />;
   }
-
   if (currentRoom === 'agent-designer') {
-    return (
-      <DesignerOffice
-        agentName="Designer"
-        status={activeAgents.designer.status}
-        logs={logs.filter(l => l.agent === 'Designer')}
-        onBack={() => setCurrentRoom('mission-control')}
-        color="pink"
-      />
-    );
+    return <DesignerOffice agentName="Designer" status={activeAgents.designer.status} logs={logs.filter(l => l.agent === 'Designer')} onBack={() => setCurrentRoom('mission-control')} color="pink" />;
   }
-
   if (currentRoom === 'agent-reviewer') {
-    return (
-      <ReviewerOffice
-        agentName="Reviewer"
-        status={activeAgents.reviewer.status}
-        logs={logs.filter(l => l.agent === 'Reviewer')}
-        onBack={() => setCurrentRoom('mission-control')}
-        color="yellow"
-      />
-    );
+    return <ReviewerOffice agentName="Reviewer" status={activeAgents.reviewer.status} logs={logs.filter(l => l.agent === 'Reviewer')} onBack={() => setCurrentRoom('mission-control')} color="yellow" />;
   }
-
   if (currentRoom === 'agent-researcher') {
     return (
       <ResearcherOffice
-        agentName="Researcher"
-        status={activeAgents.researcher.status}
-        logs={logs.filter(l => l.agent === 'Researcher')}
-        onBack={() => setCurrentRoom('mission-control')}
-        color="cyan"
+        agentName="Researcher" status={activeAgents.researcher.status}
+        logs={logs.filter(l => l.agent === 'Researcher')} onBack={() => setCurrentRoom('mission-control')}
+        color="cyan" query={agentData.researcher.query} result={agentData.researcher.result}
+        researchStatus={agentData.researcher.status} model={agentData.researcher.model} error={agentData.researcher.error}
+        researchTimeoutMinutes={researchTimeoutMinutes} onResearchTimeoutChange={handleResearchTimeoutChange}
       />
     );
   }
-
   if (currentRoom === 'agent-security') {
-    return (
-      <SecurityOffice
-        agentName="Security"
-        status={activeAgents.security.status}
-        logs={logs.filter(l => l.agent === 'Security')}
-        onBack={() => setCurrentRoom('mission-control')}
-        color="red"
-      />
-    );
+    return <SecurityOffice agentName="Security" status={activeAgents.security.status} logs={logs.filter(l => l.agent === 'Security')} onBack={() => setCurrentRoom('mission-control')} color="red" />;
   }
-
   if (currentRoom === 'agent-techstack') {
-    return (
-      <TechStackOffice
-        agentName="Tech-Stack"
-        status={activeAgents.techarchitect.status}
-        logs={logs.filter(l => l.agent === 'TechArchitect')}
-        onBack={() => setCurrentRoom('mission-control')}
-        color="purple"
-      />
-    );
+    return <TechStackOffice agentName="Tech-Stack" status={activeAgents.techarchitect.status} logs={logs.filter(l => l.agent === 'TechArchitect')} onBack={() => setCurrentRoom('mission-control')} color="purple" />;
   }
-
   if (currentRoom === 'agent-dbdesigner') {
-    return (
-      <DBDesignerOffice
-        agentName="Database Designer"
-        status={activeAgents.dbdesigner.status}
-        logs={logs.filter(l => l.agent === 'DBDesigner')}
-        onBack={() => setCurrentRoom('mission-control')}
-        color="green"
-      />
-    );
+    return <DBDesignerOffice agentName="Database Designer" status={activeAgents.dbdesigner.status} logs={logs.filter(l => l.agent === 'DBDesigner')} onBack={() => setCurrentRoom('mission-control')} color="green" />;
   }
 
-  // Render Mainframe Hub or Budget Dashboard if selected
+  // Render Mainframe Hub oder Budget Dashboard
   if (currentRoom === 'mainframe' || currentRoom === 'budget-dashboard') {
     return (
       <div className="bg-background-dark text-white font-sans overflow-hidden h-screen flex flex-col">
-        {/* Navigation Header */}
-        <header className="flex-none flex items-center justify-between border-b border-border-dark px-6 py-3 bg-[#111418] z-20">
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-4">
-              <div className="p-2 rounded bg-primary/20 text-primary">
-                <LayoutDashboard size={24} />
-              </div>
-              <div>
-                <h2 className="text-lg font-bold leading-tight">Agent Office</h2>
-                <div className="text-xs text-slate-400 font-medium">PROJECT: ALPHA-WEB-INTEGRATION</div>
-              </div>
-            </div>
-
-            {/* Navigation Tabs */}
-            <nav className="hidden md:flex items-center gap-1 ml-8 bg-[#1c2127] rounded-lg p-1 border border-[#283039]">
-              <button
-                onClick={() => setCurrentRoom('mission-control')}
-                className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all text-slate-400 hover:text-white hover:bg-white/5"
-              >
-                <Users size={16} />
-                <span>Mission Control</span>
-              </button>
-              <button
-                onClick={() => setCurrentRoom('mainframe')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${currentRoom === 'mainframe' ? 'bg-primary/20 text-primary border border-primary/30' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
-              >
-                <Server size={16} />
-                <span>Mainframe Hub</span>
-              </button>
-              <button
-                onClick={() => setCurrentRoom('budget-dashboard')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${currentRoom === 'budget-dashboard' ? 'bg-primary/20 text-primary border border-primary/30' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
-              >
-                <DollarSign size={16} />
-                <span>Budget</span>
-              </button>
-            </nav>
-          </div>
-
-          <div className="flex gap-3 items-center">
-            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#1c2127] border border-[#283039]">
-              <Wifi size={14} className="text-green-500" />
-              <span className="text-xs font-semibold text-white">System Online</span>
-            </div>
-            <Settings size={20} className="text-slate-400 cursor-pointer hover:text-white" />
-            <Bell size={20} className="text-slate-400 cursor-pointer hover:text-white" />
-          </div>
-        </header>
-
-        {/* Content based on current room */}
+        <NavigationHeader currentRoom={currentRoom} setCurrentRoom={setCurrentRoom} />
         <div className="flex-1 overflow-y-auto overflow-x-hidden page-scrollbar">
-          {currentRoom === 'mainframe' && <MainframeHub />}
+          {currentRoom === 'mainframe' && (
+            <MainframeHub maxRetries={maxRetriesConfig} onMaxRetriesChange={handleMaxRetriesChange}
+              researchTimeout={researchTimeoutMinutes} onResearchTimeoutChange={handleResearchTimeoutChange} />
+          )}
           {currentRoom === 'budget-dashboard' && <BudgetDashboard />}
         </div>
       </div>
@@ -266,60 +163,10 @@ const App = () => {
   // Default: Mission Control
   return (
     <div className="bg-background-dark text-white font-sans overflow-hidden h-screen flex flex-col">
-      {/* Header */}
-      <header className="flex-none flex items-center justify-between border-b border-border-dark px-6 py-3 bg-[#111418] z-20">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-4">
-            <div className="p-2 rounded bg-primary/20 text-primary">
-              <LayoutDashboard size={24} />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold leading-tight">Agent Office</h2>
-              <div className="text-xs text-slate-400 font-medium">PROJECT: ALPHA-WEB-INTEGRATION</div>
-            </div>
-          </div>
-
-          {/* Navigation Tabs */}
-          <nav className="hidden md:flex items-center gap-1 ml-8 bg-[#1c2127] rounded-lg p-1 border border-[#283039]">
-            <button
-              onClick={() => setCurrentRoom('mission-control')}
-              className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all bg-primary/20 text-primary border border-primary/30"
-            >
-              <Users size={16} />
-              <span>Mission Control</span>
-            </button>
-            <button
-              onClick={() => setCurrentRoom('mainframe')}
-              className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all text-slate-400 hover:text-white hover:bg-white/5"
-            >
-              <Server size={16} />
-              <span>Mainframe Hub</span>
-            </button>
-            <button
-              onClick={() => setCurrentRoom('budget-dashboard')}
-              className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all text-slate-400 hover:text-white hover:bg-white/5"
-            >
-              <DollarSign size={16} />
-              <span>Budget</span>
-            </button>
-          </nav>
-        </div>
-
-        <div className="flex gap-3 items-center">
-          <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#1c2127] border border-[#283039]">
-            <Wifi size={14} className="text-green-500" />
-            <span className="text-xs font-semibold text-white">System Online</span>
-          </div>
-          <button className="h-9 px-4 bg-primary hover:bg-blue-600 text-white text-sm font-bold rounded-lg transition-colors">
-            Connect Agent
-          </button>
-          <Settings size={20} className="text-slate-400 cursor-pointer hover:text-white" />
-          <Bell size={20} className="text-slate-400 cursor-pointer hover:text-white" />
-        </div>
-      </header>
+      <NavigationHeader currentRoom={currentRoom} setCurrentRoom={setCurrentRoom} showConnectButton />
 
       <div className="flex flex-1 overflow-hidden relative">
-        {/* Left Side: Mission Control */}
+        {/* Mission Control Hauptbereich */}
         <main className="flex-1 overflow-y-auto page-scrollbar relative flex flex-col items-center bg-[#101922] p-6 lg:p-8">
           <div className="absolute inset-0 bg-grid-pattern opacity-[0.05] pointer-events-none"></div>
 
@@ -336,10 +183,7 @@ const App = () => {
             </div>
 
             {/* Orchestrator Center */}
-            <motion.div
-              layout
-              className="w-full rounded-xl border border-border-dark bg-[#1c2127] p-6 shadow-2xl relative overflow-hidden group"
-            >
+            <motion.div layout className="w-full rounded-xl border border-border-dark bg-[#1c2127] p-6 shadow-2xl relative overflow-hidden group">
               <div className="absolute top-0 left-0 w-1 h-full bg-primary" />
               <div className="flex items-center gap-4 mb-4">
                 <div className="p-3 rounded-lg bg-primary/10 border border-primary/30">
@@ -350,111 +194,36 @@ const App = () => {
                   <p className="text-primary text-sm animate-pulse">{activeAgents.orchestrator.status !== 'Idle' ? 'Active: Routing Tasks...' : 'Ready for Instructions'}</p>
                 </div>
               </div>
-
               <div className="bg-black/40 rounded-lg p-4 font-mono text-xs text-slate-300 h-24 overflow-y-auto terminal-scroll border border-white/5">
                 {logs.filter(l => l.agent === 'Orchestrator').slice(-3).map((l, i) => (
-                  <div key={i} className="mb-1">
-                    <span className="text-slate-500 mr-2">[{l.event}]</span>
-                    <span>{l.message}</span>
-                  </div>
+                  <div key={i} className="mb-1"><span className="text-slate-500 mr-2">[{l.event}]</span><span>{l.message}</span></div>
                 ))}
-                {logs.filter(l => l.agent === 'Orchestrator').length === 0 && (
-                  <div className="opacity-50">&gt; Awaiting initial command sequence...</div>
-                )}
+                {logs.filter(l => l.agent === 'Orchestrator').length === 0 && <div className="opacity-50">&gt; Awaiting initial command sequence...</div>}
               </div>
             </motion.div>
 
             {/* Agent Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <AgentCard
-                name="Researcher"
-                icon={<Search size={24} />}
-                color="cyan"
-                status={activeAgents.researcher.status}
-                logs={logs.filter(l => l.agent === 'Researcher')}
-                onOpenOffice={() => setCurrentRoom('agent-researcher')}
-              />
-              <AgentCard
-                name="Coder"
-                icon={<Code2 size={24} />}
-                color="blue"
-                status={activeAgents.coder.status}
-                logs={logs.filter(l => l.agent === 'Coder')}
-                onOpenOffice={() => setCurrentRoom('agent-coder')}
-              />
-              <AgentCard
-                name="Designer"
-                icon={<Palette size={24} />}
-                color="pink"
-                status={activeAgents.designer.status}
-                logs={logs.filter(l => l.agent === 'Designer')}
-                onOpenOffice={() => setCurrentRoom('agent-designer')}
-              />
-              <AgentCard
-                name="Reviewer"
-                icon={<ShieldCheck size={24} />}
-                color="yellow"
-                status={activeAgents.reviewer.status}
-                logs={logs.filter(l => l.agent === 'Reviewer')}
-                onOpenOffice={() => setCurrentRoom('agent-reviewer')}
-              />
-              <AgentCard
-                name="Tester"
-                icon={<Bug size={24} />}
-                color="orange"
-                status={activeAgents.tester.status}
-                logs={logs.filter(l => l.agent === 'Tester')}
-                onOpenOffice={() => setCurrentRoom('agent-tester')}
-              />
-              <AgentCard
-                name="Tech Architect"
-                icon={<Cpu size={24} />}
-                color="purple"
-                status={activeAgents.techarchitect.status}
-                logs={logs.filter(l => l.agent === 'TechArchitect')}
-                onOpenOffice={() => setCurrentRoom('agent-techstack')}
-              />
-              <AgentCard
-                name="DB Designer"
-                icon={<Database size={24} />}
-                color="green"
-                status={activeAgents.dbdesigner.status}
-                logs={logs.filter(l => l.agent === 'DBDesigner')}
-                onOpenOffice={() => setCurrentRoom('agent-dbdesigner')}
-              />
-              <AgentCard
-                name="Security"
-                icon={<Lock size={24} />}
-                color="red"
-                status={activeAgents.security.status}
-                logs={logs.filter(l => l.agent === 'Security')}
-                onOpenOffice={() => setCurrentRoom('agent-security')}
-              />
+              <AgentCard name="Researcher" icon={<Search size={24} />} color="cyan" status={activeAgents.researcher.status} logs={logs.filter(l => l.agent === 'Researcher')} onOpenOffice={() => setCurrentRoom('agent-researcher')} />
+              <AgentCard name="Coder" icon={<Code2 size={24} />} color="blue" status={activeAgents.coder.status} logs={logs.filter(l => l.agent === 'Coder')} onOpenOffice={() => setCurrentRoom('agent-coder')} />
+              <AgentCard name="Designer" icon={<Palette size={24} />} color="pink" status={activeAgents.designer.status} logs={logs.filter(l => l.agent === 'Designer')} onOpenOffice={() => setCurrentRoom('agent-designer')} />
+              <AgentCard name="Reviewer" icon={<ShieldCheck size={24} />} color="yellow" status={activeAgents.reviewer.status} logs={logs.filter(l => l.agent === 'Reviewer')} onOpenOffice={() => setCurrentRoom('agent-reviewer')} />
+              <AgentCard name="Tester" icon={<Bug size={24} />} color="orange" status={activeAgents.tester.status} logs={logs.filter(l => l.agent === 'Tester')} onOpenOffice={() => setCurrentRoom('agent-tester')} />
+              <AgentCard name="Tech Architect" icon={<Cpu size={24} />} color="purple" status={activeAgents.techarchitect.status} logs={logs.filter(l => l.agent === 'TechArchitect')} onOpenOffice={() => setCurrentRoom('agent-techstack')} />
+              <AgentCard name="DB Designer" icon={<Database size={24} />} color="green" status={activeAgents.dbdesigner.status} logs={logs.filter(l => l.agent === 'DBDesigner')} onOpenOffice={() => setCurrentRoom('agent-dbdesigner')} />
+              <AgentCard name="Security" icon={<Lock size={24} />} color="red" status={activeAgents.security.status} logs={logs.filter(l => l.agent === 'Security')} onOpenOffice={() => setCurrentRoom('agent-security')} />
             </div>
           </div>
 
           {/* Floating Command Bar */}
           <div className="fixed bottom-8 w-[90%] max-w-[800px] flex items-center gap-2 p-2 rounded-xl bg-[#1c2127]/90 backdrop-blur-md border border-border-dark shadow-2xl ring-1 ring-white/5 z-50">
             <PlusCircle className="ml-2 text-slate-400 cursor-pointer hover:text-white" />
-            <input
-              value={goal}
-              onChange={(e) => setGoal(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleDeploy()}
-              placeholder="What should the team build today?"
-              className="flex-1 bg-transparent border-none text-white focus:ring-0 text-sm"
-              disabled={status === 'Working'}
-            />
+            <input value={goal} onChange={(e) => setGoal(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleDeploy()}
+              placeholder="What should the team build today?" className="flex-1 bg-transparent border-none text-white focus:ring-0 text-sm" disabled={status === 'Working'} />
             <Mic size={20} className="text-slate-400 cursor-pointer hover:text-white" />
-            <button
-              onClick={handleDeploy}
-              disabled={status === 'Working' || !goal}
-              className={`flex items-center gap-2 px-6 py-2 rounded-lg font-bold text-sm transition-all ${status === 'Working'
-                ? 'bg-slate-700 text-slate-400'
-                : 'bg-primary hover:bg-blue-600 text-white shadow-lg'
-                }`}
-            >
-              <span>Deploy</span>
-              <Send size={16} />
+            <button onClick={handleDeploy} disabled={status === 'Working' || !goal}
+              className={`flex items-center gap-2 px-6 py-2 rounded-lg font-bold text-sm transition-all ${status === 'Working' ? 'bg-slate-700 text-slate-400' : 'bg-primary hover:bg-blue-600 text-white shadow-lg'}`}>
+              <span>Deploy</span><Send size={16} />
             </button>
           </div>
         </main>
@@ -462,11 +231,7 @@ const App = () => {
         {/* Right Panel: Logs & Canvas */}
         <aside className="w-[400px] border-l border-border-dark bg-[#0d1216] hidden 2xl:flex flex-col z-20">
           <div className="h-14 border-b border-border-dark flex items-center justify-between px-4 bg-[#111418]">
-            <div className="flex items-center gap-2 text-sm font-bold">
-              <RefreshCw size={16} className="text-slate-400" />
-              Live Canvas
-            </div>
-            <ExternalLink size={16} className="text-slate-400 cursor-pointer hover:text-white" />
+            <div className="flex items-center gap-2 text-sm font-bold"><RefreshCw size={16} className="text-slate-400" />Live Canvas</div>
           </div>
 
           <div className="flex-1 p-4 bg-[#1e1e1e]">
@@ -480,16 +245,14 @@ const App = () => {
                 <div className="flex-1 bg-white h-4 rounded border border-gray-200" />
               </div>
               <div className="flex-1 flex items-center justify-center p-8 text-center">
-                {status === 'Idle' && <div className="text-slate-400 italic">Canvas empty. Start a project to see results.</div>}
+                {status === 'Idle' && <div className="text-slate-400 italic">Canvas leer. Starte ein Projekt um Ergebnisse zu sehen.</div>}
                 {status === 'Working' && (
                   <div className="flex flex-col items-center gap-4">
                     <RefreshCw size={48} className="text-primary animate-spin" />
-                    <div className="text-slate-600 font-bold">Generating Live Preview...</div>
+                    <div className="text-slate-600 font-bold">Generiere Live-Vorschau...</div>
                   </div>
                 )}
-                {status === 'Success' && (
-                  <div className="text-green-600 font-bold">Project Built Successfully!</div>
-                )}
+                {status === 'Success' && <div className="text-green-600 font-bold">Projekt erfolgreich erstellt!</div>}
               </div>
             </div>
           </div>
@@ -515,102 +278,6 @@ const App = () => {
         </aside>
       </div>
     </div>
-  );
-};
-
-const AgentCard = ({ name, icon, color, status, logs, onOpenOffice }) => {
-  const colors = {
-    blue: 'border-blue-500/40 text-blue-400 bg-blue-500/10',
-    purple: 'border-purple-500/40 text-purple-400 bg-purple-500/10',
-    pink: 'border-pink-500/40 text-pink-400 bg-pink-500/10',
-    yellow: 'border-yellow-500/40 text-yellow-400 bg-yellow-500/10',
-    red: 'border-red-500/40 text-red-400 bg-red-500/10',
-    green: 'border-green-500/40 text-green-400 bg-green-500/10',
-    orange: 'border-orange-500/40 text-orange-400 bg-orange-500/10',
-    cyan: 'border-cyan-500/40 text-cyan-400 bg-cyan-500/10',
-    indigo: 'border-indigo-500/40 text-indigo-400 bg-indigo-500/10',
-  };
-
-  const glowStyles = {
-    blue: '0 0 30px rgba(59, 130, 246, 0.8), 0 0 15px rgba(59, 130, 246, 0.5), 0 0 5px rgba(255, 255, 255, 0.3)',
-    purple: '0 0 30px rgba(168, 85, 247, 0.8), 0 0 15px rgba(168, 85, 247, 0.5), 0 0 5px rgba(255, 255, 255, 0.3)',
-    pink: '0 0 30px rgba(236, 72, 153, 0.8), 0 0 15px rgba(236, 72, 153, 0.5), 0 0 5px rgba(255, 255, 255, 0.3)',
-    yellow: '0 0 30px rgba(234, 179, 8, 0.8), 0 0 15px rgba(234, 179, 8, 0.5), 0 0 5px rgba(255, 255, 255, 0.3)',
-    red: '0 0 30px rgba(239, 68, 68, 0.8), 0 0 15px rgba(239, 68, 68, 0.5), 0 0 5px rgba(255, 255, 255, 0.3)',
-    green: '0 0 30px rgba(34, 197, 94, 0.8), 0 0 15px rgba(34, 197, 94, 0.5), 0 0 5px rgba(255, 255, 255, 0.3)',
-    orange: '0 0 30px rgba(249, 115, 22, 0.8), 0 0 15px rgba(249, 115, 22, 0.5), 0 0 5px rgba(255, 255, 255, 0.3)',
-    cyan: '0 0 30px rgba(6, 182, 212, 0.8), 0 0 15px rgba(6, 182, 212, 0.5), 0 0 5px rgba(255, 255, 255, 0.3)',
-    indigo: '0 0 30px rgba(79, 70, 229, 0.8), 0 0 15px rgba(79, 70, 229, 0.5), 0 0 5px rgba(255, 255, 255, 0.3)',
-  };
-
-  const finishedStates = ['Idle', 'Success', 'Failure', 'Error', 'Result', 'Files', 'OK'];
-  const isActive = status && !finishedStates.includes(status);
-
-  const borderColors = {
-    blue: '#3b82f6',
-    purple: '#a855f7',
-    pink: '#ec4899',
-    yellow: '#eab308',
-    red: '#ef4444',
-    green: '#22c55e',
-    orange: '#f97316',
-    cyan: '#06b6d4',
-    indigo: '#4f46e5',
-  };
-
-  return (
-    <motion.div
-      initial={false}
-      animate={{
-        boxShadow: isActive ? glowStyles[color] : 'none',
-        borderColor: isActive ? borderColors[color] : '',
-      }}
-      transition={{ duration: 0.6, repeat: isActive ? Infinity : 0, repeatType: 'reverse', ease: 'easeInOut' }}
-      className={`p-4 rounded-xl border ${colors[color].split(' ')[0]} bg-[#1c2127] transition-all relative overflow-hidden group ${isActive ? 'ring-1 ring-white/10' : ''}`}
-    >
-      <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-        {React.cloneElement(icon, { size: 64 })}
-      </div>
-      <div className="flex justify-between items-start mb-4 relative z-10">
-        <div className="flex items-center gap-3">
-          <div className={`p-2 rounded-lg bg-slate-800 border border-border-dark ${colors[color].split(' ')[1]}`}>
-            {icon}
-          </div>
-          <div>
-            <h4 className="font-bold uppercase tracking-tight">{name}</h4>
-            <p className="text-[10px] text-slate-500">Node Status: Online</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className={`px-2 py-0.5 rounded-full border text-[9px] font-bold uppercase transition-all ${status !== 'Idle' ? colors[color] : 'bg-[#283039] border-border-dark text-slate-500'
-            }`}>
-            {status}
-          </div>
-          {onOpenOffice && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onOpenOffice(name.toLowerCase().replace(' ', ''));
-              }}
-              className={`p-1.5 rounded-lg border transition-all hover:scale-105 ${colors[color]}`}
-              title={`Open ${name} Office`}
-            >
-              <ExternalLink size={12} />
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div className="bg-black/50 rounded-lg p-3 h-24 overflow-y-auto terminal-scroll font-mono text-[10px] border border-white/5 relative z-10">
-        {logs.slice(-5).map((l, i) => (
-          <div key={i} className="mb-1">
-            <span className="opacity-50 mr-2">&gt;</span>
-            <span className="text-slate-300">{l.message}</span>
-          </div>
-        ))}
-        {logs.length === 0 && <div className="text-slate-600 italic mt-6 text-center">Waiting for task...</div>}
-      </div>
-    </motion.div>
   );
 };
 

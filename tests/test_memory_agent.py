@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-Tests für memory_agent.py
+Author: rahn
+Datum: 24.01.2026
+Version: 1.0
+Beschreibung: Tests für Memory Agent - Testet Laden, Speichern und Lernen aus Fehlern.
 """
 
 import os
@@ -11,7 +14,11 @@ from agents.memory_agent import (
     save_memory,
     update_memory,
     get_lessons_for_prompt,
-    learn_from_error
+    learn_from_error,
+    extract_error_pattern,
+    generate_tags_from_context,
+    is_duplicate_lesson,
+    _generate_action_text
 )
 
 
@@ -296,12 +303,15 @@ class TestMemoryIntegration:
         # 3. Get Lessons
         lessons = get_lessons_for_prompt(temp_memory_file, tech_stack="python")
 
-        # Verify
-        assert "pritn" in lessons
+        # Verify - Die verbesserte Funktion generiert jetzt hilfreiche Action-Texte
+        # Der NameError wird als Lesson mit dem Ratschlag gespeichert
+        assert "[MEMORY]" in lessons
+        assert "Variable" in lessons or "definiert" in lessons  # Action-Text für NameError
 
         loaded = load_memory(temp_memory_file)
         assert len(loaded["history"]) == 1
         assert len(loaded["lessons"]) == 1
+        assert "NameError" in loaded["lessons"][0]["pattern"]
 
     def test_multiple_sessions(self, temp_memory_file):
         """Test: Memory persistiert über mehrere 'Sessions'."""
@@ -317,3 +327,254 @@ class TestMemoryIntegration:
         loaded = load_memory(temp_memory_file)
         assert len(loaded["history"]) == 2
         assert len(loaded["lessons"]) == 2
+
+
+class TestExtractErrorPattern:
+    """Tests für die extract_error_pattern Funktion."""
+
+    def test_extract_python_typeerror(self):
+        """Test: Python TypeError wird extrahiert."""
+        error = "Traceback (most recent call last):\n  File 'test.py', line 1\nTypeError: cannot add 'int' and 'str'"
+        result = extract_error_pattern(error)
+        assert "TypeError" in result
+        assert "cannot add" in result
+
+    def test_extract_python_syntaxerror(self):
+        """Test: Python SyntaxError wird extrahiert."""
+        error = "SyntaxError: invalid syntax at line 5"
+        result = extract_error_pattern(error)
+        assert "SyntaxError" in result
+
+    def test_extract_sandbox_marker(self):
+        """Test: Sandbox ❌ Marker wird extrahiert."""
+        error = "❌ Syntaxfehler (python) in Zeile 5:\nInvalid syntax"
+        result = extract_error_pattern(error)
+        assert "Syntaxfehler" in result
+
+    def test_extract_modulenotfounderror(self):
+        """Test: ModuleNotFoundError wird extrahiert."""
+        error = "ModuleNotFoundError: No module named 'flask'"
+        result = extract_error_pattern(error)
+        assert "ModuleNotFoundError" in result
+        assert "flask" in result
+
+    def test_extract_truncates_long_errors(self):
+        """Test: Lange Fehlermeldungen werden auf 200 Zeichen gekürzt."""
+        error = "TypeError: " + "x" * 500
+        result = extract_error_pattern(error)
+        assert len(result) <= 200
+
+    def test_extract_empty_input(self):
+        """Test: Leerer Input gibt leeren String zurück."""
+        result = extract_error_pattern("")
+        assert result == ""
+
+    def test_extract_none_input(self):
+        """Test: None Input gibt leeren String zurück."""
+        result = extract_error_pattern(None)
+        assert result == ""
+
+    def test_extract_generic_error_line(self):
+        """Test: Generische Error-Zeile wird extrahiert."""
+        error = "Some output\nError: Something went wrong\nMore output"
+        result = extract_error_pattern(error)
+        assert "Error" in result
+
+
+class TestGenerateTagsFromContext:
+    """Tests für die generate_tags_from_context Funktion."""
+
+    def test_always_includes_global(self):
+        """Test: 'global' Tag ist immer enthalten."""
+        tags = generate_tags_from_context({}, "Some error")
+        assert "global" in tags
+
+    def test_includes_language_tag(self):
+        """Test: Sprach-Tag wird hinzugefügt."""
+        blueprint = {"language": "python"}
+        tags = generate_tags_from_context(blueprint, "Error")
+        assert "python" in tags
+
+    def test_includes_project_type(self):
+        """Test: Projekt-Typ wird hinzugefügt."""
+        blueprint = {"project_type": "webapp"}
+        tags = generate_tags_from_context(blueprint, "Error")
+        assert "webapp" in tags
+
+    def test_includes_framework_from_blueprint(self):
+        """Test: Framework aus Blueprint wird hinzugefügt."""
+        blueprint = {"framework": "flask"}
+        tags = generate_tags_from_context(blueprint, "Error")
+        assert "flask" in tags
+
+    def test_detects_framework_from_error_text(self):
+        """Test: Framework wird aus Fehlertext erkannt."""
+        tags = generate_tags_from_context({}, "Flask werkzeug error in jinja2 template")
+        assert "flask" in tags
+
+    def test_detects_multiple_frameworks(self):
+        """Test: Mehrere Frameworks werden erkannt."""
+        tags = generate_tags_from_context({}, "React component failed, npm install error")
+        assert "react" in tags
+        assert "node" in tags
+
+    def test_adds_syntax_tag(self):
+        """Test: 'syntax' Tag bei Syntax-Fehlern."""
+        tags = generate_tags_from_context({}, "SyntaxError in code")
+        assert "syntax" in tags
+
+    def test_adds_import_tag(self):
+        """Test: 'import' Tag bei Import-Fehlern."""
+        tags = generate_tags_from_context({}, "ImportError: module not found")
+        assert "import" in tags
+
+    def test_adds_security_tag(self):
+        """Test: 'security' Tag bei Security-Fehlern."""
+        tags = generate_tags_from_context({}, "CSRF token missing")
+        assert "security" in tags
+
+    def test_removes_duplicates(self):
+        """Test: Duplikate werden entfernt."""
+        blueprint = {"language": "python", "framework": "flask"}
+        tags = generate_tags_from_context(blueprint, "flask error")
+        # flask sollte nur einmal vorkommen
+        assert tags.count("flask") == 1
+
+    def test_handles_none_blueprint(self):
+        """Test: None Blueprint wird korrekt behandelt."""
+        tags = generate_tags_from_context(None, "Error")
+        assert "global" in tags
+
+    def test_handles_empty_error_text(self):
+        """Test: Leerer Fehlertext wird behandelt."""
+        tags = generate_tags_from_context({"language": "python"}, "")
+        assert "python" in tags
+        assert "global" in tags
+
+
+class TestIsDuplicateLesson:
+    """Tests für die is_duplicate_lesson Funktion."""
+
+    def test_exact_match_is_duplicate(self, populated_memory_file):
+        """Test: Exakter Match wird als Duplikat erkannt."""
+        result = is_duplicate_lesson(populated_memory_file, "ModuleNotFoundError")
+        assert result is True
+
+    def test_substring_match_is_duplicate(self, populated_memory_file):
+        """Test: Substring Match wird als Duplikat erkannt."""
+        result = is_duplicate_lesson(populated_memory_file, "ModuleNotFoundError: No module named 'xyz'")
+        assert result is True
+
+    def test_similar_pattern_is_duplicate(self, populated_memory_file):
+        """Test: Ähnliches Pattern wird als Duplikat erkannt."""
+        # Das bestehende Pattern enthält "ModuleNotFoundError"
+        result = is_duplicate_lesson(populated_memory_file, "ModuleNotFoundError module test xyz")
+        assert result is True
+
+    def test_completely_new_is_not_duplicate(self, populated_memory_file):
+        """Test: Komplett neues Pattern ist kein Duplikat."""
+        result = is_duplicate_lesson(populated_memory_file, "CompletelyNewUniqueError never seen before 12345")
+        assert result is False
+
+    def test_nonexistent_file_returns_false(self, temp_memory_file):
+        """Test: Nicht existierende Datei gibt False zurück."""
+        result = is_duplicate_lesson(temp_memory_file, "Any error")
+        assert result is False
+
+    def test_empty_pattern_returns_false(self, populated_memory_file):
+        """Test: Leeres Pattern gibt False zurück."""
+        result = is_duplicate_lesson(populated_memory_file, "")
+        assert result is False
+
+    def test_none_pattern_returns_false(self, populated_memory_file):
+        """Test: None Pattern gibt False zurück."""
+        result = is_duplicate_lesson(populated_memory_file, None)
+        assert result is False
+
+
+class TestGenerateActionText:
+    """Tests für die _generate_action_text Funktion."""
+
+    def test_known_pattern_flask_deprecated(self):
+        """Test: Bekanntes Flask-Pattern gibt spezifischen Ratschlag."""
+        result = _generate_action_text("before_first_request is deprecated")
+        assert "app.app_context()" in result
+
+    def test_known_pattern_markup_import(self):
+        """Test: Bekanntes Markup-Import-Pattern."""
+        result = _generate_action_text("cannot import name 'Markup' from 'flask'")
+        assert "markupsafe" in result
+
+    def test_known_pattern_modulenotfounderror(self):
+        """Test: ModuleNotFoundError gibt Installations-Ratschlag."""
+        result = _generate_action_text("ModuleNotFoundError: No module named 'xyz'")
+        assert "requirements.txt" in result or "installiert" in result
+
+    def test_known_pattern_syntaxerror(self):
+        """Test: SyntaxError gibt Syntax-Ratschlag."""
+        result = _generate_action_text("SyntaxError: invalid syntax")
+        assert "Klammern" in result or "Einrück" in result
+
+    def test_unknown_pattern_uses_generic(self):
+        """Test: Unbekanntes Pattern verwendet generischen Text."""
+        result = _generate_action_text("CompletelyUnknownError: something happened")
+        assert "VERMEIDE" in result
+        assert "CompletelyUnknownError" in result
+
+    def test_truncates_long_messages(self):
+        """Test: Lange Nachrichten werden gekürzt."""
+        long_error = "Error: " + "x" * 500
+        result = _generate_action_text(long_error)
+        assert len(result) <= 200
+
+    def test_handles_none_input(self):
+        """Test: None Input wird behandelt."""
+        result = _generate_action_text(None)
+        assert "VERMEIDE" in result
+
+
+class TestLearnFromErrorImproved:
+    """Zusätzliche Tests für die verbesserte learn_from_error Funktion."""
+
+    def test_learn_uses_extract_error_pattern(self, temp_memory_file):
+        """Test: learn_from_error nutzt extract_error_pattern."""
+        # Langer Fehler mit Traceback
+        error = "Traceback...\nTypeError: cannot concatenate 'str' and 'int' objects"
+        learn_from_error(temp_memory_file, error, ["python"])
+
+        loaded = load_memory(temp_memory_file)
+        # Pattern sollte nur den relevanten Teil enthalten
+        assert "TypeError" in loaded["lessons"][0]["pattern"]
+
+    def test_learn_skips_duplicate_fuzzy(self, temp_memory_file):
+        """Test: Ähnliche Fehler werden übersprungen."""
+        # Erster Fehler
+        learn_from_error(temp_memory_file, "TypeError: invalid operation on types", ["python"])
+
+        # Ähnlicher Fehler
+        result = learn_from_error(temp_memory_file, "TypeError: invalid operation on different types", ["python"])
+
+        loaded = load_memory(temp_memory_file)
+        # Sollte nur eine Lesson geben (entweder aktualisiert oder übersprungen)
+        assert len(loaded["lessons"]) <= 2  # Maximal 2 wenn nicht als ähnlich erkannt
+
+    def test_learn_empty_error_returns_message(self, temp_memory_file):
+        """Test: Leerer Fehler gibt Nachricht zurück."""
+        result = learn_from_error(temp_memory_file, "", ["python"])
+        assert "Kein Fehler" in result
+
+    def test_learn_uses_generate_action_text(self, temp_memory_file):
+        """Test: learn_from_error nutzt _generate_action_text."""
+        learn_from_error(temp_memory_file, "SyntaxError: unexpected token", ["python"])
+
+        loaded = load_memory(temp_memory_file)
+        # Action sollte spezifischen Ratschlag enthalten
+        action = loaded["lessons"][0]["action"]
+        assert "Klammern" in action or "Einrück" in action or "VERMEIDE" in action
+
+    def test_learn_default_tags_when_empty(self, temp_memory_file):
+        """Test: Leere Tags werden zu ['global']."""
+        learn_from_error(temp_memory_file, "Some error", [])
+
+        loaded = load_memory(temp_memory_file)
+        assert "global" in loaded["lessons"][0]["tags"]

@@ -1,21 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-Orchestrator Agent: Projektleiter für Regelkonformität und Dokumentation.
+Author: rahn
+Datum: 24.01.2026
+Version: 1.1
+Beschreibung: Orchestrator Agent - Projektleiter für Regelkonformität und Dokumentation.
 """
 
 from typing import Any, Dict, List, Optional
 from crewai import Agent
 
-
-def _get_model_from_config(config: Dict[str, Any], role: str) -> str:
-    """Hilfsfunktion: Extrahiert Modell aus Config (unterstützt String und Dict-Format)."""
-    mode = config.get("mode", "test")
-    model_config = config.get("models", {}).get(mode, {}).get(role)
-    if isinstance(model_config, str):
-        return model_config
-    elif isinstance(model_config, dict):
-        return model_config.get("primary", "gpt-4")
-    return "gpt-4"
+# ÄNDERUNG 24.01.2026: Zentrale Hilfsfunktion verwenden (Single Source of Truth)
+from agents.agent_utils import get_model_from_config, combine_project_rules
 
 
 def create_orchestrator(config: Dict[str, Any], project_rules: Dict[str, List[str]], router=None) -> Agent:
@@ -34,11 +29,9 @@ def create_orchestrator(config: Dict[str, Any], project_rules: Dict[str, List[st
     if router:
         model = router.get_model("orchestrator")
     else:
-        model = _get_model_from_config(config, "orchestrator")
+        model = get_model_from_config(config, "orchestrator")
 
-    global_rules = "\n".join(project_rules.get("global", []))
-    role_rules = "\n".join(project_rules.get("orchestrator", []))
-    combined_rules = f"Globale Regeln:\n{global_rules}\n\nOrchestrator-spezifische Regeln:\n{role_rules}"
+    combined_rules = combine_project_rules(project_rules, "orchestrator")
 
     return Agent(
         role="Orchestrator",

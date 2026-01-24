@@ -1,12 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-Model Architect Agent: Entscheidet welches Modell für welche Aufgabe optimal ist.
-
-Der Model-Architect analysiert Aufgaben und wählt das optimale LLM-Modell basierend auf:
-- Task-Komplexität (Coding erfordert starke Modelle)
-- Kosten (Free-Tier bevorzugen wenn möglich)
-- Latenz (schnelle Antworten für einfache Tasks)
-- Rate-Limit-Status (Fallback bei überlasteten Modellen)
+Author: rahn
+Datum: 24.01.2026
+Version: 1.0
+Beschreibung: Model Architect Agent - Entscheidet welches Modell für welche Aufgabe optimal ist.
+              Kriterien: Task-Komplexität, Kosten, Latenz, Rate-Limit-Status.
 """
 
 from typing import Dict, Any, List, Optional

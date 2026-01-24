@@ -1,12 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-Tests für Security Utilities.
-
-Testet:
-- safe_join_path: Path Traversal Prevention
-- sanitize_filename: Filename Sanitization
-- validate_shell_command: Command Injection Prevention
-- is_safe_path: Path Containment Check
+Author: rahn
+Datum: 24.01.2026
+Version: 1.0
+Beschreibung: Tests für Security Utilities - Path Traversal, Command Injection, Filename Sanitization.
 """
 
 import os
@@ -80,10 +77,10 @@ class TestSafeJoinPath:
     def test_only_dots_sanitized(self, tmp_path):
         """Nur Punkte werden zu leerem String sanitisiert -> Exception."""
         # "..." wird zu "" nach Entfernung von ".." -> sollte SecurityError werfen
-        # Da aber "..." != ".." ist es OK
         result = safe_join_path(str(tmp_path), "...")
-        # Es sollte ein gültiger Pfad entstehen oder Exception geworfen werden
-        assert result.startswith(str(tmp_path)) or "..." in result
+        # Ergebnis sollte sicher sein (kein ".." enthalten) und innerhalb von tmp_path bleiben
+        assert result.startswith(str(tmp_path))
+        assert ".." not in result
 
     def test_absolute_path_blocked(self, tmp_path):
         """Absolute Pfade werden zu relativen normalisiert."""

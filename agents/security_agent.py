@@ -1,27 +1,17 @@
 # -*- coding: utf-8 -*-
 """
-Security Agent ("The Guardian"): Prüft Code auf Sicherheitslücken.
-Fokus: OWASP Top 10, SQL Injection, XSS, CSRF, Dependency-Audits.
+Author: rahn
+Datum: 24.01.2026
+Version: 1.1
+Beschreibung: Security Agent ("The Guardian") - Prüft Code auf Sicherheitslücken.
+              Fokus: OWASP Top 10, SQL Injection, XSS, CSRF, Dependency-Audits.
 """
 
 from typing import Any, Dict, List, Optional
 from crewai import Agent
 
-
-def _get_model_from_config(config: Dict[str, Any], role: str, fallback_role: str = None) -> str:
-    """Hilfsfunktion: Extrahiert Modell aus Config (unterstützt String und Dict-Format)."""
-    mode = config["mode"]
-    model_config = config["models"][mode].get(role)
-
-    # Falls Rolle nicht gefunden, versuche Fallback
-    if model_config is None and fallback_role:
-        model_config = config["models"][mode].get(fallback_role)
-
-    if isinstance(model_config, str):
-        return model_config
-    elif isinstance(model_config, dict):
-        return model_config.get("primary", "")
-    return ""
+# ÄNDERUNG 24.01.2026: Zentrale Hilfsfunktion verwenden (Single Source of Truth)
+from agents.agent_utils import get_model_from_config, combine_project_rules
 
 
 def create_security_agent(config: Dict[str, Any], project_rules: Dict[str, List[str]], router=None) -> Agent:
@@ -40,11 +30,9 @@ def create_security_agent(config: Dict[str, Any], project_rules: Dict[str, List[
     if router:
         model = router.get_model("security")
     else:
-        model = _get_model_from_config(config, "security", fallback_role="reviewer")
+        model = get_model_from_config(config, "security", fallback_role="reviewer")
 
-    global_rules = "\n".join(project_rules.get("global", []))
-    role_rules = "\n".join(project_rules.get("security", [])) # Specific security rules
-    combined_rules = f"Globale Regeln:\n{global_rules}\n\nSecurity-Regeln:\n{role_rules}"
+    combined_rules = combine_project_rules(project_rules, "security")
 
     return Agent(
         role="Security Specialist (The Guardian)",

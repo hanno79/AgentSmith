@@ -1,22 +1,17 @@
 # -*- coding: utf-8 -*-
 """
-Researcher Agent: Web-Recherche mit DuckDuckGo für technische Informationen.
+Author: rahn
+Datum: 24.01.2026
+Version: 1.1
+Beschreibung: Researcher Agent - Web-Recherche mit DuckDuckGo für technische Informationen.
 """
 
 from typing import Any, Dict, List, Union, Optional
 from crewai import Agent
 from langchain_community.tools import DuckDuckGoSearchRun
 
-
-def _get_model_from_config(config: Dict[str, Any], role: str) -> str:
-    """Hilfsfunktion: Extrahiert Modell aus Config (unterstützt String und Dict-Format)."""
-    mode = config.get("mode", "test")
-    model_config = config.get("models", {}).get(mode, {}).get(role)
-    if isinstance(model_config, str):
-        return model_config
-    elif isinstance(model_config, dict):
-        return model_config.get("primary", "gpt-4")
-    return "gpt-4"
+# ÄNDERUNG 24.01.2026: Zentrale Hilfsfunktion verwenden (Single Source of Truth)
+from agents.agent_utils import get_model_from_config, combine_project_rules
 
 
 def create_researcher(config: Dict[str, Any], project_rules: Dict[str, List[str]], router=None) -> Agent:
@@ -35,7 +30,7 @@ def create_researcher(config: Dict[str, Any], project_rules: Dict[str, List[str]
     if router:
         model = router.get_model("researcher")
     else:
-        model = _get_model_from_config(config, "researcher")
+        model = get_model_from_config(config, "researcher")
 
     # Tool initialisieren
     from crewai.tools import BaseTool
@@ -73,16 +68,15 @@ def create_researcher(config: Dict[str, Any], project_rules: Dict[str, List[str]
                     if isinstance(parsed, list) and len(parsed) > 0:
                         first = parsed[0]
                         search_query = first.get("query", str(first)) if isinstance(first, dict) else str(first)
-                except:
+                except (json.JSONDecodeError, KeyError, TypeError, AttributeError):
+                    # Bei Parsing-Fehlern: Originalquery verwenden
                     search_query = query
             
             return DuckDuckGoSearchRun().run(str(search_query))
 
     search_tool = SearchTool()
 
-    global_rules = "\n".join(project_rules.get("global", []))
-    role_rules = "\n".join(project_rules.get("researcher", []))
-    combined_rules = f"Globale Regeln:\n{global_rules}\n\nResearcher-spezifische Regeln:\n{role_rules}"
+    combined_rules = combine_project_rules(project_rules, "researcher")
 
     return Agent(
         role="Researcher",

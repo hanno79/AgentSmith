@@ -1,3 +1,10 @@
+/**
+ * Author: rahn
+ * Datum: 24.01.2026
+ * Version: 1.0
+ * Beschreibung: Budget Dashboard - Übersicht über Kosten, Nutzung und Budgetstatus.
+ */
+
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { motion } from 'framer-motion';
@@ -21,8 +28,7 @@ import {
   Info,
   Database
 } from 'lucide-react';
-
-const API_BASE = 'http://localhost:8000';
+import { API_BASE } from './constants/config';
 
 // Leere Default-Zustände (KEINE Mock-Daten)
 const EMPTY_BUDGET_STATS = {
@@ -46,7 +52,7 @@ const BudgetDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Fetch real data from API (NO fallback to mock data)
+  // Echte Daten von API abrufen (KEINE Mock-Daten als Fallback)
   useEffect(() => {
     fetchBudgetData();
   }, []);
@@ -79,22 +85,28 @@ const BudgetDashboard = () => {
   };
 
   const handleCapChange = async (type, value) => {
+    const prevCaps = budgetCaps;
     const newCaps = { ...budgetCaps, [type]: value };
     setBudgetCaps(newCaps);
     try {
       await axios.put(`${API_BASE}/budget/caps`, { ...newCaps, auto_pause: autoPause });
     } catch (err) {
       console.error('Failed to update budget caps:', err);
+      // Rollback bei Fehler
+      setBudgetCaps(prevCaps);
     }
   };
 
   const handleAutoPauseToggle = async () => {
+    const prevAutoPause = autoPause;
     const newValue = !autoPause;
     setAutoPause(newValue);
     try {
       await axios.put(`${API_BASE}/budget/caps`, { ...budgetCaps, auto_pause: newValue });
     } catch (err) {
       console.error('Failed to update auto-pause:', err);
+      // Rollback bei Fehler
+      setAutoPause(prevAutoPause);
     }
   };
 

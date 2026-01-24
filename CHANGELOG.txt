@@ -1,0 +1,175 @@
+========================================
+CHANGELOG - AgentSmith Multi-Agent POC
+========================================
+
+Author: rahn
+Erstellt: 24.01.2026
+
+========================================
+FORMAT FÜR NEUE EINTRÄGE
+========================================
+
+# ÄNDERUNG [TT.MM.YYYY]: [Kurze Begründung]
+# [Ausführliche Beschreibung der Änderung]
+# Betroffene Dateien: [Liste der geänderten Dateien]
+
+========================================
+VERSIONSHISTORIE
+========================================
+
+----------------------------------------
+Version 0.6 - 24.01.2026
+----------------------------------------
+
+# ÄNDERUNG 24.01.2026: Umfassende Projektregeln-Compliance
+# Folgende Korrekturen wurden durchgeführt:
+#
+# 1. App.jsx Refactoring (753 → 284 Zeilen)
+#    - useWebSocket Hook extrahiert → hooks/useWebSocket.js
+#    - useConfig Hook extrahiert → hooks/useConfig.js
+#    - AgentCard Komponente extrahiert → components/AgentCard.jsx
+#    - NavigationHeader extrahiert → components/NavigationHeader.jsx
+#
+# 2. Code-Duplikation beseitigt
+#    - agents/agent_utils.py erstellt mit zentraler get_model_from_config()
+#    - combine_project_rules() Hilfsfunktion hinzugefügt
+#    - 8 Agent-Dateien aktualisiert um zentrale Utils zu verwenden
+#
+# 3. Kommentare auf Deutsch übersetzt
+#    - Frontend-Dateien: Mock-Daten Kommentare übersetzt
+#    - WebSocket/Config Hooks: Alle Kommentare auf Deutsch
+#
+# 4. Header-Kommentare hinzugefügt
+#    - Alle Python-Dateien: Author, Datum, Version, Beschreibung
+#    - Alle Frontend-Dateien: JSDoc-Format Header
+#
+# 5. Dummy-/Fallback-Werte gekennzeichnet
+#    - MOCK-DATEN: Kommentare in allen Office-Komponenten
+#    - FALLBACK: Kommentare in config_validator.py
+#
+# Betroffene Dateien:
+#   Neue Dateien:
+#     - frontend/src/hooks/useWebSocket.js
+#     - frontend/src/hooks/useConfig.js
+#     - frontend/src/components/AgentCard.jsx
+#     - frontend/src/components/NavigationHeader.jsx
+#     - agents/agent_utils.py
+#   Aktualisierte Dateien:
+#     - frontend/src/App.jsx (refaktoriert)
+#     - agents/*.py (8 Dateien)
+#     - frontend/src/*Office.jsx (8 Dateien)
+#     - frontend/src/MainframeHub.jsx
+#     - frontend/src/BudgetDashboard.jsx
+
+----------------------------------------
+Version 0.5 - 24.01.2026
+----------------------------------------
+
+# ÄNDERUNG 24.01.2026: Projektregeln-Compliance Initialisierung
+# CLAUDE.md Projektregeln-Datei erstellt
+# CHANGELOG.txt (diese Datei) erstellt
+# Betroffene Dateien: CLAUDE.md, CHANGELOG.txt
+
+----------------------------------------
+Version 0.4 - 24.01.2026
+----------------------------------------
+
+# ÄNDERUNG 24.01.2026: Max Retries Slider hinzugefügt
+# Neuer Slider im Mainframe Hub zur Konfiguration der maximalen Wiederholungsversuche
+# Betroffene Dateien: frontend/src/MainframeHub.jsx, config.yaml
+# Commit: a8f0fff
+
+----------------------------------------
+Version 0.3 - 24.01.2026
+----------------------------------------
+
+# ÄNDERUNG 24.01.2026: Individuelle Agent Office Views
+# Neue Office-Ansichten für jeden Agent mit einzigartigen Farbthemen
+# - CoderOffice.jsx (blau)
+# - DBDesignerOffice.jsx (indigo)
+# - DesignerOffice.jsx (pink)
+# - ResearcherOffice.jsx (cyan)
+# - ReviewerOffice.jsx (gelb)
+# - SecurityOffice.jsx (rot)
+# - TechStackOffice.jsx (violett)
+# - TesterOffice.jsx (orange)
+# Betroffene Dateien: frontend/src/*Office.jsx, frontend/src/index.css
+# Commit: 87df098
+
+----------------------------------------
+Version 0.2 - 24.01.2026
+----------------------------------------
+
+# ÄNDERUNG 24.01.2026: Budget Dashboard und UI-Verbesserungen
+# - Neues Budget Dashboard für Kostenüberwachung
+# - Mainframe Hub als zentrale Steuerung
+# - Verbesserte UI-Komponenten
+# - WebSocket-Integration für Echtzeit-Updates
+# Betroffene Dateien:
+#   - frontend/src/BudgetDashboard.jsx
+#   - frontend/src/MainframeHub.jsx
+#   - frontend/src/App.jsx
+#   - backend/api.py
+# Commit: 4bb1232
+
+----------------------------------------
+Version 0.1 - Initial Release
+----------------------------------------
+
+# ÄNDERUNG [Datum unbekannt]: Initiales Projekt-Setup
+# Multi-Agent POC (AgentSmith) - Grundlegende Architektur
+# - CrewAI Framework Integration
+# - OpenRouter API Anbindung
+# - FastAPI Backend
+# - React Frontend
+# - 10+ spezialisierte KI-Agenten:
+#   * Meta-Orchestrator
+#   * Coder Agent
+#   * Reviewer Agent
+#   * Tester Agent
+#   * Designer Agent
+#   * Database Designer Agent
+#   * Researcher Agent
+#   * Security Agent
+#   * TechStack Architect Agent
+#   * Model Architect Agent
+#   * Memory Agent
+# - Budget Tracking System
+# - Sandbox Code-Validierung
+# - Security Utils (Path Traversal, Command Injection Schutz)
+# Betroffene Dateien: Komplettes Repository
+# Commits: 2053a86, 0a2828c
+
+========================================
+ERLEDIGTE TODOs (24.01.2026)
+========================================
+
+# [ERLEDIGT] Code-Duplikation beseitigt
+# _get_model_from_config() in agents/agent_utils.py zentralisiert
+# combine_project_rules() hinzugefügt
+
+# [ERLEDIGT] Dateigrößen-Refactoring
+# App.jsx: 753 → 284 Zeilen (unter 500)
+# main.py: 455 Zeilen (war bereits unter 500)
+
+# [ERLEDIGT] Header-Kommentare hinzugefügt
+# Alle Python- und Frontend-Dateien mit Autor-Header versehen
+
+========================================
+OFFENE TODOs
+========================================
+
+# TODO: E2E Tests mit Playwright erstellen
+# Wichtigste User-Journeys abdecken
+
+# TODO: Test-Coverage verbessern
+# pytest-cov einrichten, Coverage auf 70%+ bringen
+
+========================================
+HINWEISE
+========================================
+
+- Alle Änderungen müssen in diesem Format dokumentiert werden (Regel 9)
+- Bei größeren Änderungen: Zusätzlich im Code als Kommentar
+- Commit-Messages auf Deutsch (Regel 12)
+- Bei Regelverstößen: Sofortige Korrektur erforderlich

@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-Multi-Agenten Proof-of-Concept – modulare Version (v3.1)
---------------------------------------------------------
-Mit iterativem Feedback-Loop (Selbstheilung), Logging und Regelüberwachung.
+Author: rahn
+Datum: 24.01.2026
+Version: 3.1
+Beschreibung: Multi-Agenten Proof-of-Concept - Haupteinstiegspunkt.
+              Orchestriert alle Agenten mit iterativem Feedback-Loop, Logging und Regelüberwachung.
 """
 
 import os
@@ -27,13 +29,15 @@ from agents.coder_agent import create_coder
 from agents.designer_agent import create_designer
 from agents.reviewer_agent import create_reviewer
 from agents.tester_agent import create_tester, test_web_ui, summarize_ui_result
-from agents.memory_agent import update_memory
 from agents.orchestrator_agent import create_orchestrator
 from agents.researcher_agent import create_researcher
 from agents.database_designer_agent import create_database_designer
 from agents.techstack_architect_agent import create_techstack_architect
 from agents.security_agent import create_security_agent
-from agents.memory_agent import update_memory, get_lessons_for_prompt, learn_from_error
+from agents.memory_agent import (
+    update_memory, get_lessons_for_prompt, learn_from_error,
+    extract_error_pattern, generate_tags_from_context
+)
 from sandbox_runner import run_sandbox
 from logger_utils import log_event # Added Logger
 from security_utils import safe_join_path, sanitize_filename, validate_shell_command
@@ -133,6 +137,7 @@ def main():
     
     # Absoluten Pfad verwenden für konsistentes Verhalten
     base_dir = os.path.dirname(os.path.abspath(__file__))
+    memory_path = os.path.join(base_dir, "memory", "global_memory.json")
     os.makedirs(os.path.join(base_dir, "memory"), exist_ok=True)
     os.makedirs(os.path.join(base_dir, "projects"), exist_ok=True)
 
@@ -285,7 +290,6 @@ def main():
             agent_security = create_security_agent(config, project_rules)
             
             # Memory
-            memory_path = os.path.join("memory", "global_memory.json")
             lessons = get_lessons_for_prompt(memory_path, tech_stack=project_type)
             if lessons: 
                 if "global" not in project_rules: project_rules["global"] = []
@@ -348,11 +352,21 @@ def main():
                 task_review = Task(description=r_prompt, expected_output="Feedback", agent=agent_reviewer)
                 review_output = str(task_review.execute_sync())
                 
+                # Memory: Zeichne Iteration auf
+                update_memory(memory_path, current_code, review_output, sandbox_result)
+
                 if "OK" in review_output:
                     success = True
+                    console.print("[dim]Memory: Erfolgreiche Iteration aufgezeichnet.[/dim]")
                     break
                 else:
                     feedback = review_output
+                    # Memory: Lerne aus Fehlern
+                    if "❌" in sandbox_result or "error" in feedback.lower():
+                        error_msg = extract_error_pattern(sandbox_result if "❌" in sandbox_result else feedback)
+                        tags = generate_tags_from_context(tech_blueprint, error_msg)
+                        learn_result = learn_from_error(memory_path, error_msg, tags)
+                        console.print(f"[dim]Memory: {learn_result}[/dim]")
                     iteration += 1
 
             # Abschluss Aktuelle Runde
@@ -363,12 +377,39 @@ def main():
                 # 🛡️ SECURITY SCAN (nach erfolgreichem Review)
                 try:
                     console.print(Panel.fit("Security Agent prüft Code...", title="🛡️ Security Scan", border_style="red"))
-                    security_task = Task(
-                        description=f"Prüfe den folgenden Code auf Sicherheitslücken (SQL Injection, XSS, CSRF, Hardcoded Secrets):\n\n{current_code[:3000]}",
-                        expected_output="SECURE oder Liste von VULNERABILITY: ...",
-                        agent=agent_security
-                    )
-                    security_result = str(security_task.execute_sync())
+                    # Erstelle Tasks pro Datei statt Truncation
+                    import re
+                    # Parse Code-Output um Dateien zu extrahieren
+                    code_pattern = r"###\s*(?:[\w\s]+:\s*)?(.+?)\s*[\r\n]+"
+                    code_parts = re.split(code_pattern, current_code)
+                    security_results = []
+                    
+                    if len(code_parts) >= 2:
+                        # Multi-File Format
+                        for i in range(1, len(code_parts), 2):
+                            filename = code_parts[i].strip()
+                            file_content = code_parts[i+1].strip() if i+1 < len(code_parts) else ""
+                            if filename and file_content:
+                                security_task = Task(
+                                    description=f"Prüfe die Datei '{filename}' auf Sicherheitslücken (SQL Injection, XSS, CSRF, Hardcoded Secrets):\n\n{file_content}",
+                                    expected_output="SECURE oder Liste von VULNERABILITY: ...",
+                                    agent=agent_security
+                                )
+                                result = str(security_task.execute_sync())
+                                security_results.append(f"Datei: {filename}\n{result}")
+                    else:
+                        # Single-File Format - verwende vollständigen Code
+                        if len(current_code) > 100000:  # Warnung bei sehr großem Code
+                            log_event("Security", "Warning", f"Code sehr groß ({len(current_code)} Zeichen), vollständiger Scan kann lange dauern")
+                        security_task = Task(
+                            description=f"Prüfe den folgenden Code auf Sicherheitslücken (SQL Injection, XSS, CSRF, Hardcoded Secrets):\n\n{current_code}",
+                            expected_output="SECURE oder Liste von VULNERABILITY: ...",
+                            agent=agent_security
+                        )
+                        security_results.append(str(security_task.execute_sync()))
+                    
+                    # Sicherstellen dass security_result immer definiert ist
+                    security_result = "\n\n".join(security_results) if security_results else "Keine Dateien zum Scannen gefunden."
                     log_event("Security", "Scan Complete", security_result[:1000])
 
                     if "VULNERABILITY" in security_result.upper():
@@ -394,6 +435,13 @@ def main():
                     with open(os.path.join(project_path, "README.md"), "w", encoding="utf-8") as f: f.write(str(doc))
             else:
                 console.print("[bold red]❌ Fehlgeschlagen nach Retries.[/bold red]")
+                # Memory: Lerne aus ungelösten Fehlern
+                if feedback:
+                    error_msg = extract_error_pattern(feedback)
+                    tags = generate_tags_from_context(tech_blueprint, feedback)
+                    tags.append("unresolved")
+                    learn_result = learn_from_error(memory_path, error_msg, tags)
+                    console.print(f"[dim]Memory: Ungelöst - {learn_result}[/dim]")
 
         except Exception as e:
             import traceback

@@ -21,6 +21,9 @@ memory/
 *.jsonl
 crew_log.jsonl
 
+# Budget tracking (local usage data)
+budget_data/usage_history.json
+
 # Environment files (contain secrets!)
 .env
 .env.local

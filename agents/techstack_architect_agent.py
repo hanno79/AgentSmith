@@ -1,22 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-TechStack-Architect Agent v1.0
-Analysiert Anforderungen und entscheidet über die technische Umsetzung.
+Author: rahn
+Datum: 24.01.2026
+Version: 1.1
+Beschreibung: TechStack-Architect Agent - Analysiert Anforderungen und entscheidet über die technische Umsetzung.
 """
 
 from typing import Any, Dict, List, Optional
 from crewai import Agent
 
-
-def _get_model_from_config(config: Dict[str, Any], role: str) -> str:
-    """Hilfsfunktion: Extrahiert Modell aus Config (unterstützt String und Dict-Format)."""
-    mode = config.get("mode", "test")
-    model_config = config.get("models", {}).get(mode, {}).get(role)
-    if isinstance(model_config, str):
-        return model_config
-    elif isinstance(model_config, dict):
-        return model_config.get("primary", "gpt-4")
-    return "gpt-4"
+# ÄNDERUNG 24.01.2026: Zentrale Hilfsfunktion verwenden (Single Source of Truth)
+from agents.agent_utils import get_model_from_config, combine_project_rules
 
 
 def create_techstack_architect(config: Dict[str, Any], project_rules: Dict[str, List[str]], router=None) -> Agent:
@@ -35,11 +29,9 @@ def create_techstack_architect(config: Dict[str, Any], project_rules: Dict[str, 
     if router:
         model = router.get_model("techstack_architect")
     else:
-        model = _get_model_from_config(config, "techstack_architect")
+        model = get_model_from_config(config, "techstack_architect")
 
-    global_rules = "\n".join(project_rules.get("global", []))
-    role_rules = "\n".join(project_rules.get("techstack_architect", []))
-    combined_rules = f"Globale Regeln:\n{global_rules}\n\nTechStack-Architect-spezifische Regeln:\n{role_rules}"
+    combined_rules = combine_project_rules(project_rules, "techstack_architect")
 
     return Agent(
         role="TechStack-Architect",

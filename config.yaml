@@ -3,52 +3,52 @@ openai_api_key: ${OPENAI_API_KEY}
 mode: test
 project_type: webapp
 include_designer: true
-max_retries: 5
+max_retries: 15
+research_timeout_minutes: 5
 security_max_retries: 10
 models:
   test:
-    # Primary + Fallback Struktur für automatisches Umschalten bei Rate Limits
     meta_orchestrator:
       primary: openrouter/meta-llama/llama-3.3-70b-instruct:free
       fallback:
-        - openrouter/google/gemma-3-27b-it:free
-        - openrouter/nousresearch/hermes-3-llama-3.1-8b:free
+      - openrouter/google/gemma-3-27b-it:free
+      - openrouter/nousresearch/hermes-3-llama-3.1-8b:free
     orchestrator:
       primary: openrouter/meta-llama/llama-3.3-70b-instruct:free
       fallback:
-        - openrouter/google/gemma-3-27b-it:free
-        - openrouter/nousresearch/hermes-3-llama-3.1-8b:free
+      - openrouter/google/gemma-3-27b-it:free
+      - openrouter/nousresearch/hermes-3-llama-3.1-8b:free
     coder:
       primary: openrouter/meta-llama/llama-3.3-70b-instruct:free
       fallback:
-        - openrouter/google/gemma-3-27b-it:free
-        - openrouter/mistralai/mistral-7b-instruct:free
+      - openrouter/google/gemma-3-27b-it:free
+      - openrouter/mistralai/mistral-7b-instruct:free
     reviewer:
       primary: openrouter/google/gemma-3-27b-it:free
       fallback:
-        - openrouter/meta-llama/llama-3.3-70b-instruct:free
-        - openrouter/nousresearch/hermes-3-llama-3.1-8b:free
+      - openrouter/meta-llama/llama-3.3-70b-instruct:free
+      - openrouter/nousresearch/hermes-3-llama-3.1-8b:free
     designer:
       primary: openrouter/google/gemma-3-27b-it:free
       fallback:
-        - openrouter/meta-llama/llama-3.3-70b-instruct:free
+      - openrouter/meta-llama/llama-3.3-70b-instruct:free
     researcher:
       primary: openrouter/meta-llama/llama-3.3-70b-instruct:free
       fallback:
-        - openrouter/google/gemma-3-27b-it:free
-        - openrouter/mistralai/mistral-7b-instruct:free
+      - openrouter/google/gemma-3-27b-it:free
+      - openrouter/mistralai/mistral-7b-instruct:free
     database_designer:
       primary: openrouter/google/gemma-3-27b-it:free
       fallback:
-        - openrouter/meta-llama/llama-3.3-70b-instruct:free
+      - openrouter/meta-llama/llama-3.3-70b-instruct:free
     techstack_architect:
       primary: openrouter/meta-llama/llama-3.3-70b-instruct:free
       fallback:
-        - openrouter/google/gemma-3-27b-it:free
+      - openrouter/google/gemma-3-27b-it:free
     security:
       primary: openrouter/google/gemma-3-27b-it:free
       fallback:
-        - openrouter/meta-llama/llama-3.3-70b-instruct:free
+      - openrouter/meta-llama/llama-3.3-70b-instruct:free
   production:
     meta_orchestrator: openrouter/anthropic/claude-sonnet-4
     orchestrator: openrouter/anthropic/claude-sonnet-4

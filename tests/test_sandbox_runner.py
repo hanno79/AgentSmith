@@ -1,9 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-Tests für sandbox_runner.py
+Author: rahn
+Datum: 24.01.2026
+Version: 1.0
+Beschreibung: Tests für Sandbox Runner - Testet Code-Validierung und Syntax-Checks.
 """
 
 import pytest
+import shutil
 from sandbox_runner import detect_code_type, run_sandbox
 
 
@@ -132,10 +136,14 @@ if __name__ == "__main__":
 
     def test_javascript_arrow_function(self):
         """Test: JavaScript Arrow Functions."""
+        # Skip wenn Node.js nicht verfügbar
+        if shutil.which("node") is None:
+            pytest.skip("Node.js nicht verfügbar")
+        
         code = "const add = (a, b) => { return a + b; };"
         result = run_sandbox(code)
-        # Ergebnis hängt von Node.js ab
-        assert "JavaScript" in result or "python" in result.lower()
+        # Wenn Node.js verfügbar, sollte JavaScript erkannt werden
+        assert "JavaScript" in result
 
     # ==================== Edge Cases ====================
 

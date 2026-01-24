@@ -1,21 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-Coder Agent: Generiert Production-Ready Code basierend auf Projektanforderungen.
+Author: rahn
+Datum: 24.01.2026
+Version: 1.1
+Beschreibung: Coder Agent - Generiert Production-Ready Code basierend auf Projektanforderungen.
 """
 
 from typing import Any, Dict, List, Optional
 from crewai import Agent
 
-
-def _get_model_from_config(config: Dict[str, Any], role: str) -> str:
-    """Hilfsfunktion: Extrahiert Modell aus Config (unterstützt String und Dict-Format)."""
-    mode = config["mode"]
-    model_config = config["models"][mode].get(role)
-    if isinstance(model_config, str):
-        return model_config
-    elif isinstance(model_config, dict):
-        return model_config.get("primary", "")
-    return ""
+# ÄNDERUNG 24.01.2026: Zentrale Hilfsfunktion verwenden (Single Source of Truth)
+from agents.agent_utils import get_model_from_config, combine_project_rules
 
 
 def create_coder(config: Dict[str, Any], project_rules: Dict[str, List[str]], router=None) -> Agent:
@@ -34,11 +29,9 @@ def create_coder(config: Dict[str, Any], project_rules: Dict[str, List[str]], ro
     if router:
         model = router.get_model("coder")
     else:
-        model = _get_model_from_config(config, "coder")
+        model = get_model_from_config(config, "coder")
 
-    global_rules = "\n".join(project_rules.get("global", []))
-    role_rules = "\n".join(project_rules.get("coder", []))
-    combined_rules = f"Globale Regeln:\n{global_rules}\n\nCoder-spezifische Regeln:\n{role_rules}"
+    combined_rules = combine_project_rules(project_rules, "coder")
 
     return Agent(
         role="Senior Full-Stack Developer",

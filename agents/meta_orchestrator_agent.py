@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-Meta-Orchestrator v2.0
-Automatische Erkennung, Auswahl und Steuerung von Agenten basierend auf dem Nutzerprompt.
+Author: rahn
+Datum: 24.01.2026
+Version: 2.0
+Beschreibung: Meta-Orchestrator - Automatische Erkennung, Auswahl und Steuerung von Agenten.
 """
 
 import re

@@ -1,3 +1,10 @@
+/**
+ * Author: rahn
+ * Datum: 24.01.2026
+ * Version: 1.0
+ * Beschreibung: Mainframe Hub - Zentrale Steuerung für Konfiguration, Modelle und System-Status.
+ */
+
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -15,31 +22,51 @@ import {
   Check,
   X,
   Clock,
-  DollarSign
+  DollarSign,
+  AlertTriangle
 } from 'lucide-react';
 
-const API_BASE = 'http://localhost:8000';
+import { API_BASE, DEFAULTS } from './constants/config';
 
-const MainframeHub = () => {
+const MainframeHub = ({
+  maxRetries: propMaxRetries,
+  onMaxRetriesChange,
+  researchTimeout: propResearchTimeout,
+  onResearchTimeoutChange
+}) => {
   const [config, setConfig] = useState(null);
   const [agents, setAgents] = useState([]);
   const [availableModels, setAvailableModels] = useState({ free_models: [], paid_models: [] });
   const [routerStatus, setRouterStatus] = useState({ rate_limited_models: {}, usage_stats: {} });
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [selectedAgent, setSelectedAgent] = useState(null);
   const [showModelSelector, setShowModelSelector] = useState(false);
   const [serverTime, setServerTime] = useState(new Date());
   const [maxRetries, setMaxRetries] = useState(5);
+  const [researchTimeout, setResearchTimeout] = useState(5);
 
-  // Fetch all data on mount
+  // Verwende Props wenn vorhanden, sonst lokalen State (für Abwärtskompatibilität)
+  const effectiveMaxRetries = propMaxRetries !== undefined ? propMaxRetries : maxRetries;
+  const effectiveResearchTimeout = propResearchTimeout !== undefined ? propResearchTimeout : researchTimeout;
+
+  // Alle Daten beim Laden abrufen
   useEffect(() => {
     fetchData();
     const interval = setInterval(() => setServerTime(new Date()), 1000);
     return () => clearInterval(interval);
   }, []);
 
+  // Daten neu laden wenn config.mode sich ändert
+  useEffect(() => {
+    if (config?.mode) {
+      fetchData();
+    }
+  }, [config?.mode]);
+
   const fetchData = async () => {
     setLoading(true);
+    setError(null);
     try {
       const [configRes, agentsRes, modelsRes, routerRes] = await Promise.all([
         axios.get(`${API_BASE}/config`),
@@ -52,8 +79,10 @@ const MainframeHub = () => {
       setAvailableModels(modelsRes.data);
       setRouterStatus(routerRes.data);
       setMaxRetries(configRes.data.max_retries || 5);
+      setResearchTimeout(configRes.data.research_timeout_minutes || 5);
     } catch (err) {
       console.error('Failed to fetch data:', err);
+      setError(err);
     } finally {
       setLoading(false);
     }
@@ -64,8 +93,9 @@ const MainframeHub = () => {
     const newMode = config.mode === 'test' ? 'production' : 'test';
     try {
       await axios.put(`${API_BASE}/config/mode`, { mode: newMode });
-      setConfig({ ...config, mode: newMode });
-      fetchData(); // Refresh agents with new mode's models
+      // Reine State-Update ohne Side-Effects
+      setConfig(prevConfig => ({ ...prevConfig, mode: newMode }));
+      // fetchData wird automatisch durch useEffect ausgelöst wenn config.mode sich ändert
     } catch (err) {
       console.error('Failed to toggle mode:', err);
     }
@@ -92,16 +122,37 @@ const MainframeHub = () => {
   };
 
   const updateMaxRetries = async (value) => {
-    setMaxRetries(value);
-    try {
-      await axios.put(`${API_BASE}/config/max-retries`, { max_retries: value });
-    } catch (err) {
-      console.error('Failed to update max retries:', err);
+    if (onMaxRetriesChange) {
+      // Wenn Callback vorhanden, delegiere an Parent (App.jsx)
+      onMaxRetriesChange(value);
+    } else {
+      // Fallback: Lokaler State + API-Call
+      setMaxRetries(value);
+      try {
+        await axios.put(`${API_BASE}/config/max-retries`, { max_retries: value });
+      } catch (err) {
+        console.error('Failed to update max retries:', err);
+      }
+    }
+  };
+
+  const updateResearchTimeout = async (value) => {
+    if (onResearchTimeoutChange) {
+      // Wenn Callback vorhanden, delegiere an Parent (App.jsx)
+      onResearchTimeoutChange(value);
+    } else {
+      // Fallback: Lokaler State + API-Call
+      setResearchTimeout(value);
+      try {
+        await axios.put(`${API_BASE}/config/research-timeout`, { research_timeout_minutes: value });
+      } catch (err) {
+        console.error('Failed to update research timeout:', err);
+      }
     }
   };
 
   const getModelDisplayName = (modelId) => {
-    // Handle case where modelId is an object (nested config with primary/fallback)
+    // Behandle Fall wo modelId ein Objekt ist (verschachtelte Config mit primary/fallback)
     if (typeof modelId === 'object' && modelId !== null) {
       modelId = modelId.primary || JSON.stringify(modelId);
     }
@@ -122,6 +173,24 @@ const MainframeHub = () => {
     return (
       <div className="h-full flex items-center justify-center bg-[#0a0a0a]">
         <RefreshCw className="w-8 h-8 text-primary animate-spin" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="h-full flex items-center justify-center bg-[#0a0a0a]">
+        <div className="flex flex-col items-center gap-4 max-w-md text-center">
+          <AlertTriangle className="w-12 h-12 text-red-500" />
+          <span className="text-white font-bold text-lg">Connection Error</span>
+          <span className="text-[#9cbaa6] text-sm">Failed to load configuration. Please check if the server is running.</span>
+          <button
+            onClick={fetchData}
+            className="mt-4 px-4 py-2 bg-primary/20 border border-primary/30 rounded text-primary font-bold uppercase tracking-wider hover:bg-primary/30 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
       </div>
     );
   }
@@ -200,6 +269,16 @@ const MainframeHub = () => {
                       setSelectedAgent(agent);
                       setShowModelSelector(true);
                     }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setSelectedAgent(agent);
+                        setShowModelSelector(true);
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`${agent.name} - ${agent.role} - ${isModelRateLimited(agent.model) ? 'Rate Limited' : 'Ready'}`}
                     className={`group relative bg-[#1b271f] hover:bg-[#233328] border border-[#28392e] hover:border-primary/50 rounded-lg p-3 transition-all cursor-pointer ${
                       isModelRateLimited(agent.model) ? 'opacity-60' : ''
                     }`}
@@ -345,7 +424,7 @@ const MainframeHub = () => {
                     <RefreshCw size={14} className="text-primary" />
                     Retry Configuration
                   </h4>
-                  <span className="text-primary font-mono font-bold text-lg">{maxRetries}</span>
+                  <span className="text-primary font-mono font-bold text-lg">{effectiveMaxRetries}</span>
                 </div>
 
                 <div className="bg-[#1b271f] p-3 rounded-lg border border-[#28392e]">
@@ -355,7 +434,7 @@ const MainframeHub = () => {
                       type="range"
                       min="1"
                       max="100"
-                      value={maxRetries}
+                      value={effectiveMaxRetries}
                       onChange={(e) => updateMaxRetries(parseInt(e.target.value))}
                       className="flex-1 mainframe-slider"
                     />
@@ -363,6 +442,35 @@ const MainframeHub = () => {
                   </div>
                   <p className="text-[10px] text-[#5c856b] mt-2 text-center">
                     Maximum retry attempts for agent operations
+                  </p>
+                </div>
+              </div>
+
+              {/* System Settings - Research Timeout */}
+              <div className="w-full bg-[#0d120f] border-t border-[#28392e] p-4">
+                <div className="flex justify-between items-center mb-3">
+                  <h4 className="text-[#9cbaa6] text-xs font-bold uppercase tracking-widest flex items-center gap-2">
+                    <Clock size={14} className="text-primary" />
+                    Research Timeout
+                  </h4>
+                  <span className="text-primary font-mono font-bold text-lg">{effectiveResearchTimeout} min</span>
+                </div>
+
+                <div className="bg-[#1b271f] p-3 rounded-lg border border-[#28392e]">
+                  <div className="flex items-center gap-4">
+                    <span className="text-[10px] text-[#9cbaa6] font-mono w-6">1</span>
+                    <input
+                      type="range"
+                      min="1"
+                      max="60"
+                      value={effectiveResearchTimeout}
+                      onChange={(e) => updateResearchTimeout(parseInt(e.target.value))}
+                      className="flex-1 mainframe-slider"
+                    />
+                    <span className="text-[10px] text-[#9cbaa6] font-mono w-8">60</span>
+                  </div>
+                  <p className="text-[10px] text-[#5c856b] mt-2 text-center">
+                    Maximale Zeit für Web-Recherche (in Minuten)
                   </p>
                 </div>
               </div>

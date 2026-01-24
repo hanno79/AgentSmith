@@ -1,12 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-Sandbox Runner: Sichere Code-Validierung ohne Ausführung.
-Verwendet AST-Parsing für Python und Syntax-Checks für JS/HTML.
-
-Security Features:
-- AST-Parsing für Python (keine Code-Ausführung)
-- Sichere Temp-Dateien mit tempfile (Race Condition Prevention)
-- subprocess statt os.system (sicherer)
+Author: rahn
+Datum: 24.01.2026
+Version: 1.0
+Beschreibung: Sandbox Runner - Sichere Code-Validierung ohne Ausführung.
+              Security Features: AST-Parsing, sichere Temp-Dateien, subprocess statt os.system.
 """
 
 import os
