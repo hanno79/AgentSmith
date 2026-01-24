@@ -72,6 +72,190 @@ body {
     background: #0df259;
 }
 
+/* Office scrollbar - blue theme for Coder Agent */
+.office-scrollbar::-webkit-scrollbar {
+    width: 6px;
+}
+.office-scrollbar::-webkit-scrollbar-track {
+    background: #0f172a;
+}
+.office-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(59, 130, 246, 0.3);
+    border-radius: 4px;
+}
+.office-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(59, 130, 246, 0.5);
+}
+.office-scrollbar::-webkit-scrollbar-thumb:active {
+    background: rgba(59, 130, 246, 0.7);
+}
+/* Firefox support */
+.office-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(59, 130, 246, 0.3) #0f172a;
+}
+
+/* Tester Office scrollbar - orange theme */
+.tester-scrollbar::-webkit-scrollbar {
+    width: 6px;
+}
+.tester-scrollbar::-webkit-scrollbar-track {
+    background: #111418;
+}
+.tester-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(249, 115, 22, 0.3);
+    border-radius: 4px;
+}
+.tester-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(249, 115, 22, 0.5);
+}
+.tester-scrollbar::-webkit-scrollbar-thumb:active {
+    background: rgba(249, 115, 22, 0.7);
+}
+/* Firefox support */
+.tester-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(249, 115, 22, 0.3) #111418;
+}
+
+/* Designer Office scrollbar - pink theme */
+.designer-scrollbar::-webkit-scrollbar {
+    width: 6px;
+}
+.designer-scrollbar::-webkit-scrollbar-track {
+    background: #0d1117;
+}
+.designer-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(236, 72, 153, 0.3);
+    border-radius: 4px;
+}
+.designer-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(236, 72, 153, 0.5);
+}
+.designer-scrollbar::-webkit-scrollbar-thumb:active {
+    background: rgba(236, 72, 153, 0.7);
+}
+/* Firefox support */
+.designer-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(236, 72, 153, 0.3) #0d1117;
+}
+
+/* Reviewer Office scrollbar - yellow/gold theme */
+.reviewer-scrollbar::-webkit-scrollbar {
+    width: 6px;
+}
+.reviewer-scrollbar::-webkit-scrollbar-track {
+    background: #0d1117;
+}
+.reviewer-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(234, 179, 8, 0.3);
+    border-radius: 4px;
+}
+.reviewer-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(234, 179, 8, 0.5);
+}
+.reviewer-scrollbar::-webkit-scrollbar-thumb:active {
+    background: rgba(234, 179, 8, 0.7);
+}
+/* Firefox support */
+.reviewer-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(234, 179, 8, 0.3) #0d1117;
+}
+
+/* Researcher Office scrollbar - cyan/teal theme */
+.researcher-scrollbar::-webkit-scrollbar {
+    width: 6px;
+}
+.researcher-scrollbar::-webkit-scrollbar-track {
+    background: #0f172a;
+}
+.researcher-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(6, 182, 212, 0.3);
+    border-radius: 4px;
+}
+.researcher-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(6, 182, 212, 0.5);
+}
+.researcher-scrollbar::-webkit-scrollbar-thumb:active {
+    background: rgba(6, 182, 212, 0.7);
+}
+/* Firefox support */
+.researcher-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(6, 182, 212, 0.3) #0f172a;
+}
+
+/* Security Office scrollbar - red theme */
+.security-scrollbar::-webkit-scrollbar {
+    width: 6px;
+}
+.security-scrollbar::-webkit-scrollbar-track {
+    background: #0f172a;
+}
+.security-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(239, 68, 68, 0.3);
+    border-radius: 4px;
+}
+.security-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(239, 68, 68, 0.5);
+}
+.security-scrollbar::-webkit-scrollbar-thumb:active {
+    background: rgba(239, 68, 68, 0.7);
+}
+/* Firefox support */
+.security-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(239, 68, 68, 0.3) #0f172a;
+}
+
+/* TechStack Office scrollbar - violet/purple theme */
+.techstack-scrollbar::-webkit-scrollbar {
+    width: 6px;
+}
+.techstack-scrollbar::-webkit-scrollbar-track {
+    background: #0f172a;
+}
+.techstack-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(139, 92, 246, 0.3);
+    border-radius: 4px;
+}
+.techstack-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(139, 92, 246, 0.5);
+}
+.techstack-scrollbar::-webkit-scrollbar-thumb:active {
+    background: rgba(139, 92, 246, 0.7);
+}
+/* Firefox support */
+.techstack-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(139, 92, 246, 0.3) #0f172a;
+}
+
+/* DBDesigner Office scrollbar - emerald/green theme */
+.dbdesigner-scrollbar::-webkit-scrollbar {
+    width: 6px;
+}
+.dbdesigner-scrollbar::-webkit-scrollbar-track {
+    background: #0f172a;
+}
+.dbdesigner-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(16, 185, 129, 0.3);
+    border-radius: 4px;
+}
+.dbdesigner-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(16, 185, 129, 0.5);
+}
+.dbdesigner-scrollbar::-webkit-scrollbar-thumb:active {
+    background: rgba(16, 185, 129, 0.7);
+}
+/* Firefox support */
+.dbdesigner-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(16, 185, 129, 0.3) #0f172a;
+}
+
 .grid-bg {
     background-size: 40px 40px;
     mask-image: linear-gradient(to bottom, black 40%, transparent 100%);

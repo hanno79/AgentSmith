@@ -27,6 +27,14 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import MainframeHub from './MainframeHub';
 import BudgetDashboard from './BudgetDashboard';
+import CoderOffice from './CoderOffice';
+import TesterOffice from './TesterOffice';
+import DesignerOffice from './DesignerOffice';
+import ReviewerOffice from './ReviewerOffice';
+import ResearcherOffice from './ResearcherOffice';
+import SecurityOffice from './SecurityOffice';
+import TechStackOffice from './TechStackOffice';
+import DBDesignerOffice from './DBDesignerOffice';
 import { DollarSign } from 'lucide-react';
 
 const App = () => {
@@ -95,6 +103,103 @@ const App = () => {
       setStatus('Error');
     }
   };
+
+  // Render Agent Offices
+  if (currentRoom === 'agent-coder') {
+    return (
+      <CoderOffice
+        agentName="Coder"
+        status={activeAgents.coder.status}
+        logs={logs.filter(l => l.agent === 'Coder')}
+        onBack={() => setCurrentRoom('mission-control')}
+        color="blue"
+      />
+    );
+  }
+
+  if (currentRoom === 'agent-tester') {
+    return (
+      <TesterOffice
+        agentName="Tester"
+        status={activeAgents.tester.status}
+        logs={logs.filter(l => l.agent === 'Tester')}
+        onBack={() => setCurrentRoom('mission-control')}
+        color="orange"
+      />
+    );
+  }
+
+  if (currentRoom === 'agent-designer') {
+    return (
+      <DesignerOffice
+        agentName="Designer"
+        status={activeAgents.designer.status}
+        logs={logs.filter(l => l.agent === 'Designer')}
+        onBack={() => setCurrentRoom('mission-control')}
+        color="pink"
+      />
+    );
+  }
+
+  if (currentRoom === 'agent-reviewer') {
+    return (
+      <ReviewerOffice
+        agentName="Reviewer"
+        status={activeAgents.reviewer.status}
+        logs={logs.filter(l => l.agent === 'Reviewer')}
+        onBack={() => setCurrentRoom('mission-control')}
+        color="yellow"
+      />
+    );
+  }
+
+  if (currentRoom === 'agent-researcher') {
+    return (
+      <ResearcherOffice
+        agentName="Researcher"
+        status={activeAgents.researcher.status}
+        logs={logs.filter(l => l.agent === 'Researcher')}
+        onBack={() => setCurrentRoom('mission-control')}
+        color="cyan"
+      />
+    );
+  }
+
+  if (currentRoom === 'agent-security') {
+    return (
+      <SecurityOffice
+        agentName="Security"
+        status={activeAgents.security.status}
+        logs={logs.filter(l => l.agent === 'Security')}
+        onBack={() => setCurrentRoom('mission-control')}
+        color="red"
+      />
+    );
+  }
+
+  if (currentRoom === 'agent-techstack') {
+    return (
+      <TechStackOffice
+        agentName="Tech-Stack"
+        status={activeAgents.techarchitect.status}
+        logs={logs.filter(l => l.agent === 'TechArchitect')}
+        onBack={() => setCurrentRoom('mission-control')}
+        color="purple"
+      />
+    );
+  }
+
+  if (currentRoom === 'agent-dbdesigner') {
+    return (
+      <DBDesignerOffice
+        agentName="Database Designer"
+        status={activeAgents.dbdesigner.status}
+        logs={logs.filter(l => l.agent === 'DBDesigner')}
+        onBack={() => setCurrentRoom('mission-control')}
+        color="green"
+      />
+    );
+  }
 
   // Render Mainframe Hub or Budget Dashboard if selected
   if (currentRoom === 'mainframe' || currentRoom === 'budget-dashboard') {
@@ -267,6 +372,7 @@ const App = () => {
                 color="cyan"
                 status={activeAgents.researcher.status}
                 logs={logs.filter(l => l.agent === 'Researcher')}
+                onOpenOffice={() => setCurrentRoom('agent-researcher')}
               />
               <AgentCard
                 name="Coder"
@@ -274,13 +380,15 @@ const App = () => {
                 color="blue"
                 status={activeAgents.coder.status}
                 logs={logs.filter(l => l.agent === 'Coder')}
+                onOpenOffice={() => setCurrentRoom('agent-coder')}
               />
               <AgentCard
                 name="Designer"
                 icon={<Palette size={24} />}
-                color="purple"
+                color="pink"
                 status={activeAgents.designer.status}
                 logs={logs.filter(l => l.agent === 'Designer')}
+                onOpenOffice={() => setCurrentRoom('agent-designer')}
               />
               <AgentCard
                 name="Reviewer"
@@ -288,20 +396,23 @@ const App = () => {
                 color="yellow"
                 status={activeAgents.reviewer.status}
                 logs={logs.filter(l => l.agent === 'Reviewer')}
+                onOpenOffice={() => setCurrentRoom('agent-reviewer')}
               />
               <AgentCard
                 name="Tester"
                 icon={<Bug size={24} />}
-                color="red"
+                color="orange"
                 status={activeAgents.tester.status}
                 logs={logs.filter(l => l.agent === 'Tester')}
+                onOpenOffice={() => setCurrentRoom('agent-tester')}
               />
               <AgentCard
                 name="Tech Architect"
                 icon={<Cpu size={24} />}
-                color="indigo"
+                color="purple"
                 status={activeAgents.techarchitect.status}
                 logs={logs.filter(l => l.agent === 'TechArchitect')}
+                onOpenOffice={() => setCurrentRoom('agent-techstack')}
               />
               <AgentCard
                 name="DB Designer"
@@ -309,13 +420,15 @@ const App = () => {
                 color="green"
                 status={activeAgents.dbdesigner.status}
                 logs={logs.filter(l => l.agent === 'DBDesigner')}
+                onOpenOffice={() => setCurrentRoom('agent-dbdesigner')}
               />
               <AgentCard
                 name="Security"
                 icon={<Lock size={24} />}
-                color="orange"
+                color="red"
                 status={activeAgents.security.status}
                 logs={logs.filter(l => l.agent === 'Security')}
+                onOpenOffice={() => setCurrentRoom('agent-security')}
               />
             </div>
           </div>
@@ -405,10 +518,11 @@ const App = () => {
   );
 };
 
-const AgentCard = ({ name, icon, color, status, logs }) => {
+const AgentCard = ({ name, icon, color, status, logs, onOpenOffice }) => {
   const colors = {
     blue: 'border-blue-500/40 text-blue-400 bg-blue-500/10',
     purple: 'border-purple-500/40 text-purple-400 bg-purple-500/10',
+    pink: 'border-pink-500/40 text-pink-400 bg-pink-500/10',
     yellow: 'border-yellow-500/40 text-yellow-400 bg-yellow-500/10',
     red: 'border-red-500/40 text-red-400 bg-red-500/10',
     green: 'border-green-500/40 text-green-400 bg-green-500/10',
@@ -420,6 +534,7 @@ const AgentCard = ({ name, icon, color, status, logs }) => {
   const glowStyles = {
     blue: '0 0 30px rgba(59, 130, 246, 0.8), 0 0 15px rgba(59, 130, 246, 0.5), 0 0 5px rgba(255, 255, 255, 0.3)',
     purple: '0 0 30px rgba(168, 85, 247, 0.8), 0 0 15px rgba(168, 85, 247, 0.5), 0 0 5px rgba(255, 255, 255, 0.3)',
+    pink: '0 0 30px rgba(236, 72, 153, 0.8), 0 0 15px rgba(236, 72, 153, 0.5), 0 0 5px rgba(255, 255, 255, 0.3)',
     yellow: '0 0 30px rgba(234, 179, 8, 0.8), 0 0 15px rgba(234, 179, 8, 0.5), 0 0 5px rgba(255, 255, 255, 0.3)',
     red: '0 0 30px rgba(239, 68, 68, 0.8), 0 0 15px rgba(239, 68, 68, 0.5), 0 0 5px rgba(255, 255, 255, 0.3)',
     green: '0 0 30px rgba(34, 197, 94, 0.8), 0 0 15px rgba(34, 197, 94, 0.5), 0 0 5px rgba(255, 255, 255, 0.3)',
@@ -434,6 +549,7 @@ const AgentCard = ({ name, icon, color, status, logs }) => {
   const borderColors = {
     blue: '#3b82f6',
     purple: '#a855f7',
+    pink: '#ec4899',
     yellow: '#eab308',
     red: '#ef4444',
     green: '#22c55e',
@@ -465,9 +581,23 @@ const AgentCard = ({ name, icon, color, status, logs }) => {
             <p className="text-[10px] text-slate-500">Node Status: Online</p>
           </div>
         </div>
-        <div className={`px-2 py-0.5 rounded-full border text-[9px] font-bold uppercase transition-all ${status !== 'Idle' ? colors[color] : 'bg-[#283039] border-border-dark text-slate-500'
-          }`}>
-          {status}
+        <div className="flex items-center gap-2">
+          <div className={`px-2 py-0.5 rounded-full border text-[9px] font-bold uppercase transition-all ${status !== 'Idle' ? colors[color] : 'bg-[#283039] border-border-dark text-slate-500'
+            }`}>
+            {status}
+          </div>
+          {onOpenOffice && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenOffice(name.toLowerCase().replace(' ', ''));
+              }}
+              className={`p-1.5 rounded-lg border transition-all hover:scale-105 ${colors[color]}`}
+              title={`Open ${name} Office`}
+            >
+              <ExternalLink size={12} />
+            </button>
+          )}
         </div>
       </div>
 
