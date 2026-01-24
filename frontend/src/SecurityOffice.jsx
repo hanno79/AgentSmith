@@ -1,10 +1,11 @@
 /**
  * Author: rahn
  * Datum: 24.01.2026
- * Version: 1.2
+ * Version: 1.3
  * Beschreibung: Security Office - Detailansicht für den Security-Agenten mit Bedrohungsanalyse.
  *               ÄNDERUNG 24.01.2026: Dummy-Daten entfernt, echte Props vom Backend.
  *               ÄNDERUNG 24.01.2026: Scan-Typ Anzeige (Code-Scan vs. Anforderungs-Scan) und Blocking-Warnung.
+ *               ÄNDERUNG 24.01.2026: Individuelle Vulnerabilities mit FIX-Vorschlägen anzeigen.
  */
 
 import React, { useRef, useState } from 'react';
@@ -507,6 +508,39 @@ const SecurityOffice = ({
                 </div>
               ) : (
                 <div className="space-y-3">
+                  {/* ÄNDERUNG 24.01.2026: Individuelle Vulnerabilities mit FIX-Vorschlägen */}
+                  {vulnerabilities.length > 0 && (
+                    <div className="space-y-2 mb-4">
+                      <h5 className="text-xs font-bold text-slate-400 uppercase mb-2">Gefundene Schwachstellen</h5>
+                      {vulnerabilities.map((vuln, i) => (
+                        <div key={`vuln-${i}`} className={`p-3 rounded-lg border ${
+                          vuln.severity === 'critical' ? 'bg-red-950/30 border-red-500/40' :
+                          vuln.severity === 'high' ? 'bg-orange-950/30 border-orange-500/40' :
+                          vuln.severity === 'medium' ? 'bg-amber-950/30 border-amber-500/40' :
+                          'bg-slate-800/30 border-slate-600/40'
+                        }`}>
+                          <div className="flex items-start gap-2">
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0 ${
+                              vuln.severity === 'critical' ? 'bg-red-500/20 text-red-300' :
+                              vuln.severity === 'high' ? 'bg-orange-500/20 text-orange-300' :
+                              vuln.severity === 'medium' ? 'bg-amber-500/20 text-amber-300' :
+                              'bg-slate-500/20 text-slate-300'
+                            }`}>{vuln.severity}</span>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs text-white break-words">{vuln.description}</p>
+                              {vuln.fix && (
+                                <p className="text-[11px] text-green-400 mt-1 flex items-start gap-1">
+                                  <span className="text-green-500 shrink-0">→</span>
+                                  <span className="break-words">FIX: {vuln.fix}</span>
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {/* Gruppierte Mitigation Targets */}
                   {mitigationTargets.map((target, i) => (
                     <div
                       key={i}
