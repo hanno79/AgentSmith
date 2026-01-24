@@ -308,26 +308,36 @@ class OrchestrationManager:
         return tables[:10]  # Limitiere auf 10 Tabellen für UI
 
     # ÄNDERUNG 24.01.2026: Hilfsfunktion für Security-Vulnerabilities Extraktion
+    # ÄNDERUNG 24.01.2026: Erweitert um FIX-Extraktion für Lösungsvorschläge
     def _extract_vulnerabilities(self, security_result: str) -> List[Dict[str, Any]]:
         """
-        Extrahiert Vulnerabilities aus dem Security-Agent Output.
+        Extrahiert Vulnerabilities UND Lösungsvorschläge aus dem Security-Agent Output.
 
         Args:
             security_result: Rohtext-Ergebnis der Sicherheitsanalyse
 
         Returns:
-            Liste von Vulnerability-Dictionaries mit severity, description, type
+            Liste von Vulnerability-Dictionaries mit severity, description, fix, type
         """
         vulnerabilities = []
         if not security_result:
             return vulnerabilities
 
-        # Suche nach VULNERABILITY: Patterns im Agent-Output
-        vuln_pattern = r'VULNERABILITY:\s*(.+?)(?=VULNERABILITY:|$)'
+        # Neues Pattern: "VULNERABILITY: [description] | FIX: [solution]"
+        vuln_pattern = r'VULNERABILITY:\s*(.+?)(?:\s*\|\s*FIX:\s*(.+?))?(?=VULNERABILITY:|$)'
         matches = re.findall(vuln_pattern, security_result, re.IGNORECASE | re.DOTALL)
 
         for match in matches:
-            vuln_text = match.strip()
+            vuln_text = match[0].strip() if match[0] else ""
+            fix_text = match[1].strip() if len(match) > 1 and match[1] else ""
+
+            # Falls kein FIX gefunden, versuche alternative Patterns
+            if not fix_text and "|" in vuln_text:
+                parts = vuln_text.split("|", 1)
+                vuln_text = parts[0].strip()
+                if len(parts) > 1 and "fix" in parts[1].lower():
+                    fix_text = parts[1].replace("FIX:", "").replace("fix:", "").strip()
+
             severity = "medium"
 
             # Severity-Klassifikation basierend auf Schlüsselwörtern
@@ -335,12 +345,13 @@ class OrchestrationManager:
                 severity = "critical"
             elif any(word in vuln_text.lower() for word in ["high", "hoch", "xss", "csrf", "injection"]):
                 severity = "high"
-            elif any(word in vuln_text.lower() for word in ["low", "niedrig", "info", "informational"]):
+            elif any(word in vuln_text.lower() for word in ["low", "niedrig", "info", "informational", "minimal"]):
                 severity = "low"
 
             vulnerabilities.append({
                 "severity": severity,
                 "description": vuln_text[:200],
+                "fix": fix_text[:300],  # NEU: Lösungsvorschlag
                 "type": "SECURITY_ISSUE"
             })
 
@@ -688,6 +699,9 @@ class OrchestrationManager:
             feedback = ""
             iteration = 0
             success = False
+            # ÄNDERUNG 24.01.2026: Security-Retry-Counter für max_security_retries
+            security_retry_count = 0
+            max_security_retries = self.config.get("max_security_retries", 3)  # Nach 3 Versuchen: Warnung statt Blockade
 
             while iteration < max_retries:
                 self._ui_log("Coder", "Iteration", f"{iteration+1} / {max_retries}")
@@ -883,6 +897,7 @@ class OrchestrationManager:
                     self._ui_log("Security", "RescanStart", f"Prüfe generierten Code (Iteration {iteration+1})...")
                     set_current_agent("Security", project_id)
 
+                    # ÄNDERUNG 24.01.2026: Security-Prompt mit Lösungsvorschlägen
                     security_rescan_prompt = f"""Analysiere den generierten Code auf Sicherheitslücken:
 
 TECH-STACK: {json.dumps(self.tech_blueprint) if self.tech_blueprint else 'Unbekannt'}
@@ -890,9 +905,20 @@ TECH-STACK: {json.dumps(self.tech_blueprint) if self.tech_blueprint else 'Unbeka
 CODE:
 {self.current_code[:8000]}
 
+WICHTIG: Für JEDES gefundene Problem gib einen KONKRETEN LÖSUNGSVORSCHLAG!
+
+Format für jedes Problem:
+VULNERABILITY: [Beschreibung] | FIX: [Konkreter Code-Vorschlag]
+
+Beispiele:
+- VULNERABILITY: eval() ermöglicht Code Injection | FIX: Verwende Function() Konstruktor mit Whitelist oder implementiere einen sicheren Parser mit nur erlaubten Operatoren (+,-,*,/)
+- VULNERABILITY: innerHTML ermöglicht XSS | FIX: Verwende textContent statt innerHTML
+
 Prüfe auf: SQL Injection, XSS, CSRF, Hardcoded Secrets, Path Traversal, unsichere Dependencies.
 
-Antworte mit 'SECURE' wenn sicher, oder 'VULNERABILITY: [Beschreibung]' für jedes Problem."""
+Sei PRAGMATISCH: Wenn ein Sicherheitsrisiko durch die Anwendungsarchitektur bedingt minimal ist (z.B. eval() in einem Taschenrechner der nur Zahlen und Operatoren über Buttons akzeptiert), markiere es als 'low' severity.
+
+Antworte mit 'SECURE' wenn keine kritischen/hohen Issues, oder 'VULNERABILITY: ... | FIX: ...' für jedes Problem."""
 
                     task_security_rescan = Task(
                         description=security_rescan_prompt,
@@ -929,6 +955,15 @@ Antworte mit 'SECURE' wenn sicher, oder 'VULNERABILITY: [Beschreibung]' für jed
                         self._ui_log("Security", "Error", f"Security-Rescan fehlgeschlagen: {sec_err}")
                         security_passed = True  # Bei Fehler nicht blockieren
 
+                # ÄNDERUNG 24.01.2026: Nach max_security_retries nur noch warnen, nicht blockieren
+                if not security_passed:
+                    security_retry_count += 1
+                    if security_retry_count >= max_security_retries:
+                        self._ui_log("Security", "Warning",
+                            f"⚠️ {len(security_rescan_vulns)} Security-Issues nach {security_retry_count} Versuchen nicht behoben. "
+                            f"Fahre mit Warnung fort (keine Blockade).")
+                        security_passed = True  # Erlaube Fortfahren mit Warnung
+
                 # STRIKTER CHECK: Reviewer OK + Sandbox OK + Security SECURE
                 if "OK" in review_output.upper() and not sandbox_failed and security_passed:
                     success = True
@@ -947,13 +982,15 @@ Antworte mit 'SECURE' wenn sicher, oder 'VULNERABILITY: [Beschreibung]' für jed
                     if sandbox_failed and "OK" in review_output.upper():
                         feedback = f"KRITISCHER FEHLER: Die Sandbox oder der Tester hat Fehler (❌) gemeldet, aber du hast OK gesagt. Bitte analysiere die Fehlermeldungen erneut:\n{sandbox_result}\n{test_summary}"
 
-                    # ÄNDERUNG 24.01.2026: Security-Issues als Feedback an Coder
+                    # ÄNDERUNG 24.01.2026: Security-Issues MIT Lösungsvorschlägen als Feedback an Coder
                     if not security_passed and security_rescan_vulns:
                         security_feedback = "\n".join([
-                            f"- [{v.get('severity', 'unknown').upper()}] {v.get('description', '')}"
+                            f"- [{v.get('severity', 'unknown').upper()}] {v.get('description', '')}\n"
+                            f"  → LÖSUNG: {v.get('fix', 'Bitte beheben')}"
                             for v in security_rescan_vulns
                         ])
-                        feedback += f"\n\n⚠️ SECURITY VULNERABILITIES (BLOCKIEREN ABSCHLUSS):\n{security_feedback}\n"
+                        feedback += f"\n\n⚠️ SECURITY VULNERABILITIES MIT LÖSUNGSVORSCHLÄGEN:\n{security_feedback}\n"
+                        feedback += "WICHTIG: Setze die Lösungsvorschläge (→ LÖSUNG) um!\n"
                         feedback += "Diese Sicherheitslücken MÜSSEN behoben werden bevor das Projekt abgeschlossen werden kann!\n"
                         self._ui_log("Security", "BlockingIssues", f"❌ {len(security_rescan_vulns)} Vulnerabilities blockieren Abschluss")
 
