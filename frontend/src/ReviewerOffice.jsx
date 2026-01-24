@@ -31,7 +31,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 
-// ÄNDERUNG 24.01.2026: Erweiterte Props für echte Daten vom Backend
+// ÄNDERUNG 24.01.2026: Erweiterte Props für echte Daten vom Backend (inkl. humanSummary)
 const ReviewerOffice = ({
   agentName = "Reviewer",
   status = "Idle",
@@ -39,6 +39,8 @@ const ReviewerOffice = ({
   onBack,
   color = "yellow",
   verdict = "",
+  isApproved = false,
+  humanSummary = "",
   feedback = "",
   model = "",
   iteration = 0,
@@ -451,36 +453,64 @@ const ReviewerOffice = ({
             )}
           </div>
 
-          {/* Decision Panel - Zeigt aktuelles Verdict */}
+          {/* Decision Panel - Zeigt aktuelles Verdict mit menschenlesbarer Zusammenfassung */}
           <div className="p-4 border-b border-[#30363d] bg-[#161b22]">
             <h3 className="text-xs font-bold text-slate-300 flex items-center gap-2 mb-3">
               <Gavel size={16} className="text-yellow-500" />
-              Aktuelles Verdict
+              Review Ergebnis
             </h3>
             {verdict ? (
-              <div className={`w-full py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 ${
-                verdict === 'OK'
-                  ? 'bg-green-600 text-white shadow-[0_0_15px_rgba(34,197,94,0.3)]'
-                  : 'bg-yellow-500/20 border border-yellow-500/50 text-yellow-500'
-              }`}>
-                {verdict === 'OK' ? <CheckCircle size={16} /> : <Edit3 size={16} />}
-                {verdict === 'OK' ? 'Approved' : 'Changes Requested'}
-              </div>
+              <>
+                {/* Hauptstatus-Box mit klarem OK/NICHT OK */}
+                <div className={`w-full py-4 px-4 rounded-lg font-bold text-base flex flex-col items-center justify-center gap-2 ${
+                  isApproved
+                    ? 'bg-green-600 text-white shadow-[0_0_20px_rgba(34,197,94,0.4)]'
+                    : sandboxStatus === 'FAIL'
+                      ? 'bg-red-600/20 border-2 border-red-500 text-red-400'
+                      : 'bg-yellow-500/20 border-2 border-yellow-500 text-yellow-400'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    {isApproved ? (
+                      <CheckCircle size={24} />
+                    ) : sandboxStatus === 'FAIL' ? (
+                      <XCircle size={24} />
+                    ) : (
+                      <AlertTriangle size={24} />
+                    )}
+                    <span className="text-lg">
+                      {isApproved ? 'REVIEW BESTANDEN' : sandboxStatus === 'FAIL' ? 'REVIEW FEHLGESCHLAGEN' : 'ÄNDERUNGEN NÖTIG'}
+                    </span>
+                  </div>
+                </div>
+                {/* Menschenlesbare Zusammenfassung */}
+                {humanSummary && (
+                  <div className={`mt-3 p-3 rounded-lg text-sm ${
+                    isApproved
+                      ? 'bg-green-900/20 border border-green-500/30 text-green-300'
+                      : sandboxStatus === 'FAIL'
+                        ? 'bg-red-900/20 border border-red-500/30 text-red-300'
+                        : 'bg-yellow-900/20 border border-yellow-500/30 text-yellow-300'
+                  }`}>
+                    {humanSummary}
+                  </div>
+                )}
+              </>
             ) : (
-              <div className="w-full py-3 rounded-lg bg-slate-800 border border-slate-700 text-slate-500 font-medium text-sm text-center">
-                Warte auf Verdict...
+              <div className="w-full py-4 rounded-lg bg-slate-800 border border-slate-700 text-slate-500 font-medium text-sm text-center flex items-center justify-center gap-2">
+                <RefreshCw size={16} className="animate-spin" />
+                Warte auf Review-Ergebnis...
               </div>
             )}
           </div>
 
-          {/* Feedback Section (wenn vorhanden) */}
+          {/* Feedback Section (wenn vorhanden) - ÄNDERUNG: Vollständiges Feedback ohne Begrenzung */}
           {feedback && (
             <div className="p-4 border-b border-[#30363d] bg-[#0d1117]">
               <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">
-                Reviewer Feedback
+                Vollständiges Reviewer Feedback
               </h3>
-              <div className="bg-yellow-900/10 border border-yellow-500/20 rounded-lg p-3 max-h-40 overflow-auto">
-                <p className="text-sm text-yellow-200 whitespace-pre-wrap">{feedback.slice(0, 500)}{feedback.length > 500 ? '...' : ''}</p>
+              <div className="bg-yellow-900/10 border border-yellow-500/20 rounded-lg p-3 max-h-60 overflow-auto">
+                <p className="text-sm text-yellow-200 whitespace-pre-wrap">{feedback}</p>
               </div>
             </div>
           )}

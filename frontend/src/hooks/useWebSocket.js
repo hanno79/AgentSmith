@@ -1,11 +1,12 @@
 /**
  * Author: rahn
  * Datum: 24.01.2026
- * Version: 1.2
+ * Version: 1.3
  * Beschreibung: Custom Hook für WebSocket-Verbindung zum Backend.
  *               Verarbeitet Echtzeit-Nachrichten von den Agenten.
  *               ÄNDERUNG 24.01.2026: DBDesignerOutput Event Handler hinzugefügt.
  *               ÄNDERUNG 24.01.2026: SecurityOutput Event Handler hinzugefügt.
+ *               ÄNDERUNG 24.01.2026: SecurityRescanOutput Event Handler für Code-Scan hinzugefügt.
  */
 
 import { useEffect, useRef } from 'react';
@@ -122,7 +123,7 @@ const useWebSocket = (setLogs, activeAgents, setActiveAgents, setAgentData, setS
         }
       }
 
-      // ÄNDERUNG 24.01.2026: ReviewOutput Event für Reviewer Office
+      // ÄNDERUNG 24.01.2026: ReviewOutput Event für Reviewer Office (erweitert mit humanSummary)
       if (data.event === 'ReviewOutput' && data.agent === 'Reviewer') {
         try {
           const payload = JSON.parse(data.message);
@@ -130,6 +131,8 @@ const useWebSocket = (setLogs, activeAgents, setActiveAgents, setAgentData, setS
             ...prev,
             reviewer: {
               verdict: payload.verdict || '',
+              isApproved: payload.isApproved || false,
+              humanSummary: payload.humanSummary || '',
               feedback: payload.feedback || '',
               model: payload.model || '',
               iteration: payload.iteration || 0,
@@ -164,7 +167,7 @@ const useWebSocket = (setLogs, activeAgents, setActiveAgents, setAgentData, setS
         }
       }
 
-      // ÄNDERUNG 24.01.2026: SecurityOutput Event für Security Office
+      // ÄNDERUNG 24.01.2026: SecurityOutput Event für Security Office (Initial-Scan)
       if (data.event === 'SecurityOutput' && data.agent === 'Security') {
         try {
           const payload = JSON.parse(data.message);
@@ -176,11 +179,36 @@ const useWebSocket = (setLogs, activeAgents, setActiveAgents, setAgentData, setS
               scanResult: payload.scan_result || '',
               model: payload.model || '',
               scannedFiles: payload.scanned_files || 0,
+              scanType: 'requirement_scan',
+              blocking: false,
+              iteration: 0,
               timestamp: payload.timestamp || ''
             }
           }));
         } catch (e) {
           console.warn('SecurityOutput parsen fehlgeschlagen:', e);
+        }
+      }
+
+      // ÄNDERUNG 24.01.2026: SecurityRescanOutput Event für Security Office (Code-Scan)
+      if (data.event === 'SecurityRescanOutput' && data.agent === 'Security') {
+        try {
+          const payload = JSON.parse(data.message);
+          setAgentData(prev => ({
+            ...prev,
+            security: {
+              ...prev.security,
+              vulnerabilities: payload.vulnerabilities || [],
+              overallStatus: payload.overall_status || '',
+              scanType: payload.scan_type || 'code_scan',
+              iteration: payload.iteration || 0,
+              blocking: payload.blocking || false,
+              model: payload.model || '',
+              timestamp: payload.timestamp || ''
+            }
+          }));
+        } catch (e) {
+          console.warn('SecurityRescanOutput parsen fehlgeschlagen:', e);
         }
       }
 

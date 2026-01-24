@@ -22,13 +22,14 @@ class ModelRouter:
     die neue Struktur mit primary + fallback Modellen.
     """
 
-    def __init__(self, config: Dict[str, Any], cooldown_seconds: int = 60):
+    # ÄNDERUNG 24.01.2026: Cooldown von 60 auf 120 Sekunden erhöht für stabilere API-Nutzung
+    def __init__(self, config: Dict[str, Any], cooldown_seconds: int = 120):
         """
         Initialisiert den ModelRouter.
 
         Args:
             config: Anwendungskonfiguration mit mode und models
-            cooldown_seconds: Sekunden, die ein rate-limited Modell pausiert wird
+            cooldown_seconds: Sekunden, die ein rate-limited Modell pausiert wird (Standard: 120s)
         """
         self.config = config
         self.cooldown_seconds = cooldown_seconds

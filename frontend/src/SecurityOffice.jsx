@@ -1,14 +1,16 @@
 /**
  * Author: rahn
  * Datum: 24.01.2026
- * Version: 1.1
+ * Version: 1.2
  * Beschreibung: Security Office - Detailansicht für den Security-Agenten mit Bedrohungsanalyse.
  *               ÄNDERUNG 24.01.2026: Dummy-Daten entfernt, echte Props vom Backend.
+ *               ÄNDERUNG 24.01.2026: Scan-Typ Anzeige (Code-Scan vs. Anforderungs-Scan) und Blocking-Warnung.
  */
 
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { useOfficeCommon } from './hooks/useOfficeCommon';
 import { motion } from 'framer-motion';
+import { API_BASE } from './constants/config';
 import {
   ArrowLeft,
   Shield,
@@ -31,6 +33,7 @@ import {
 } from 'lucide-react';
 
 // ÄNDERUNG 24.01.2026: Neue Props für echte Daten vom Backend
+// ÄNDERUNG 24.01.2026: Erweitert mit scanType, iteration, blocking für Code-Scan
 const SecurityOffice = ({
   agentName = "Security",
   status = "Idle",
@@ -42,10 +45,43 @@ const SecurityOffice = ({
   overallStatus = "",
   scanResult = "",
   model = "",
-  scannedFiles = 0
+  scannedFiles = 0,
+  // Neue Props für Code-Scan
+  scanType = "requirement_scan",
+  iteration = 0,
+  blocking = false
 }) => {
   const { logRef, getStatusBadge, formatTime } = useOfficeCommon(logs);
   const mitigationRef = useRef(null);
+
+  // ÄNDERUNG 24.01.2026: State für Deploy Patches Button
+  const [deployStatus, setDeployStatus] = useState('idle'); // idle, loading, success, error
+
+  // ÄNDERUNG 24.01.2026: Handler für Deploy Patches Button
+  const handleDeployPatches = async () => {
+    if (deployStatus === 'loading') return;
+
+    setDeployStatus('loading');
+    try {
+      const response = await fetch(`${API_BASE}/security-feedback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      if (response.ok) {
+        setDeployStatus('success');
+        // Reset nach 3 Sekunden
+        setTimeout(() => setDeployStatus('idle'), 3000);
+      } else {
+        setDeployStatus('error');
+        setTimeout(() => setDeployStatus('idle'), 3000);
+      }
+    } catch (error) {
+      console.error('Deploy Patches fehlgeschlagen:', error);
+      setDeployStatus('error');
+      setTimeout(() => setDeployStatus('idle'), 3000);
+    }
+  };
 
   // ÄNDERUNG 24.01.2026: Prüfe ob echte Daten vorhanden sind
   const hasData = overallStatus !== '' || vulnerabilities.length > 0;
@@ -234,6 +270,22 @@ const SecurityOffice = ({
               {hasData ? `${vulnerabilities.length} Findings` : 'Keine Daten'}
             </span>
           </div>
+          {/* ÄNDERUNG 24.01.2026: Scan-Typ Anzeige */}
+          <div className={`hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg ${
+            scanType === 'code_scan' ? 'bg-blue-950/50 border border-blue-500/30' : 'bg-slate-800/50 border border-slate-500/30'
+          }`}>
+            <Target size={14} className={scanType === 'code_scan' ? 'text-blue-400' : 'text-slate-400'} />
+            <span className={`text-xs font-semibold ${scanType === 'code_scan' ? 'text-blue-300' : 'text-slate-300'}`}>
+              {scanType === 'code_scan' ? `CODE-SCAN #${iteration}` : 'ANFORDERUNGS-SCAN'}
+            </span>
+          </div>
+          {/* ÄNDERUNG 24.01.2026: Blocking-Warnung wenn Security-Gate blockiert */}
+          {blocking && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-950 border border-red-500/50 animate-pulse">
+              <ShieldAlert size={14} className="text-red-400" />
+              <span className="text-xs font-bold text-red-300">BLOCKIERT ABSCHLUSS</span>
+            </div>
+          )}
           {/* ÄNDERUNG 24.01.2026: Model-Anzeige wenn vorhanden */}
           {model && (
             <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#1e293b] border border-[#334155]">
@@ -486,15 +538,48 @@ const SecurityOffice = ({
               )}
             </div>
 
-            {/* Action Buttons */}
+            {/* Action Buttons - ÄNDERUNG 24.01.2026: Deploy Patches mit Funktionalität */}
             <div className="p-4 bg-[#161b22] border-t border-[#334155] flex gap-3">
               <button className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2">
                 <Eye size={16} />
                 View Details
               </button>
-              <button className="flex-[2] bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(239,68,68,0.3)]">
-                <Shield size={16} />
-                Deploy All Patches
+              <button
+                onClick={handleDeployPatches}
+                disabled={deployStatus === 'loading' || vulnerabilities.length === 0}
+                className={`flex-[2] px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 ${
+                  deployStatus === 'success'
+                    ? 'bg-green-600 text-white shadow-[0_0_15px_rgba(34,197,94,0.3)]'
+                    : deployStatus === 'error'
+                      ? 'bg-orange-600 text-white'
+                      : deployStatus === 'loading'
+                        ? 'bg-red-700 text-white cursor-wait'
+                        : vulnerabilities.length === 0
+                          ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                          : 'bg-red-600 hover:bg-red-500 text-white shadow-[0_0_15px_rgba(239,68,68,0.3)]'
+                }`}
+              >
+                {deployStatus === 'loading' ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Aktiviere Fixes...
+                  </>
+                ) : deployStatus === 'success' ? (
+                  <>
+                    <ShieldCheck size={16} />
+                    Fixes aktiviert!
+                  </>
+                ) : deployStatus === 'error' ? (
+                  <>
+                    <AlertTriangle size={16} />
+                    Fehler aufgetreten
+                  </>
+                ) : (
+                  <>
+                    <Shield size={16} />
+                    Deploy All Patches ({vulnerabilities.length})
+                  </>
+                )}
               </button>
             </div>
           </div>

@@ -164,6 +164,9 @@ class OrchestrationManager:
         self.design_concept = "Kein Design-Konzept."
         self.current_code = ""
         self.is_first_run = True
+        # ÄNDERUNG 24.01.2026: Security Vulnerabilities für Coder-Feedback
+        self.security_vulnerabilities = []
+        self.force_security_fix = False  # Flag für manuellen Security-Fix via API
 
         # ModelRouter für automatisches Fallback bei Rate Limits
         self.model_router = get_model_router(self.config)
@@ -203,6 +206,58 @@ class OrchestrationManager:
         is_rate_limit = (status_code in [429, 402]) or bool(re.search(rate_limit_pattern, error_str))
 
         return is_rate_limit
+
+    # ÄNDERUNG 24.01.2026: Erkennung für leere/ungültige API-Antworten
+    def _is_empty_or_invalid_response(self, response: str) -> bool:
+        """
+        Erkennt leere oder ungültige Antworten von LLM-Modellen.
+
+        Args:
+            response: Die Antwort des Modells
+
+        Returns:
+            True wenn die Antwort leer, ungültig oder ein bekanntes Fehlermuster ist
+        """
+        if not response or not response.strip():
+            return True
+
+        # Bekannte Fehler-Patterns bei fehlenden Antworten
+        invalid_patterns = [
+            "(no response",
+            "no response -",
+            "indicating failure",
+            "malfunctioning",
+            "[empty]",
+            "[no output]",
+            "failed to generate",
+            "unable to process"
+        ]
+        response_lower = response.lower()
+        return any(pattern in response_lower for pattern in invalid_patterns)
+
+    # ÄNDERUNG 24.01.2026: Menschenlesbare Zusammenfassung für Reviews
+    def _create_human_readable_verdict(self, verdict: str, sandbox_failed: bool, review_output: str) -> str:
+        """
+        Erstellt menschenlesbare Zusammenfassung des Reviews.
+
+        Args:
+            verdict: "OK" oder "FEEDBACK"
+            sandbox_failed: True wenn Sandbox/Test Fehler hatte
+            review_output: Vollständiger Review-Text
+
+        Returns:
+            Menschenlesbare Zusammenfassung mit Emoji
+        """
+        if verdict == "OK" and not sandbox_failed:
+            return "✅ REVIEW BESTANDEN: Code erfüllt alle Anforderungen."
+        elif sandbox_failed:
+            return "❌ REVIEW FEHLGESCHLAGEN: Sandbox/Test hat Fehler gemeldet."
+        else:
+            # Extrahiere ersten Satz des Feedbacks als Zusammenfassung
+            if review_output:
+                first_sentence = review_output.split('.')[0][:100]
+                return f"⚠️ ÄNDERUNGEN NÖTIG: {first_sentence}"
+            return "⚠️ ÄNDERUNGEN NÖTIG: Bitte Feedback beachten."
 
     def _extract_tables_from_schema(self, schema: str) -> List[Dict[str, Any]]:
         """
@@ -609,6 +664,8 @@ class OrchestrationManager:
                         # SecurityOutput Event für Frontend Office
                         security_model = self.model_router.get_model("security") if self.model_router else "unknown"
                         vulnerabilities = self._extract_vulnerabilities(security_result)
+                        # ÄNDERUNG 24.01.2026: Speichere Vulnerabilities für Coder-Feedback
+                        self.security_vulnerabilities = vulnerabilities
                         overall_status = "SECURE" if "SECURE" in security_result.upper() and not vulnerabilities else "WARNING"
                         if any(v["severity"] == "critical" for v in vulnerabilities):
                             overall_status = "CRITICAL"
@@ -641,6 +698,16 @@ class OrchestrationManager:
                 c_prompt = f"Ziel: {user_goal}\nTech: {self.tech_blueprint}\nDB: {self.database_schema[:200]}\n"
                 if not self.is_first_run: c_prompt += f"\nAlt-Code:\n{self.current_code}\n"
                 if feedback: c_prompt += f"\nKorrektur: {feedback}\n"
+
+                # ÄNDERUNG 24.01.2026: Security Vulnerabilities an Coder übergeben
+                if hasattr(self, 'security_vulnerabilities') and self.security_vulnerabilities:
+                    security_issues = "\n".join([
+                        f"- [{v.get('severity', 'unknown').upper()}] {v.get('description', 'Unbekannte Schwachstelle')}"
+                        for v in self.security_vulnerabilities
+                    ])
+                    c_prompt += f"\n\n⚠️ SECURITY ISSUES (MÜSSEN BEHOBEN WERDEN):\n{security_issues}\n"
+                    c_prompt += "WICHTIG: Diese Sicherheitslücken MÜSSEN im generierten Code behoben werden!\n"
+
                 c_prompt += "Format: ### FILENAME: path/to/file.ext"
 
                 task_coder = Task(description=c_prompt, expected_output="Code", agent=agent_coder)
@@ -746,30 +813,58 @@ class OrchestrationManager:
                 # Review
                 set_current_agent("Reviewer", project_id)  # Budget-Tracking
                 r_prompt = f"Review Code: {self.current_code[:500]}\nSandbox: {sandbox_result}\nTester: {test_summary}"
-                task_review = Task(description=r_prompt, expected_output="OK/Feedback", agent=agent_reviewer)
 
-                # Error Handling für Rate Limits (429/402) beim Review
-                try:
-                    review_output = str(task_review.execute_sync())
-                except Exception as e:
-                    if self._is_rate_limit_error(e):
-                        # Markiere aktuelles Modell als rate-limited
-                        current_model = self.model_router.get_model("reviewer")
-                        self.model_router.mark_rate_limited_sync(current_model)
-                        self._ui_log("ModelRouter", "RateLimit", f"Reviewer-Modell {current_model} pausiert, wechsle zu Fallback...")
+                # ÄNDERUNG 24.01.2026: Review mit "No Response" Handling und automatischem Modellwechsel
+                MAX_REVIEW_RETRIES = 3
+                review_output = None
 
-                        # Erstelle Agent mit Fallback-Modell und retry
-                        agent_reviewer = create_reviewer(self.config, project_rules, router=self.model_router)
-                        task_review = Task(description=r_prompt, expected_output="OK/Feedback", agent=agent_reviewer)
+                for review_attempt in range(MAX_REVIEW_RETRIES):
+                    task_review = Task(description=r_prompt, expected_output="OK/Feedback", agent=agent_reviewer)
+
+                    try:
                         review_output = str(task_review.execute_sync())
-                    else:
-                        raise e
 
-                # ÄNDERUNG 24.01.2026: ReviewOutput Event für Frontend Office
+                        # Prüfe auf leere/ungültige Antwort
+                        if self._is_empty_or_invalid_response(review_output):
+                            current_model = self.model_router.get_model("reviewer")
+                            self._ui_log("Reviewer", "NoResponse",
+                                f"Modell {current_model} lieferte keine Antwort (Versuch {review_attempt + 1}/{MAX_REVIEW_RETRIES})")
+
+                            # Markiere als rate-limited und wechsle Modell
+                            self.model_router.mark_rate_limited_sync(current_model)
+                            agent_reviewer = create_reviewer(self.config, project_rules, router=self.model_router)
+                            continue
+
+                        break  # Gültige Antwort erhalten
+
+                    except Exception as e:
+                        if self._is_rate_limit_error(e):
+                            # Markiere aktuelles Modell als rate-limited
+                            current_model = self.model_router.get_model("reviewer")
+                            self.model_router.mark_rate_limited_sync(current_model)
+                            self._ui_log("ModelRouter", "RateLimit", f"Reviewer-Modell {current_model} pausiert, wechsle zu Fallback...")
+
+                            # Erstelle Agent mit Fallback-Modell
+                            agent_reviewer = create_reviewer(self.config, project_rules, router=self.model_router)
+                            continue
+                        else:
+                            raise e
+
+                # Falls alle Retries fehlschlagen: Expliziter Fehler statt endlose Iteration
+                if self._is_empty_or_invalid_response(review_output):
+                    review_output = "FEHLER: Alle Review-Modelle haben versagt. Bitte prüfe die API-Verbindung und Modell-Verfügbarkeit."
+                    self._ui_log("Reviewer", "AllModelsFailed", "Kein Modell konnte eine gültige Antwort liefern.")
+
+                # ÄNDERUNG 24.01.2026: ReviewOutput Event für Frontend Office (erweitert mit humanSummary)
                 reviewer_model = self.model_router.get_model("reviewer") if self.model_router else "unknown"
                 review_verdict = "OK" if "OK" in review_output.upper() and not sandbox_failed else "FEEDBACK"
+                is_approved = review_verdict == "OK" and not sandbox_failed
+                human_summary = self._create_human_readable_verdict(review_verdict, sandbox_failed, review_output)
+
                 self._ui_log("Reviewer", "ReviewOutput", json.dumps({
                     "verdict": review_verdict,
+                    "isApproved": is_approved,
+                    "humanSummary": human_summary,
                     "feedback": review_output if review_verdict == "FEEDBACK" else "",
                     "model": reviewer_model,
                     "iteration": iteration + 1,
@@ -777,12 +872,67 @@ class OrchestrationManager:
                     "sandboxStatus": "PASS" if not sandbox_failed else "FAIL",
                     "sandboxResult": sandbox_result[:500] if sandbox_result else "",
                     "testSummary": test_summary[:500] if test_summary else "",
-                    "reviewOutput": review_output[:1000] if review_output else ""
+                    "reviewOutput": review_output if review_output else ""
                 }, ensure_ascii=False))
 
-                # STRIKTER CHECK: Wenn Sandbox/Tester '❌' liefert, darf Reviewer nicht 'OK' sagen
-                if "OK" in review_output.upper() and not sandbox_failed:
+                # ÄNDERUNG 24.01.2026: Security Re-Scan - Prüfe generierten Code auf Sicherheitslücken
+                security_passed = True  # Default: Security-Gate bestanden
+                security_rescan_vulns = []
+
+                if agent_security and self.current_code:
+                    self._ui_log("Security", "RescanStart", f"Prüfe generierten Code (Iteration {iteration+1})...")
+                    set_current_agent("Security", project_id)
+
+                    security_rescan_prompt = f"""Analysiere den generierten Code auf Sicherheitslücken:
+
+TECH-STACK: {json.dumps(self.tech_blueprint) if self.tech_blueprint else 'Unbekannt'}
+
+CODE:
+{self.current_code[:8000]}
+
+Prüfe auf: SQL Injection, XSS, CSRF, Hardcoded Secrets, Path Traversal, unsichere Dependencies.
+
+Antworte mit 'SECURE' wenn sicher, oder 'VULNERABILITY: [Beschreibung]' für jedes Problem."""
+
+                    task_security_rescan = Task(
+                        description=security_rescan_prompt,
+                        expected_output="SECURE oder VULNERABILITY-Liste",
+                        agent=agent_security
+                    )
+
+                    try:
+                        security_rescan_result = str(task_security_rescan.execute_sync())
+                        security_rescan_vulns = self._extract_vulnerabilities(security_rescan_result)
+                        self.security_vulnerabilities = security_rescan_vulns  # Aktualisieren
+
+                        # Security-Gate: Nur low-Severity erlaubt
+                        security_passed = not security_rescan_vulns or all(
+                            v.get('severity') == 'low' for v in security_rescan_vulns
+                        )
+
+                        security_rescan_model = self.model_router.get_model("security") if self.model_router else "unknown"
+                        rescan_status = "SECURE" if security_passed else "VULNERABLE"
+
+                        # UI-Event für Frontend
+                        self._ui_log("Security", "SecurityRescanOutput", json.dumps({
+                            "vulnerabilities": security_rescan_vulns,
+                            "overall_status": rescan_status,
+                            "scan_type": "code_scan",
+                            "iteration": iteration + 1,
+                            "blocking": not security_passed,
+                            "model": security_rescan_model,
+                            "timestamp": datetime.now().isoformat()
+                        }, ensure_ascii=False))
+
+                        self._ui_log("Security", "RescanResult", f"Code-Scan: {rescan_status} ({len(security_rescan_vulns)} Findings)")
+                    except Exception as sec_err:
+                        self._ui_log("Security", "Error", f"Security-Rescan fehlgeschlagen: {sec_err}")
+                        security_passed = True  # Bei Fehler nicht blockieren
+
+                # STRIKTER CHECK: Reviewer OK + Sandbox OK + Security SECURE
+                if "OK" in review_output.upper() and not sandbox_failed and security_passed:
                     success = True
+                    self._ui_log("Security", "SecurityGate", "✅ Security-Gate bestanden - Code ist sicher.")
                     self._ui_log("Reviewer", "Status", "Code OK.")
                     # Memory: Zeichne erfolgreiche Iteration auf (geschützt)
                     try:
@@ -796,6 +946,16 @@ class OrchestrationManager:
                     feedback = review_output
                     if sandbox_failed and "OK" in review_output.upper():
                         feedback = f"KRITISCHER FEHLER: Die Sandbox oder der Tester hat Fehler (❌) gemeldet, aber du hast OK gesagt. Bitte analysiere die Fehlermeldungen erneut:\n{sandbox_result}\n{test_summary}"
+
+                    # ÄNDERUNG 24.01.2026: Security-Issues als Feedback an Coder
+                    if not security_passed and security_rescan_vulns:
+                        security_feedback = "\n".join([
+                            f"- [{v.get('severity', 'unknown').upper()}] {v.get('description', '')}"
+                            for v in security_rescan_vulns
+                        ])
+                        feedback += f"\n\n⚠️ SECURITY VULNERABILITIES (BLOCKIEREN ABSCHLUSS):\n{security_feedback}\n"
+                        feedback += "Diese Sicherheitslücken MÜSSEN behoben werden bevor das Projekt abgeschlossen werden kann!\n"
+                        self._ui_log("Security", "BlockingIssues", f"❌ {len(security_rescan_vulns)} Vulnerabilities blockieren Abschluss")
 
                     self._ui_log("Reviewer", "Feedback", feedback)
                     # Memory: Zeichne fehlgeschlagene Iteration auf (geschützt, damit iteration++ nicht blockiert)

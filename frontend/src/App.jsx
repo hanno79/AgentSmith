@@ -102,12 +102,16 @@ const App = () => {
       timestamp: ''
     },
     // ÄNDERUNG 24.01.2026: Security Echtzeit-Daten vom Backend
+    // ÄNDERUNG 24.01.2026: Erweitert mit scanType, iteration, blocking für Code-Scan
     security: {
       vulnerabilities: [],      // Array von {severity, description, type}
-      overallStatus: '',        // "SECURE" oder "WARNING" oder "CRITICAL"
+      overallStatus: '',        // "SECURE" oder "WARNING" oder "CRITICAL" oder "VULNERABLE"
       scanResult: '',           // Vollständiger Scan-Output
       model: '',                // Verwendetes Modell
       scannedFiles: 0,          // Anzahl gescannter Dateien
+      scanType: 'requirement_scan',  // "requirement_scan" oder "code_scan"
+      iteration: 0,             // Aktuelle Iteration bei Code-Scan
+      blocking: false,          // true wenn Security-Issues den Abschluss blockieren
       timestamp: ''             // Zeitstempel
     },
     researcher: { query: '', result: '', status: '', model: '', error: '' },
@@ -250,8 +254,10 @@ const App = () => {
         logs={logs.filter(l => l.agent === 'Reviewer')}
         onBack={() => setCurrentRoom('mission-control')}
         color="yellow"
-        // ÄNDERUNG 24.01.2026: Echte Daten vom Backend
+        // ÄNDERUNG 24.01.2026: Echte Daten vom Backend (erweitert mit humanSummary)
         verdict={agentData.reviewer.verdict}
+        isApproved={agentData.reviewer.isApproved}
+        humanSummary={agentData.reviewer.humanSummary}
         feedback={agentData.reviewer.feedback}
         model={agentData.reviewer.model}
         iteration={agentData.reviewer.iteration}
@@ -287,6 +293,10 @@ const App = () => {
         scanResult={agentData.security.scanResult}
         model={agentData.security.model}
         scannedFiles={agentData.security.scannedFiles}
+        // ÄNDERUNG 24.01.2026: Neue Props für Code-Scan
+        scanType={agentData.security.scanType}
+        iteration={agentData.security.iteration}
+        blocking={agentData.security.blocking}
       />
     );
   }
