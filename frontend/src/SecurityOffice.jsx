@@ -1,8 +1,9 @@
 /**
  * Author: rahn
  * Datum: 24.01.2026
- * Version: 1.0
+ * Version: 1.1
  * Beschreibung: Security Office - Detailansicht für den Security-Agenten mit Bedrohungsanalyse.
+ *               ÄNDERUNG 24.01.2026: Dummy-Daten entfernt, echte Props vom Backend.
  */
 
 import React, { useRef } from 'react';
@@ -25,55 +26,141 @@ import {
   Eye,
   Target,
   Radio,
-  Maximize2
+  Maximize2,
+  Loader2
 } from 'lucide-react';
 
-const SecurityOffice = ({ agentName = "Security", status = "Idle", logs = [], onBack, color = "red" }) => {
+// ÄNDERUNG 24.01.2026: Neue Props für echte Daten vom Backend
+const SecurityOffice = ({
+  agentName = "Security",
+  status = "Idle",
+  logs = [],
+  onBack,
+  color = "red",
+  // Echte Daten Props vom Backend
+  vulnerabilities = [],
+  overallStatus = "",
+  scanResult = "",
+  model = "",
+  scannedFiles = 0
+}) => {
   const { logRef, getStatusBadge, formatTime } = useOfficeCommon(logs);
   const mitigationRef = useRef(null);
+
+  // ÄNDERUNG 24.01.2026: Prüfe ob echte Daten vorhanden sind
+  const hasData = overallStatus !== '' || vulnerabilities.length > 0;
+  const isScanning = status === 'Status' || status === 'Working';
 
   // Status Badge Rendering Helper
   const renderStatusBadge = () => {
     const badge = getStatusBadge(status, 'bg-red-500/20 text-red-300 border-red-500/20 font-semibold shadow-[0_0_8px_rgba(239,68,68,0.2)]');
     return (
       <span className={badge.className}>
-        {badge.isActive ? 'Node Status: Online' : badge.text}
+        {badge.isActive ? 'Analysiere...' : badge.text}
       </span>
     );
   };
 
-  // MOCK-DATEN: Nur für Demo-Zwecke - Echte Bedrohungsdaten kommen vom Security-Agenten
-  const threatIntel = {
-    activeThreats: 3,
-    suspicious: 12,
-    secured: 847,
-    scanning: 24
+  // ÄNDERUNG 24.01.2026: Dynamische Threat Intelligence basierend auf echten Vulnerabilities
+  const getThreatIntel = () => {
+    if (!hasData) {
+      return { activeThreats: 0, suspicious: 0, secured: 0, scanning: isScanning ? 1 : 0 };
+    }
+    const critical = vulnerabilities.filter(v => v.severity === 'critical').length;
+    const high = vulnerabilities.filter(v => v.severity === 'high').length;
+    const medium = vulnerabilities.filter(v => v.severity === 'medium').length;
+    const low = vulnerabilities.filter(v => v.severity === 'low').length;
+
+    return {
+      activeThreats: critical + high,
+      suspicious: medium,
+      secured: overallStatus === 'SECURE' ? Math.max(scannedFiles, 1) : low,
+      scanning: isScanning ? 1 : 0
+    };
   };
 
-  // MOCK-DATEN: Nur für Demo-Zwecke - Echte Einträge kommen vom Security-Agenten
-  const defenseEntries = [
-    { time: '14:32:01', type: 'alert', message: 'Anomalous traffic pattern detected from 192.168.1.105' },
-    { time: '14:32:04', type: 'action', message: 'Initiating deep packet inspection on flagged connection...' },
-    { time: '14:32:08', type: 'success', message: 'Threat contained. Connection terminated. IP added to watchlist.' },
-    { time: '14:32:15', type: 'info', message: 'Deploying countermeasure DELTA-7 to perimeter nodes.' },
-    { time: '14:32:22', type: 'warning', message: 'Elevated privilege escalation attempt on node API-03.' },
-  ];
+  const threatIntel = getThreatIntel();
 
-  // MOCK-DATEN: Nur für Demo-Zwecke - Echte Daten kommen vom Security-Agenten
-  const mitigationTargets = [
-    { name: 'auth-service', patches: 2, critical: true },
-    { name: 'api-gateway', patches: 1, critical: false },
-    { name: 'user-db', patches: 3, critical: true },
-    { name: 'cdn-edge', patches: 1, critical: false },
-  ];
+  // ÄNDERUNG 24.01.2026: Dynamische Defense Entries aus echten Logs
+  const getDefenseEntries = () => {
+    if (logs.length === 0 && !hasData) return [];
 
-  // MOCK-DATEN: Demo-Node-Security-Daten
-  const nodeStatus = [
-    { name: 'DB', health: 98, status: 'secured' },
-    { name: 'API', health: 94, status: 'secured' },
-    { name: 'WEB', health: 87, status: 'warning' },
-    { name: 'CDN', health: 100, status: 'secured' },
-  ];
+    return logs.slice(-5).map((log, i) => ({
+      time: new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      type: log.event === 'Error' ? 'alert' :
+            log.event === 'Warning' ? 'warning' :
+            log.event === 'Result' ? 'success' : 'info',
+      message: log.message
+    }));
+  };
+
+  const defenseEntries = getDefenseEntries();
+
+  // ÄNDERUNG 24.01.2026: Dynamische Mitigation Targets aus echten Vulnerabilities
+  const getMitigationTargets = () => {
+    if (!hasData || vulnerabilities.length === 0) return [];
+
+    // Gruppiere nach Severity
+    const groups = {
+      critical: { name: 'Critical Issues', patches: 0, critical: true },
+      high: { name: 'High Priority', patches: 0, critical: true },
+      medium: { name: 'Medium Priority', patches: 0, critical: false },
+      low: { name: 'Low Priority', patches: 0, critical: false }
+    };
+
+    vulnerabilities.forEach(v => {
+      if (groups[v.severity]) {
+        groups[v.severity].patches++;
+      }
+    });
+
+    return Object.values(groups).filter(g => g.patches > 0);
+  };
+
+  const mitigationTargets = getMitigationTargets();
+
+  // ÄNDERUNG 24.01.2026: Dynamischer DEFCON Level basierend auf Vulnerabilities
+  const getDefconLevel = () => {
+    if (!hasData) return { level: 5, text: 'STANDBY', color: 'slate', description: 'Warte auf Analyse...' };
+
+    const critical = vulnerabilities.filter(v => v.severity === 'critical').length;
+    const high = vulnerabilities.filter(v => v.severity === 'high').length;
+    const medium = vulnerabilities.filter(v => v.severity === 'medium').length;
+
+    if (critical > 0) return { level: 1, text: 'CRITICAL', color: 'red', description: 'Kritische Sicherheitslücken!' };
+    if (high > 0) return { level: 2, text: 'HIGH ALERT', color: 'orange', description: 'Hohe Bedrohungsstufe' };
+    if (medium > 0) return { level: 3, text: 'ELEVATED', color: 'amber', description: 'Erhöhte Wachsamkeit' };
+    if (vulnerabilities.length > 0) return { level: 4, text: 'GUARDED', color: 'yellow', description: 'Geringe Bedrohungen' };
+    return { level: 5, text: 'SECURE', color: 'green', description: 'System sicher' };
+  };
+
+  const defcon = getDefconLevel();
+
+  // ÄNDERUNG 24.01.2026: Dynamische Node-Security basierend auf Analyse-Status
+  const getNodeStatus = () => {
+    if (!hasData) {
+      return [
+        { name: 'DB', health: 0, status: 'unknown' },
+        { name: 'API', health: 0, status: 'unknown' },
+        { name: 'WEB', health: 0, status: 'unknown' },
+        { name: 'CDN', health: 0, status: 'unknown' },
+      ];
+    }
+
+    // Basiere Health auf overallStatus
+    const baseHealth = overallStatus === 'SECURE' ? 100 :
+                       overallStatus === 'WARNING' ? 85 :
+                       overallStatus === 'CRITICAL' ? 60 : 70;
+
+    return [
+      { name: 'DB', health: Math.min(100, baseHealth + (Math.random() * 10 - 5)), status: overallStatus === 'SECURE' ? 'secured' : 'warning' },
+      { name: 'API', health: Math.min(100, baseHealth + (Math.random() * 10 - 5)), status: overallStatus === 'SECURE' ? 'secured' : 'warning' },
+      { name: 'WEB', health: Math.min(100, baseHealth + (Math.random() * 10 - 5)), status: overallStatus === 'SECURE' ? 'secured' : 'warning' },
+      { name: 'CDN', health: Math.min(100, baseHealth + (Math.random() * 10 - 5)), status: overallStatus === 'SECURE' ? 'secured' : 'warning' },
+    ];
+  };
+
+  const nodeStatus = getNodeStatus();
 
   return (
     <div className="bg-[#0f172a] text-white font-display overflow-hidden h-screen flex flex-col">
@@ -101,20 +188,59 @@ const SecurityOffice = ({ agentName = "Security", status = "Idle", logs = [], on
           </div>
         </div>
         <div className="flex gap-3">
-          {/* Alert Level Badge */}
-          <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-950/50 border border-red-500/30 relative group">
-            <span className="absolute right-0 top-0 -mt-1 -mr-1 flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+          {/* ÄNDERUNG 24.01.2026: Dynamisches Alert Level Badge basierend auf echtem Status */}
+          <div className={`hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg relative group ${
+            defcon.color === 'red' ? 'bg-red-950/50 border border-red-500/30' :
+            defcon.color === 'orange' ? 'bg-orange-950/50 border border-orange-500/30' :
+            defcon.color === 'amber' ? 'bg-amber-950/50 border border-amber-500/30' :
+            defcon.color === 'green' ? 'bg-green-950/50 border border-green-500/30' :
+            'bg-slate-800/50 border border-slate-500/30'
+          }`}>
+            {hasData && defcon.level <= 3 && (
+              <span className="absolute right-0 top-0 -mt-1 -mr-1 flex h-2 w-2">
+                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                  defcon.color === 'red' ? 'bg-red-400' :
+                  defcon.color === 'orange' ? 'bg-orange-400' : 'bg-amber-400'
+                }`}></span>
+                <span className={`relative inline-flex rounded-full h-2 w-2 ${
+                  defcon.color === 'red' ? 'bg-red-500' :
+                  defcon.color === 'orange' ? 'bg-orange-500' : 'bg-amber-500'
+                }`}></span>
+              </span>
+            )}
+            {isScanning ? (
+              <Loader2 size={14} className="text-slate-400 animate-spin" />
+            ) : (
+              <AlertTriangle size={14} className={`${
+                defcon.color === 'red' ? 'text-red-400' :
+                defcon.color === 'orange' ? 'text-orange-400' :
+                defcon.color === 'amber' ? 'text-amber-400' :
+                defcon.color === 'green' ? 'text-green-400' : 'text-slate-400'
+              }`} />
+            )}
+            <span className={`text-xs font-semibold ${
+              defcon.color === 'red' ? 'text-red-300' :
+              defcon.color === 'orange' ? 'text-orange-300' :
+              defcon.color === 'amber' ? 'text-amber-300' :
+              defcon.color === 'green' ? 'text-green-300' : 'text-slate-300'
+            }`}>
+              {isScanning ? 'SCANNING...' : `ALERT: ${defcon.text}`}
             </span>
-            <AlertTriangle size={14} className="text-red-400" />
-            <span className="text-xs font-semibold text-red-300">ALERT LEVEL: ELEVATED</span>
           </div>
-          {/* Intrusion Attempts Badge */}
+          {/* ÄNDERUNG 24.01.2026: Dynamisches Vulnerabilities Badge */}
           <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#1e293b] border border-[#334155]">
-            <Eye size={14} className="text-amber-500" />
-            <span className="text-xs font-semibold text-white">3 Intrusion Attempts</span>
+            <Eye size={14} className={vulnerabilities.length > 0 ? 'text-amber-500' : 'text-slate-500'} />
+            <span className="text-xs font-semibold text-white">
+              {hasData ? `${vulnerabilities.length} Findings` : 'Keine Daten'}
+            </span>
           </div>
+          {/* ÄNDERUNG 24.01.2026: Model-Anzeige wenn vorhanden */}
+          {model && (
+            <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#1e293b] border border-[#334155]">
+              <Shield size={14} className="text-slate-400" />
+              <span className="text-xs font-mono text-slate-300">{model}</span>
+            </div>
+          )}
           <button className="flex size-9 cursor-pointer items-center justify-center overflow-hidden rounded-lg bg-[#1e293b] hover:bg-[#334155] text-white transition-colors border border-[#334155]">
             <History size={18} />
           </button>
@@ -186,17 +312,35 @@ const SecurityOffice = ({ agentName = "Security", status = "Idle", logs = [], on
             </div>
           </div>
 
-          {/* Firewall Load */}
+          {/* ÄNDERUNG 24.01.2026: Dynamischer Firewall Load basierend auf Analyse-Status */}
           <div className="p-3 border-t border-[#334155] bg-[#0f172a]">
             <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
               <span className="flex items-center gap-1">
-                <Zap size={12} className="text-red-400" />
+                <Zap size={12} className={isScanning ? 'text-amber-400 animate-pulse' : hasData ? 'text-green-400' : 'text-slate-500'} />
                 Firewall Load
               </span>
-              <span className="text-red-300 font-mono">78%</span>
+              <span className={`font-mono ${
+                isScanning ? 'text-amber-300' :
+                hasData && overallStatus === 'SECURE' ? 'text-green-300' :
+                hasData ? 'text-amber-300' : 'text-slate-500'
+              }`}>
+                {isScanning ? '...' : hasData ? (overallStatus === 'SECURE' ? '25%' : '60%') : '0%'}
+              </span>
             </div>
             <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden w-full">
-              <div className="h-full w-[78%] bg-gradient-to-r from-red-600 to-red-400 rounded-full"></div>
+              {isScanning ? (
+                <div className="h-full w-full bg-gradient-to-r from-amber-600 to-amber-400 rounded-full animate-pulse"></div>
+              ) : hasData ? (
+                <div
+                  className={`h-full rounded-full ${
+                    overallStatus === 'SECURE' ? 'bg-gradient-to-r from-green-600 to-green-400' :
+                    'bg-gradient-to-r from-amber-600 to-amber-400'
+                  }`}
+                  style={{ width: overallStatus === 'SECURE' ? '25%' : '60%' }}
+                ></div>
+              ) : (
+                <div className="h-full w-0 bg-slate-600 rounded-full"></div>
+              )}
             </div>
           </div>
         </aside>
@@ -228,27 +372,29 @@ const SecurityOffice = ({ agentName = "Security", status = "Idle", logs = [], on
               ref={logRef}
               className="flex-1 p-5 overflow-y-auto security-scrollbar font-mono text-xs space-y-3"
             >
+              {/* ÄNDERUNG 24.01.2026: Warte-Zustand wenn keine Logs vorhanden */}
               {logs.length === 0 ? (
-                <>
-                  {defenseEntries.map((entry, i) => (
-                    <div key={i} className="flex gap-4 group">
-                      <span className="text-slate-600 w-16 shrink-0 pt-0.5 border-r border-slate-800 pr-2">[{entry.time}]</span>
-                      <div className="flex-1">
-                        <p className={
-                          entry.type === 'alert' ? 'text-red-400' :
-                          entry.type === 'warning' ? 'text-amber-400' :
-                          entry.type === 'success' ? 'text-green-400' :
-                          entry.type === 'action' ? 'text-blue-400' :
-                          'text-slate-300'
-                        }>{entry.message}</p>
-                      </div>
-                    </div>
-                  ))}
-                  <div className="flex gap-4 group animate-pulse">
-                    <span className="text-red-500 w-16 shrink-0 pt-0.5 border-r border-slate-800 pr-2">...</span>
-                    <p className="text-red-500/70 italic">Monitoring threat vectors...</p>
-                  </div>
-                </>
+                <div className="flex flex-col items-center justify-center h-full gap-4 text-slate-500">
+                  {isScanning ? (
+                    <>
+                      <Loader2 size={32} className="animate-spin text-red-400" />
+                      <p className="text-sm">Führe Sicherheitsanalyse durch...</p>
+                      <p className="text-xs text-slate-600">Prüfe auf OWASP Top 10, Injection-Angriffe, XSS...</p>
+                    </>
+                  ) : hasData ? (
+                    <>
+                      <ShieldCheck size={32} className="text-green-400" />
+                      <p className="text-sm text-green-400">Analyse abgeschlossen</p>
+                      <p className="text-xs text-slate-600">{overallStatus}: {vulnerabilities.length} Findings</p>
+                    </>
+                  ) : (
+                    <>
+                      <Shield size={32} className="text-slate-600" />
+                      <p className="text-sm">Warte auf Sicherheitsanalyse...</p>
+                      <p className="text-xs text-slate-600">Starte ein Projekt um die Analyse zu beginnen</p>
+                    </>
+                  )}
+                </div>
               ) : (
                 logs.map((log, i) => (
                   <div key={i} className={`flex gap-4 group ${i === logs.length - 1 ? 'relative' : ''}`}>
@@ -287,35 +433,57 @@ const SecurityOffice = ({ agentName = "Security", status = "Idle", logs = [], on
               ref={mitigationRef}
               className="flex-1 p-4 overflow-y-auto security-scrollbar"
             >
-              <div className="space-y-3">
-                {mitigationTargets.map((target, i) => (
-                  <div
-                    key={i}
-                    className={`p-3 rounded-lg border ${target.critical ? 'bg-red-950/20 border-red-500/30' : 'bg-[#1e293b]/40 border-[#334155]'}`}
-                  >
-                    <div className="flex justify-between items-center mb-2">
-                      <div className="flex items-center gap-2">
-                        <Server size={14} className={target.critical ? 'text-red-400' : 'text-slate-400'} />
-                        <span className="text-sm font-semibold text-white">{target.name}</span>
-                        {target.critical && (
-                          <span className="text-[9px] bg-red-500/20 text-red-300 px-1.5 py-0.5 rounded border border-red-500/30 uppercase font-bold">
-                            Critical
-                          </span>
-                        )}
+              {/* ÄNDERUNG 24.01.2026: Warte-Zustand wenn keine Vulnerabilities */}
+              {mitigationTargets.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-500">
+                  {isScanning ? (
+                    <>
+                      <Loader2 size={24} className="animate-spin text-rose-400" />
+                      <p className="text-xs">Identifiziere Risiken...</p>
+                    </>
+                  ) : hasData && overallStatus === 'SECURE' ? (
+                    <>
+                      <ShieldCheck size={24} className="text-green-400" />
+                      <p className="text-xs text-green-400">Keine Patches erforderlich</p>
+                    </>
+                  ) : (
+                    <>
+                      <Lock size={24} className="text-slate-600" />
+                      <p className="text-xs">Warte auf Analyse...</p>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {mitigationTargets.map((target, i) => (
+                    <div
+                      key={i}
+                      className={`p-3 rounded-lg border ${target.critical ? 'bg-red-950/20 border-red-500/30' : 'bg-[#1e293b]/40 border-[#334155]'}`}
+                    >
+                      <div className="flex justify-between items-center mb-2">
+                        <div className="flex items-center gap-2">
+                          <Server size={14} className={target.critical ? 'text-red-400' : 'text-slate-400'} />
+                          <span className="text-sm font-semibold text-white">{target.name}</span>
+                          {target.critical && (
+                            <span className="text-[9px] bg-red-500/20 text-red-300 px-1.5 py-0.5 rounded border border-red-500/30 uppercase font-bold">
+                              Critical
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-xs text-slate-400 font-mono">{target.patches} issues</span>
                       </div>
-                      <span className="text-xs text-slate-400 font-mono">{target.patches} patches</span>
+                      <div className="h-1 bg-slate-800 rounded-full overflow-hidden">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${Math.max(10, 100 - target.patches * 20)}%` }}
+                          transition={{ duration: 1, delay: i * 0.2 }}
+                          className={`h-full rounded-full ${target.critical ? 'bg-red-500' : 'bg-green-500'}`}
+                        />
+                      </div>
                     </div>
-                    <div className="h-1 bg-slate-800 rounded-full overflow-hidden">
-                      <motion.div
-                        initial={{ width: 0 }}
-                        animate={{ width: `${(3 - target.patches) / 3 * 100}%` }}
-                        transition={{ duration: 1, delay: i * 0.2 }}
-                        className={`h-full rounded-full ${target.critical ? 'bg-red-500' : 'bg-green-500'}`}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Action Buttons */}
@@ -342,21 +510,49 @@ const SecurityOffice = ({ agentName = "Security", status = "Idle", logs = [], on
           </div>
 
           <div className="flex-1 overflow-y-auto security-scrollbar p-4 space-y-4">
-            {/* DEFCON Level */}
-            <div className="bg-[#1e293b] rounded-xl p-4 border border-[#334155] relative overflow-hidden group">
+            {/* ÄNDERUNG 24.01.2026: Dynamisches DEFCON Level basierend auf echten Daten */}
+            <div className={`rounded-xl p-4 border relative overflow-hidden group ${
+              defcon.color === 'red' ? 'bg-red-950/30 border-red-500/30' :
+              defcon.color === 'orange' ? 'bg-orange-950/30 border-orange-500/30' :
+              defcon.color === 'amber' ? 'bg-amber-950/30 border-amber-500/30' :
+              defcon.color === 'green' ? 'bg-green-950/30 border-green-500/30' :
+              'bg-[#1e293b] border-[#334155]'
+            }`}>
               <div className="absolute top-0 right-0 p-2 opacity-10">
-                <AlertTriangle size={60} />
+                {defcon.color === 'green' ? <ShieldCheck size={60} /> : <AlertTriangle size={60} />}
               </div>
               <p className="text-xs text-slate-400 uppercase font-semibold mb-1">Defense Readiness</p>
               <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-black text-amber-400">DEFCON 3</span>
+                {isScanning ? (
+                  <div className="flex items-center gap-2">
+                    <Loader2 size={24} className="text-slate-400 animate-spin" />
+                    <span className="text-xl font-bold text-slate-400">Analysiere...</span>
+                  </div>
+                ) : (
+                  <span className={`text-3xl font-black ${
+                    defcon.color === 'red' ? 'text-red-400' :
+                    defcon.color === 'orange' ? 'text-orange-400' :
+                    defcon.color === 'amber' ? 'text-amber-400' :
+                    defcon.color === 'green' ? 'text-green-400' : 'text-slate-400'
+                  }`}>
+                    DEFCON {defcon.level}
+                  </span>
+                )}
               </div>
-              <p className="text-[10px] text-slate-500 mt-2">Elevated threat level detected</p>
+              <p className="text-[10px] text-slate-500 mt-2">{defcon.description}</p>
               <div className="mt-3 flex gap-1">
                 {[1, 2, 3, 4, 5].map((level) => (
                   <div
                     key={level}
-                    className={`flex-1 h-2 rounded ${level <= 3 ? 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.4)]' : 'bg-slate-700'}`}
+                    className={`flex-1 h-2 rounded ${
+                      level <= (6 - defcon.level) ? (
+                        defcon.color === 'red' ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]' :
+                        defcon.color === 'orange' ? 'bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.4)]' :
+                        defcon.color === 'amber' ? 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.4)]' :
+                        defcon.color === 'green' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]' :
+                        'bg-slate-500'
+                      ) : 'bg-slate-700'
+                    }`}
                   />
                 ))}
               </div>

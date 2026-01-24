@@ -66,14 +66,104 @@ const App = () => {
   // Strukturierte Agent-Daten für Live-Anzeige in Agent Offices
   const [agentData, setAgentData] = useState({
     coder: { code: '', files: [], iteration: 0, maxIterations: 3, model: '' },
-    reviewer: { feedback: '', metrics: {} },
-    tester: { results: [], metrics: {} },
-    designer: { concept: '', metrics: {} },
-    security: { report: '', metrics: {} },
+    // ÄNDERUNG 24.01.2026: Reviewer Echtzeit-Daten
+    reviewer: {
+      verdict: '',           // "OK" oder "FEEDBACK"
+      feedback: '',
+      model: '',
+      iteration: 0,
+      maxIterations: 3,
+      sandboxStatus: '',     // "PASS" oder "FAIL"
+      sandboxResult: '',
+      testSummary: '',
+      reviewOutput: ''
+    },
+    tester: {
+      results: [],
+      metrics: {},
+      defects: [],           // Echte Test-Issues/Fehler
+      coverage: [],          // Coverage pro Pfad
+      stability: null,       // { value: number, trend: number }
+      risk: null,            // { level: string, reason: string }
+      screenshot: null,      // Base64 oder URL für Browser-Vorschau
+      model: ''              // Verwendetes Modell
+    },
+    // ÄNDERUNG 24.01.2026: Erweiterte Designer Echtzeit-Daten
+    designer: {
+      colorPalette: [],
+      typography: [],
+      atomicAssets: [],
+      qualityScore: null,
+      iterationInfo: null,
+      viewport: null,
+      previewUrl: '',
+      concept: '',
+      model: '',
+      timestamp: ''
+    },
+    // ÄNDERUNG 24.01.2026: Security Echtzeit-Daten vom Backend
+    security: {
+      vulnerabilities: [],      // Array von {severity, description, type}
+      overallStatus: '',        // "SECURE" oder "WARNING" oder "CRITICAL"
+      scanResult: '',           // Vollständiger Scan-Output
+      model: '',                // Verwendetes Modell
+      scannedFiles: 0,          // Anzahl gescannter Dateien
+      timestamp: ''             // Zeitstempel
+    },
     researcher: { query: '', result: '', status: '', model: '', error: '' },
+    // ÄNDERUNG 24.01.2026: TechStack-Architect Echtzeit-Daten
+    techstack: {
+      blueprint: {},         // Komplettes tech_blueprint Objekt
+      model: '',             // Verwendetes Modell (z.B. "gpt-4o-mini")
+      decisions: [],         // Array von {type, value} Entscheidungen
+      dependencies: [],      // Liste der Dependencies
+      reasoning: '',         // Begründung der Entscheidung
+      timestamp: null        // Zeitstempel
+    },
+    // ÄNDERUNG 24.01.2026: DB Designer Echtzeit-Daten
+    dbdesigner: {
+      schema: '',            // SQL Schema als String
+      model: '',             // Verwendetes Modell
+      status: '',            // "completed" oder leer
+      tables: [],            // Array von Tabellen mit columns
+      timestamp: ''          // Zeitstempel
+    }
   });
 
   const logEndRef = useRef(null);
+
+  // ÄNDERUNG 24.01.2026: Resizable Panel State für rechte Sidebar
+  const [previewHeight, setPreviewHeight] = useState(60); // 60% für Preview
+  const [isDragging, setIsDragging] = useState(false);
+
+  // Drag-Handler für Resize
+  const handleResizeMouseDown = (e) => {
+    setIsDragging(true);
+    e.preventDefault();
+  };
+
+  // Effect für Resize-Logik
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (!isDragging) return;
+      const container = document.getElementById('right-sidebar');
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const newHeight = ((e.clientY - rect.top) / rect.height) * 100;
+      setPreviewHeight(Math.min(Math.max(newHeight, 20), 80)); // Min 20%, Max 80%
+    };
+
+    const handleMouseUp = () => setIsDragging(false);
+
+    if (isDragging) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    }
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging]);
 
   // Custom Hooks für WebSocket und Konfiguration
   useWebSocket(setLogs, activeAgents, setActiveAgents, setAgentData, setStatus);
@@ -115,13 +205,62 @@ const App = () => {
     );
   }
   if (currentRoom === 'agent-tester') {
-    return <TesterOffice agentName="Tester" status={activeAgents.tester.status} logs={logs.filter(l => l.agent === 'Tester')} onBack={() => setCurrentRoom('mission-control')} color="orange" />;
+    return (
+      <TesterOffice
+        agentName="Tester"
+        status={activeAgents.tester.status}
+        logs={logs.filter(l => l.agent === 'Tester')}
+        onBack={() => setCurrentRoom('mission-control')}
+        color="orange"
+        defects={agentData.tester.defects}
+        coverage={agentData.tester.coverage}
+        stability={agentData.tester.stability}
+        risk={agentData.tester.risk}
+        screenshot={agentData.tester.screenshot}
+        model={agentData.tester.model}
+      />
+    );
   }
   if (currentRoom === 'agent-designer') {
-    return <DesignerOffice agentName="Designer" status={activeAgents.designer.status} logs={logs.filter(l => l.agent === 'Designer')} onBack={() => setCurrentRoom('mission-control')} color="pink" />;
+    return (
+      <DesignerOffice
+        agentName="Designer"
+        status={activeAgents.designer.status}
+        logs={logs.filter(l => l.agent === 'Designer')}
+        onBack={() => setCurrentRoom('mission-control')}
+        color="pink"
+        // ÄNDERUNG 24.01.2026: Echte Daten vom Backend
+        colorPalette={agentData.designer.colorPalette}
+        typography={agentData.designer.typography}
+        atomicAssets={agentData.designer.atomicAssets}
+        qualityScore={agentData.designer.qualityScore}
+        iterationInfo={agentData.designer.iterationInfo}
+        viewport={agentData.designer.viewport}
+        previewUrl={agentData.designer.previewUrl}
+        concept={agentData.designer.concept}
+        model={agentData.designer.model}
+      />
+    );
   }
   if (currentRoom === 'agent-reviewer') {
-    return <ReviewerOffice agentName="Reviewer" status={activeAgents.reviewer.status} logs={logs.filter(l => l.agent === 'Reviewer')} onBack={() => setCurrentRoom('mission-control')} color="yellow" />;
+    return (
+      <ReviewerOffice
+        agentName="Reviewer"
+        status={activeAgents.reviewer.status}
+        logs={logs.filter(l => l.agent === 'Reviewer')}
+        onBack={() => setCurrentRoom('mission-control')}
+        color="yellow"
+        // ÄNDERUNG 24.01.2026: Echte Daten vom Backend
+        verdict={agentData.reviewer.verdict}
+        feedback={agentData.reviewer.feedback}
+        model={agentData.reviewer.model}
+        iteration={agentData.reviewer.iteration}
+        maxIterations={agentData.reviewer.maxIterations}
+        sandboxStatus={agentData.reviewer.sandboxStatus}
+        sandboxResult={agentData.reviewer.sandboxResult}
+        testSummary={agentData.reviewer.testSummary}
+      />
+    );
   }
   if (currentRoom === 'agent-researcher') {
     return (
@@ -135,13 +274,54 @@ const App = () => {
     );
   }
   if (currentRoom === 'agent-security') {
-    return <SecurityOffice agentName="Security" status={activeAgents.security.status} logs={logs.filter(l => l.agent === 'Security')} onBack={() => setCurrentRoom('mission-control')} color="red" />;
+    return (
+      <SecurityOffice
+        agentName="Security"
+        status={activeAgents.security.status}
+        logs={logs.filter(l => l.agent === 'Security')}
+        onBack={() => setCurrentRoom('mission-control')}
+        color="red"
+        // ÄNDERUNG 24.01.2026: Echte Daten vom Backend
+        vulnerabilities={agentData.security.vulnerabilities}
+        overallStatus={agentData.security.overallStatus}
+        scanResult={agentData.security.scanResult}
+        model={agentData.security.model}
+        scannedFiles={agentData.security.scannedFiles}
+      />
+    );
   }
   if (currentRoom === 'agent-techstack') {
-    return <TechStackOffice agentName="Tech-Stack" status={activeAgents.techarchitect.status} logs={logs.filter(l => l.agent === 'TechArchitect')} onBack={() => setCurrentRoom('mission-control')} color="purple" />;
+    return (
+      <TechStackOffice
+        agentName="Tech-Stack"
+        status={activeAgents.techarchitect.status}
+        logs={logs.filter(l => l.agent === 'TechArchitect')}
+        onBack={() => setCurrentRoom('mission-control')}
+        color="purple"
+        // ÄNDERUNG 24.01.2026: Echte Daten vom Backend
+        blueprint={agentData.techstack.blueprint}
+        model={agentData.techstack.model}
+        decisions={agentData.techstack.decisions}
+        dependencies={agentData.techstack.dependencies}
+        reasoning={agentData.techstack.reasoning}
+      />
+    );
   }
   if (currentRoom === 'agent-dbdesigner') {
-    return <DBDesignerOffice agentName="Database Designer" status={activeAgents.dbdesigner.status} logs={logs.filter(l => l.agent === 'DBDesigner')} onBack={() => setCurrentRoom('mission-control')} color="green" />;
+    return (
+      <DBDesignerOffice
+        agentName="Database Designer"
+        status={activeAgents.dbdesigner.status}
+        logs={logs.filter(l => l.agent === 'DBDesigner')}
+        onBack={() => setCurrentRoom('mission-control')}
+        color="green"
+        // ÄNDERUNG 24.01.2026: Echte Daten vom Backend
+        schema={agentData.dbdesigner.schema}
+        model={agentData.dbdesigner.model}
+        tables={agentData.dbdesigner.tables}
+        dbStatus={agentData.dbdesigner.status}
+      />
+    );
   }
 
   // Render Mainframe Hub oder Budget Dashboard
@@ -228,44 +408,83 @@ const App = () => {
           </div>
         </main>
 
-        {/* Right Panel: Logs & Canvas */}
-        <aside className="w-[400px] border-l border-border-dark bg-[#0d1216] hidden 2xl:flex flex-col z-20">
-          <div className="h-14 border-b border-border-dark flex items-center justify-between px-4 bg-[#111418]">
-            <div className="flex items-center gap-2 text-sm font-bold"><RefreshCw size={16} className="text-slate-400" />Live Canvas</div>
-          </div>
-
-          <div className="flex-1 p-4 bg-[#1e1e1e]">
-            <div className="w-full h-full bg-white rounded shadow-2xl flex flex-col overflow-hidden">
-              <div className="bg-gray-100 border-b border-gray-200 px-3 py-2 flex items-center gap-2">
-                <div className="flex gap-1">
-                  <div className="w-2.5 h-2.5 rounded-full bg-red-400" />
-                  <div className="w-2.5 h-2.5 rounded-full bg-yellow-400" />
-                  <div className="w-2.5 h-2.5 rounded-full bg-green-400" />
-                </div>
-                <div className="flex-1 bg-white h-4 rounded border border-gray-200" />
+        {/* Right Panel: Resizable Logs & Canvas - ÄNDERUNG 24.01.2026 */}
+        <aside
+          id="right-sidebar"
+          className="w-[400px] border-l border-border-dark bg-[#0d1216] hidden 2xl:flex flex-col z-20"
+        >
+          {/* Live Canvas Panel (variable Höhe) */}
+          <div
+            className="flex flex-col overflow-hidden"
+            style={{ height: `${previewHeight}%` }}
+          >
+            <div className="h-10 border-b border-border-dark flex items-center justify-between px-4 bg-[#111418] shrink-0">
+              <div className="flex items-center gap-2 text-sm font-bold">
+                <RefreshCw size={14} className="text-slate-400" />
+                <span>Live Canvas</span>
               </div>
-              <div className="flex-1 flex items-center justify-center p-8 text-center">
-                {status === 'Idle' && <div className="text-slate-400 italic">Canvas leer. Starte ein Projekt um Ergebnisse zu sehen.</div>}
-                {status === 'Working' && (
-                  <div className="flex flex-col items-center gap-4">
-                    <RefreshCw size={48} className="text-primary animate-spin" />
-                    <div className="text-slate-600 font-bold">Generiere Live-Vorschau...</div>
+              <span className="text-[10px] text-emerald-400 font-mono">● Live</span>
+            </div>
+
+            <div className="flex-1 p-3 bg-[#1e1e1e] overflow-hidden">
+              <div className="w-full h-full bg-white rounded shadow-2xl flex flex-col overflow-hidden">
+                {/* Browser Chrome */}
+                <div className="bg-gray-100 border-b border-gray-200 px-3 py-1.5 flex items-center gap-2 shrink-0">
+                  <div className="flex gap-1">
+                    <div className="w-2 h-2 rounded-full bg-red-400" />
+                    <div className="w-2 h-2 rounded-full bg-yellow-400" />
+                    <div className="w-2 h-2 rounded-full bg-green-400" />
                   </div>
-                )}
-                {status === 'Success' && <div className="text-green-600 font-bold">Projekt erfolgreich erstellt!</div>}
+                  <div className="flex-1 bg-white h-4 rounded border border-gray-200 text-[9px] text-gray-400 flex items-center px-2">
+                    localhost:3000
+                  </div>
+                </div>
+                {/* Canvas Content - Echter Screenshot oder Placeholder */}
+                <div className="flex-1 flex items-center justify-center overflow-hidden bg-gray-50">
+                  {agentData.tester.screenshot ? (
+                    <img
+                      src={agentData.tester.screenshot}
+                      alt="Live Preview"
+                      className="w-full h-full object-contain"
+                    />
+                  ) : status === 'Working' ? (
+                    <div className="flex flex-col items-center gap-2 p-4">
+                      <RefreshCw size={32} className="text-gray-400 animate-spin" />
+                      <div className="text-gray-500 text-xs">Generiere Vorschau...</div>
+                    </div>
+                  ) : status === 'Success' ? (
+                    <div className="text-green-600 text-sm font-medium">Fertig</div>
+                  ) : (
+                    <div className="text-gray-400 text-xs italic text-center px-4">
+                      Canvas leer. Starte ein Projekt.
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="h-48 border-t border-border-dark bg-[#111418] flex flex-col">
-            <div className="px-4 py-2 border-b border-border-dark flex justify-between items-center">
+          {/* Resize Handle */}
+          <div
+            onMouseDown={handleResizeMouseDown}
+            className={`h-2 bg-[#1a1a2e] hover:bg-violet-600 cursor-row-resize flex items-center justify-center transition-colors shrink-0 ${isDragging ? 'bg-violet-600' : ''}`}
+          >
+            <div className="w-10 h-0.5 bg-slate-600 rounded-full"></div>
+          </div>
+
+          {/* Global Output Loop (restliche Höhe) */}
+          <div
+            className="flex flex-col overflow-hidden"
+            style={{ height: `${100 - previewHeight}%` }}
+          >
+            <div className="px-4 py-2 border-b border-border-dark flex justify-between items-center bg-[#111418] shrink-0">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Global Output Loop</span>
               <div className="flex items-center gap-1.5">
                 <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
                 <span className="text-[10px] text-green-500 font-mono">CONNECTED</span>
               </div>
             </div>
-            <div className="p-4 overflow-y-auto terminal-scroll font-mono text-[10px] text-slate-400 flex flex-col gap-1">
+            <div className="flex-1 p-3 overflow-y-auto terminal-scroll font-mono text-[10px] text-slate-400 flex flex-col gap-1">
               {logs.map((l, i) => (
                 <div key={i} className="flex gap-2">
                   <span className="text-slate-600 shrink-0">[{l.agent}]</span>

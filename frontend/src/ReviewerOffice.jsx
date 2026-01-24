@@ -26,10 +26,27 @@ import {
   ChevronLeft,
   ChevronRight,
   Gavel,
-  Edit3
+  Edit3,
+  Cpu,
+  RefreshCw
 } from 'lucide-react';
 
-const ReviewerOffice = ({ agentName = "Reviewer", status = "Idle", logs = [], onBack, color = "yellow" }) => {
+// ÄNDERUNG 24.01.2026: Erweiterte Props für echte Daten vom Backend
+const ReviewerOffice = ({
+  agentName = "Reviewer",
+  status = "Idle",
+  logs = [],
+  onBack,
+  color = "yellow",
+  verdict = "",
+  feedback = "",
+  model = "",
+  iteration = 0,
+  maxIterations = 3,
+  sandboxStatus = "",
+  sandboxResult = "",
+  testSummary = ""
+}) => {
   const { logRef, getStatusBadge, formatTime } = useOfficeCommon(logs);
   const reviewLogRef = useRef(null);
 
@@ -51,39 +68,62 @@ const ReviewerOffice = ({ agentName = "Reviewer", status = "Idle", logs = [], on
     );
   };
 
-  // MOCK-DATEN: Demo-Diff-Daten
-  const diffFiles = [
-    {
-      name: 'src/components/Auth.tsx',
-      status: 'modified',
-      lines: [
-        { num: 12, type: 'removed', code: '- const user = await db.getUser(id);' },
-        { num: 12, type: 'added', code: '+ const user = await db.getUserSafe(id);' },
-        { num: 13, type: 'context', code: '  if (!user) return null;' },
-        { num: 14, type: 'context', code: '  return user.profile;' },
-      ]
-    },
-    {
-      name: 'src/api/routes.ts',
-      status: 'modified',
-      lines: [
-        { num: 45, type: 'context', code: "  app.post('/login', (req, res) => {" },
-        { num: 46, type: 'added', code: '+   validateInput(req.body);', highlight: true },
-        { num: 47, type: 'context', code: '    const { email, password } = req.body;' },
-      ]
+  // ÄNDERUNG 24.01.2026: Prüfe ob echte Daten vorhanden sind
+  const hasData = verdict !== '' || iteration > 0;
+
+  // ÄNDERUNG 24.01.2026: Dynamischer Confidence Score basierend auf Verdict und Sandbox-Status
+  const calculateConfidence = () => {
+    if (!hasData) return null;
+    if (verdict === 'OK' && sandboxStatus === 'PASS') return 100;
+    if (verdict === 'OK' && sandboxStatus === 'FAIL') return 60;
+    if (verdict === 'FEEDBACK' && sandboxStatus === 'PASS') return 70;
+    if (verdict === 'FEEDBACK' && sandboxStatus === 'FAIL') return 30;
+    return 50;
+  };
+  const confidenceScore = calculateConfidence();
+
+  // ÄNDERUNG 24.01.2026: Dynamische Status Cards basierend auf echten Daten
+  const getStatusCards = () => {
+    if (!hasData) {
+      return [
+        { title: 'Sandbox', icon: Shield, status: 'pending', value: 'Warte...', color: 'slate' },
+        { title: 'Verdict', icon: Gavel, status: 'pending', value: 'Warte...', color: 'slate' },
+        { title: 'Iteration', icon: RefreshCw, status: 'pending', value: '0/0', color: 'slate' },
+        { title: 'Tests', icon: FlaskConical, status: 'pending', value: 'Warte...', color: 'slate' },
+      ];
     }
-  ];
-
-  // MOCK-DATEN: Demo-Status-Karten
-  const statusCards = [
-    { title: 'Security', icon: Shield, status: 'passed', value: 'Passed', color: 'green' },
-    { title: 'Performance', icon: Gauge, status: 'passed', value: '98/100', color: 'green' },
-    { title: 'Readability', icon: BookOpen, status: 'warning', value: 'Review', color: 'yellow' },
-    { title: 'Test Coverage', icon: FlaskConical, status: 'pending', value: 'Calculating...', color: 'slate' },
-  ];
-
-  // MOCK-DATEN: Konfidenz-Bewertung
-  const confidenceScore = 92;
+    return [
+      {
+        title: 'Sandbox',
+        icon: Shield,
+        status: sandboxStatus === 'PASS' ? 'passed' : sandboxStatus === 'FAIL' ? 'failed' : 'pending',
+        value: sandboxStatus || 'Pending',
+        color: sandboxStatus === 'PASS' ? 'green' : sandboxStatus === 'FAIL' ? 'red' : 'slate'
+      },
+      {
+        title: 'Verdict',
+        icon: Gavel,
+        status: verdict === 'OK' ? 'passed' : verdict === 'FEEDBACK' ? 'warning' : 'pending',
+        value: verdict || 'Pending',
+        color: verdict === 'OK' ? 'green' : verdict === 'FEEDBACK' ? 'yellow' : 'slate'
+      },
+      {
+        title: 'Iteration',
+        icon: RefreshCw,
+        status: iteration > 0 ? 'active' : 'pending',
+        value: `${iteration}/${maxIterations}`,
+        color: iteration >= maxIterations ? 'red' : 'slate'
+      },
+      {
+        title: 'Tests',
+        icon: FlaskConical,
+        status: testSummary.includes('❌') ? 'failed' : testSummary ? 'passed' : 'pending',
+        value: testSummary.includes('❌') ? 'Issues' : testSummary ? 'OK' : 'Warte...',
+        color: testSummary.includes('❌') ? 'red' : testSummary ? 'green' : 'slate'
+      }
+    ];
+  };
+  const statusCards = getStatusCards();
 
   return (
     <div className="bg-[#010409] text-white font-display overflow-hidden h-screen flex flex-col">
@@ -106,7 +146,9 @@ const ReviewerOffice = ({ agentName = "Reviewer", status = "Idle", logs = [], on
                 {agentName} Workstation
                 {renderStatusBadge()}
               </h2>
-              <div className="text-xs text-slate-400 font-medium tracking-wide">AGENT: REVIEW-09</div>
+              <div className="text-xs text-slate-400 font-medium tracking-wide">
+                {model ? `Model: ${model}` : 'Warte auf Modell-Info...'}
+              </div>
             </div>
           </div>
         </div>
@@ -126,66 +168,69 @@ const ReviewerOffice = ({ agentName = "Reviewer", status = "Idle", logs = [], on
 
       {/* Main Content */}
       <div className="flex flex-1 overflow-hidden relative">
-        {/* Left Sidebar - Code Diff Viewer */}
+        {/* Left Sidebar - Review History (ÄNDERUNG 24.01.2026: Echte Logs statt Mock DiffFiles) */}
         <aside className="w-[320px] border-r border-[#30363d] bg-[#0d1117] flex flex-col z-10 hidden md:flex">
           <div className="p-4 border-b border-[#30363d] flex items-center justify-between">
             <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
-              <FileCode size={16} className="text-yellow-500" />
-              Code Diff Viewer
+              <History size={16} className="text-yellow-500" />
+              Review History
             </h3>
-            <span className="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded border border-slate-700">PR #402</span>
+            {iteration > 0 && (
+              <span className="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded border border-slate-700">
+                Iteration {iteration}/{maxIterations}
+              </span>
+            )}
           </div>
 
-          <div className="flex-1 overflow-y-auto reviewer-scrollbar">
-            {diffFiles.map((file, fileIndex) => (
-              <div key={fileIndex} className="flex flex-col">
-                <div className="px-4 py-2 bg-slate-800/50 border-b border-[#30363d] text-xs text-slate-400 font-mono flex justify-between">
-                  <span>{file.name}</span>
-                  <span className="text-yellow-500 capitalize">{file.status}</span>
-                </div>
-                <div className="font-mono text-[11px] leading-5">
-                  {file.lines.map((line, lineIndex) => (
-                    <div
-                      key={lineIndex}
-                      className={`flex relative ${
-                        line.type === 'removed' ? 'bg-red-900/20 text-slate-400 hover:bg-red-900/30' :
-                        line.type === 'added' ? 'bg-green-900/20 text-green-200 hover:bg-green-900/30' :
-                        'text-slate-400 hover:bg-slate-800/30'
-                      }`}
-                    >
-                      <span className="w-8 text-right pr-2 text-slate-600 select-none border-r border-slate-700 mr-2 bg-[#0d1117]">
-                        {line.num}
-                      </span>
-                      <span>{line.code}</span>
-                      {line.highlight && (
-                        <div className="absolute right-2 top-0.5 w-1.5 h-1.5 bg-yellow-500 rounded-full animate-ping"></div>
-                      )}
-                    </div>
-                  ))}
-                </div>
+          <div className="flex-1 overflow-y-auto reviewer-scrollbar p-4">
+            {logs.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-center p-4">
+                <FileCode size={32} className="text-slate-600 mb-3" />
+                <p className="text-sm text-slate-500">Keine Reviews</p>
+                <p className="text-xs text-slate-600 mt-1">Starte einen Task um Reviews zu sehen</p>
               </div>
-            ))}
+            ) : (
+              <div className="space-y-3">
+                {logs.map((log, i) => (
+                  <div
+                    key={i}
+                    className={`p-3 rounded-lg border transition-colors ${
+                      log.event === 'Feedback' || log.event === 'ReviewOutput'
+                        ? 'bg-yellow-900/10 border-yellow-500/20'
+                        : log.event === 'Error'
+                        ? 'bg-red-900/10 border-red-500/20'
+                        : log.event === 'Status' && log.message.includes('OK')
+                        ? 'bg-green-900/10 border-green-500/20'
+                        : 'bg-slate-800/50 border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={`text-[10px] font-bold uppercase ${
+                        log.event === 'Feedback' || log.event === 'ReviewOutput' ? 'text-yellow-500' :
+                        log.event === 'Error' ? 'text-red-400' :
+                        log.event === 'Status' && log.message.includes('OK') ? 'text-green-400' :
+                        'text-slate-400'
+                      }`}>{log.event}</span>
+                      <span className="text-[10px] text-slate-500">{formatTime(i)}</span>
+                    </div>
+                    <p className="text-xs text-slate-300 line-clamp-3">{log.message}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
-            {/* Assets Changed Section */}
-            <div className="mt-6 px-4 pb-4">
-              <div className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">Assets Changed</div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="aspect-video bg-slate-800 rounded border border-slate-700 flex items-center justify-center relative overflow-hidden group cursor-pointer">
-                  <span className="text-[10px] text-slate-500">old_logo.svg</span>
-                  <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                    <span className="text-red-400 text-xs font-bold">DELETED</span>
-                  </div>
-                </div>
-                <div className="aspect-video bg-slate-800 rounded border border-slate-700 flex items-center justify-center relative overflow-hidden group cursor-pointer">
-                  <span className="text-[10px] text-slate-500">new_logo.svg</span>
-                  <div className="absolute inset-0 bg-yellow-500/10 border-2 border-yellow-500"></div>
-                  <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                    <span className="text-yellow-500 text-xs font-bold">ADDED</span>
-                  </div>
-                </div>
+          {/* Sandbox Result Summary */}
+          {sandboxResult && (
+            <div className="p-4 border-t border-[#30363d]">
+              <h4 className="text-xs font-bold text-slate-400 uppercase mb-2">Sandbox Result</h4>
+              <div className={`p-2 rounded text-xs font-mono overflow-auto max-h-24 ${
+                sandboxStatus === 'PASS' ? 'bg-green-900/20 text-green-400' : 'bg-red-900/20 text-red-400'
+              }`}>
+                {sandboxResult.slice(0, 200)}{sandboxResult.length > 200 ? '...' : ''}
               </div>
             </div>
-          </div>
+          )}
         </aside>
 
         {/* Main Content Area */}
@@ -195,44 +240,40 @@ const ReviewerOffice = ({ agentName = "Reviewer", status = "Idle", logs = [], on
             style={{ backgroundSize: '24px 24px' }}
           ></div>
 
-          {/* Toolbar */}
+          {/* Toolbar - ÄNDERUNG 24.01.2026: Dynamische Statuswerte */}
           <div className="h-12 border-b border-[#30363d] flex items-center justify-between px-4 bg-[#161b22]/50 backdrop-blur z-10">
             <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 text-yellow-500 font-bold text-sm" style={{ textShadow: '0 0 10px rgba(234, 179, 8, 0.5)' }}>
-                <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-                >
-                  <Shield size={18} />
-                </motion.div>
-                <span>SCANNING CODEBASE...</span>
-              </div>
+              {status === 'Status' || status === 'Feedback' || status === 'ReviewOutput' ? (
+                <div className="flex items-center gap-2 text-yellow-500 font-bold text-sm" style={{ textShadow: '0 0 10px rgba(234, 179, 8, 0.5)' }}>
+                  <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}>
+                    <Shield size={18} />
+                  </motion.div>
+                  <span>REVIEWING CODE...</span>
+                </div>
+              ) : verdict ? (
+                <div className={`flex items-center gap-2 font-bold text-sm ${verdict === 'OK' ? 'text-green-500' : 'text-yellow-500'}`}>
+                  {verdict === 'OK' ? <CheckCircle size={18} /> : <AlertTriangle size={18} />}
+                  <span>{verdict === 'OK' ? 'REVIEW PASSED' : 'CHANGES REQUIRED'}</span>
+                </div>
+              ) : (
+                <span className="text-slate-500 text-sm">Warte auf Review...</span>
+              )}
               <div className="h-4 w-px bg-[#30363d]"></div>
               <div className="flex gap-1">
-                <button className="px-2 py-1 rounded bg-white/5 text-slate-200 text-xs flex items-center gap-1 border border-[#30363d]">
-                  <AlertTriangle size={12} className="text-yellow-500" />
-                  0 Bugs
-                </button>
-                <button className="px-2 py-1 rounded bg-white/5 text-slate-200 text-xs flex items-center gap-1 border border-[#30363d]">
-                  <AlertTriangle size={12} className="text-yellow-500" />
-                  2 Warnings
+                <button className={`px-2 py-1 rounded text-xs flex items-center gap-1 border ${
+                  sandboxStatus === 'FAIL' ? 'bg-red-500/10 text-red-400 border-red-500/20' : 'bg-white/5 text-slate-200 border-[#30363d]'
+                }`}>
+                  <Shield size={12} />
+                  Sandbox: {sandboxStatus || '-'}
                 </button>
                 <button className="px-2 py-1 rounded bg-white/5 text-slate-200 text-xs flex items-center gap-1 border border-[#30363d]">
                   <Info size={12} className="text-blue-400" />
-                  5 Info
+                  Iteration: {iteration}/{maxIterations}
                 </button>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-500">Lines: +45 / -12</span>
-              <div className="h-4 w-px bg-slate-700 mx-2"></div>
-              <button className="p-1 text-slate-400 hover:text-white">
-                <ChevronLeft size={16} />
-              </button>
-              <span className="text-xs text-white">File 2 of 5</span>
-              <button className="p-1 text-slate-400 hover:text-white">
-                <ChevronRight size={16} />
-              </button>
+              {model && <span className="text-xs text-slate-500 font-mono">{model}</span>}
             </div>
           </div>
 
@@ -356,97 +397,104 @@ const ReviewerOffice = ({ agentName = "Reviewer", status = "Idle", logs = [], on
           </div>
         </main>
 
-        {/* Right Sidebar - Confidence & Decision */}
+        {/* Right Sidebar - Confidence & Decision (ÄNDERUNG 24.01.2026: Dynamische Werte) */}
         <aside className="w-[320px] border-l border-[#30363d] bg-[#0d1117] flex flex-col z-10 hidden lg:flex">
+          {/* Model Info Header */}
+          <div className="p-4 border-b border-[#30363d] bg-[#161b22]">
+            <div className="flex items-center gap-2 text-sm">
+              <Cpu size={14} className="text-yellow-500" />
+              <span className="text-slate-400">Modell:</span>
+              {model ? (
+                <span className="text-yellow-400 font-semibold">{model}</span>
+              ) : (
+                <span className="text-slate-500 italic">Warte auf Modell-Info...</span>
+              )}
+            </div>
+          </div>
+
           {/* Confidence Score */}
           <div className="p-6 border-b border-[#30363d] flex flex-col items-center">
             <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 w-full text-center">Confidence Score</h3>
-            <div className="relative size-40 flex items-center justify-center mb-2">
-              <svg className="w-full h-full -rotate-90 transform" viewBox="0 0 100 100">
-                <circle
-                  cx="50"
-                  cy="50"
-                  r="40"
-                  fill="none"
-                  stroke="#1e293b"
-                  strokeWidth="8"
-                />
-                <circle
-                  cx="50"
-                  cy="50"
-                  r="40"
-                  fill="none"
-                  stroke="#eab308"
-                  strokeWidth="8"
-                  strokeDasharray={`${(confidenceScore / 100) * 251.2} 251.2`}
-                  strokeLinecap="round"
-                  style={{ filter: 'drop-shadow(0 0 8px rgba(234,179,8,0.5))' }}
-                />
-              </svg>
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-4xl font-black text-white" style={{ textShadow: '0 0 10px rgba(234, 179, 8, 0.5)' }}>{confidenceScore}%</span>
-                <span className="text-[10px] text-yellow-500 font-bold tracking-widest uppercase">High Confidence</span>
+            {confidenceScore !== null ? (
+              <>
+                <div className="relative size-40 flex items-center justify-center mb-2">
+                  <svg className="w-full h-full -rotate-90 transform" viewBox="0 0 100 100">
+                    <circle cx="50" cy="50" r="40" fill="none" stroke="#1e293b" strokeWidth="8" />
+                    <circle
+                      cx="50" cy="50" r="40" fill="none"
+                      stroke={confidenceScore >= 80 ? '#22c55e' : confidenceScore >= 50 ? '#eab308' : '#ef4444'}
+                      strokeWidth="8"
+                      strokeDasharray={`${(confidenceScore / 100) * 251.2} 251.2`}
+                      strokeLinecap="round"
+                      style={{ filter: `drop-shadow(0 0 8px ${confidenceScore >= 80 ? 'rgba(34,197,94,0.5)' : confidenceScore >= 50 ? 'rgba(234,179,8,0.5)' : 'rgba(239,68,68,0.5)'})` }}
+                    />
+                  </svg>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <span className="text-4xl font-black text-white">{confidenceScore}%</span>
+                    <span className={`text-[10px] font-bold tracking-widest uppercase ${
+                      confidenceScore >= 80 ? 'text-green-500' : confidenceScore >= 50 ? 'text-yellow-500' : 'text-red-500'
+                    }`}>
+                      {confidenceScore >= 80 ? 'High Confidence' : confidenceScore >= 50 ? 'Medium' : 'Low Confidence'}
+                    </span>
+                  </div>
+                </div>
+                <p className="text-center text-xs text-slate-500 px-4">
+                  Basierend auf Sandbox ({sandboxStatus || '-'}) und Verdict ({verdict || '-'})
+                </p>
+              </>
+            ) : (
+              <div className="h-40 flex flex-col items-center justify-center">
+                <Gauge size={32} className="text-slate-600 mb-3" />
+                <p className="text-sm text-slate-500">Keine Bewertung</p>
+                <p className="text-xs text-slate-600 mt-1">Warte auf Review-Ergebnis</p>
               </div>
-            </div>
-            <p className="text-center text-xs text-slate-500 px-4">Based on 142 checks and historical data patterns.</p>
+            )}
           </div>
 
-          {/* Decision Panel */}
+          {/* Decision Panel - Zeigt aktuelles Verdict */}
           <div className="p-4 border-b border-[#30363d] bg-[#161b22]">
             <h3 className="text-xs font-bold text-slate-300 flex items-center gap-2 mb-3">
               <Gavel size={16} className="text-yellow-500" />
-              Decision Panel
+              Aktuelles Verdict
             </h3>
-            <div className="space-y-3">
-              <button className="w-full py-3 rounded-lg bg-green-600 hover:bg-green-500 text-white font-bold text-sm shadow-[0_0_15px_rgba(34,197,94,0.3)] transition-all flex items-center justify-center gap-2">
-                <CheckCircle size={16} />
-                Approve Changes
-              </button>
-              <button className="w-full py-3 rounded-lg bg-[#0d1117] border border-yellow-500/50 hover:bg-yellow-500/10 text-yellow-500 font-bold text-sm transition-all flex items-center justify-center gap-2">
-                <Edit3 size={16} />
-                Request Changes
-              </button>
-              <button className="w-full py-3 rounded-lg bg-[#0d1117] border border-red-500/50 hover:bg-red-500/10 text-red-500 font-bold text-sm transition-all flex items-center justify-center gap-2">
-                <XCircle size={16} />
-                Reject
-              </button>
-            </div>
+            {verdict ? (
+              <div className={`w-full py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 ${
+                verdict === 'OK'
+                  ? 'bg-green-600 text-white shadow-[0_0_15px_rgba(34,197,94,0.3)]'
+                  : 'bg-yellow-500/20 border border-yellow-500/50 text-yellow-500'
+              }`}>
+                {verdict === 'OK' ? <CheckCircle size={16} /> : <Edit3 size={16} />}
+                {verdict === 'OK' ? 'Approved' : 'Changes Requested'}
+              </div>
+            ) : (
+              <div className="w-full py-3 rounded-lg bg-slate-800 border border-slate-700 text-slate-500 font-medium text-sm text-center">
+                Warte auf Verdict...
+              </div>
+            )}
           </div>
+
+          {/* Feedback Section (wenn vorhanden) */}
+          {feedback && (
+            <div className="p-4 border-b border-[#30363d] bg-[#0d1117]">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">
+                Reviewer Feedback
+              </h3>
+              <div className="bg-yellow-900/10 border border-yellow-500/20 rounded-lg p-3 max-h-40 overflow-auto">
+                <p className="text-sm text-yellow-200 whitespace-pre-wrap">{feedback.slice(0, 500)}{feedback.length > 500 ? '...' : ''}</p>
+              </div>
+            </div>
+          )}
 
           {/* Review Log */}
           <div className="flex-1 overflow-y-auto p-4 reviewer-scrollbar bg-[#0d1117]">
             <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Review Log</h3>
-            <div
-              ref={reviewLogRef}
-              className="space-y-3"
-            >
+            <div ref={reviewLogRef} className="space-y-3">
               {logs.length === 0 ? (
-                <>
-                  <div className="flex gap-3 text-xs">
-                    <span className="text-slate-500 font-mono">10:45</span>
-                    <div className="flex-1">
-                      <p className="text-slate-300">Started review of <span className="text-yellow-500">PR #402</span></p>
-                    </div>
-                  </div>
-                  <div className="flex gap-3 text-xs">
-                    <span className="text-slate-500 font-mono">10:46</span>
-                    <div className="flex-1">
-                      <p className="text-slate-300">Flagged complexity in <span className="font-mono text-slate-400">auth.ts</span></p>
-                    </div>
-                  </div>
-                  <div className="flex gap-3 text-xs">
-                    <span className="text-slate-500 font-mono">10:46</span>
-                    <div className="flex-1">
-                      <p className="text-slate-300">Verified security compliance for token storage.</p>
-                    </div>
-                  </div>
-                  <div className="flex gap-3 text-xs">
-                    <span className="text-slate-500 font-mono">10:47</span>
-                    <div className="flex-1">
-                      <p className="text-slate-300">Performance regression check passed.</p>
-                    </div>
-                  </div>
-                </>
+                <div className="text-center py-8">
+                  <History size={24} className="text-slate-600 mx-auto mb-2" />
+                  <p className="text-xs text-slate-500">Keine Log-Einträge</p>
+                  <p className="text-xs text-slate-600 mt-1">Starte einen Task</p>
+                </div>
               ) : (
                 logs.slice(-10).map((log, i) => (
                   <div key={i} className="flex gap-3 text-xs">
@@ -454,8 +502,8 @@ const ReviewerOffice = ({ agentName = "Reviewer", status = "Idle", logs = [], on
                     <div className="flex-1">
                       <p className={
                         log.event === 'Error' ? 'text-red-400' :
-                        log.event === 'Warning' ? 'text-yellow-500' :
-                        log.event === 'Success' ? 'text-green-400' :
+                        log.event === 'Warning' || log.event === 'Feedback' ? 'text-yellow-500' :
+                        log.event === 'Success' || (log.event === 'Status' && log.message.includes('OK')) ? 'text-green-400' :
                         'text-slate-300'
                       }>{log.message}</p>
                     </div>

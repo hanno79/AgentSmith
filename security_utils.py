@@ -198,6 +198,11 @@ def sanitize_filename(filename: str) -> str:
     # Entferne führende/trailing Whitespace und Slashes nochmals
     filename = filename.strip().strip('/\\')
 
+    # ÄNDERUNG 24.01.2026: Fix für trailing Unterstriche
+    # Entferne trailing Unterstriche die durch Sanitization von : entstanden sind
+    # (z.B. "index.html:" wird zu "index.html_" durch Zeile 182, dann hier zu "index.html")
+    filename = filename.rstrip('_')
+
     return filename
 
 

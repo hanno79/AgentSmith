@@ -67,9 +67,23 @@ def create_techstack_architect(config: Dict[str, Any], project_rules: Dict[str, 
             '  "dependencies": ["express", "sqlite3"],\n'
             '  "install_command": "npm install",\n'
             '  "run_command": "node index.js",\n'
+            '  "requires_server": true,\n'
+            '  "server_port": 3000,\n'
+            '  "server_startup_time_ms": 3000,\n'
             '  "reasoning": "Kurze Begründung..."\n'
             "}\n"
-            "```\n"
+            "```\n\n"
+            "**Test-relevante Felder (WICHTIG für automatisiertes Testen):**\n"
+            "- `requires_server`: true wenn das Projekt einen laufenden Server benötigt\n"
+            "- `server_port`: Der Port auf dem der Server läuft (z.B. 3000 für Node, 5000 für Flask, 8000 für FastAPI)\n"
+            "- `server_startup_time_ms`: Geschätzte Startzeit des Servers in Millisekunden (Standard: 3000)\n\n"
+            "**Typische Port-Zuordnungen:**\n"
+            "- Flask: 5000\n"
+            "- FastAPI/Uvicorn: 8000\n"
+            "- Node.js/Express: 3000\n"
+            "- Django: 8000\n"
+            "- static_html: keinen Server (requires_server: false)\n"
+            "- python_cli: keinen Server (requires_server: false)\n\n"
             "Falls keine Bibliotheken nötig sind (z.B. static_html), lass install_command leer.\n"
             "Definiere run_command so, dass es direkt im Projektordner ausgeführt werden kann.\n\n"
             "WICHTIG: Dein Blueprint MUSS die Grundlage für ein sofort ausführbares Ergebnis sein. "

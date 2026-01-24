@@ -42,6 +42,8 @@ from sandbox_runner import run_sandbox
 from logger_utils import log_event # Added Logger
 from security_utils import safe_join_path, sanitize_filename, validate_shell_command
 from exceptions import SecurityError
+# ÄNDERUNG 24.01.2026: Import aus zentraler file_utils (REGEL 13 - Single Source of Truth)
+from file_utils import find_html_file
 
 # CrewAI Imports
 from crewai import Task, Crew
@@ -53,6 +55,7 @@ def load_config():
     with open("config.yaml", "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
+
 def save_multi_file_output(project_path: str, code_output: str, default_filename: str):
     """
     Parst den Output des Coders und speichert mehrere Dateien,
@@ -61,8 +64,10 @@ def save_multi_file_output(project_path: str, code_output: str, default_filename
     """
     import re
     # Pattern: ### [KEYWORD:] Pfad/zur/Datei.ext
-    # Wir machen den Präfix (FILENAME:, FILE:, PATH:) optional und fangen nur den Pfad ein.
-    pattern = r"###\s*(?:[\w\s]+:\s*)?(.+?)\s*[\r\n]+"
+    # ÄNDERUNG 24.01.2026: Robusteres Pattern das auch trailing : erfasst und entfernt
+    # Erlaubte Präfixe: FILENAME:, FILE:, PATH:, DATEI:, PFAD: (case-insensitive durch split)
+    # Das trailing :? am Ende entfernt optionale : nach dem Dateinamen
+    pattern = r"###\s*(?:FILENAME|FILE|PATH|DATEI|PFAD)?:?\s*(.+?):?\s*[\r\n]+"
     parts = re.split(pattern, code_output)
     
     # Wenn kein Split (oder nur 1 Teil), dann kein Multi-File-Format
@@ -79,7 +84,12 @@ def save_multi_file_output(project_path: str, code_output: str, default_filename
 
     created_files = []
     # Start bei Index 1, da Index 0 der Preamble ist
+    # ÄNDERUNG 24.01.2026: Bounds-Check hinzugefügt um IndexError zu vermeiden
     for i in range(1, len(parts), 2):
+        # Prüfe ob genügend Parts vorhanden sind (Dateiname + Content)
+        if i + 1 >= len(parts):
+            console.print(f"[yellow]⚠️ Unvollständiger Block bei Index {i} - übersprungen[/yellow]")
+            break
         raw_filename = parts[i].strip()
         content = parts[i+1].strip()
 

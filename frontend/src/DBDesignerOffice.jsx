@@ -1,8 +1,9 @@
 /**
  * Author: rahn
  * Datum: 24.01.2026
- * Version: 1.0
+ * Version: 1.1
  * Beschreibung: DB Designer Office - Detailansicht für den Datenbank-Designer mit Schema-Übersicht.
+ *               ÄNDERUNG 24.01.2026: Dummy-Daten durch echte Backend-Daten ersetzt (DBDesignerOutput Event).
  */
 
 import React, { useRef } from 'react';
@@ -29,9 +30,23 @@ import {
   Maximize2
 } from 'lucide-react';
 
-const DBDesignerOffice = ({ agentName = "Database Designer", status = "Idle", logs = [], onBack, color = "green" }) => {
+const DBDesignerOffice = ({
+  agentName = "Database Designer",
+  status = "Idle",
+  logs = [],
+  onBack,
+  color = "green",
+  // ÄNDERUNG 24.01.2026: Echte Daten Props vom Backend
+  schema = "",
+  model = "",
+  tables = [],
+  dbStatus = ""
+}) => {
   const { logRef, getStatusBadge, formatTime } = useOfficeCommon(logs);
   const migrationLogRef = useRef(null);
+
+  // Prüfen ob echte Daten vorhanden sind
+  const hasData = schema !== '' || tables.length > 0 || dbStatus === 'completed';
 
   // Status Badge Rendering Helper
   const renderStatusBadge = () => {
@@ -43,73 +58,24 @@ const DBDesignerOffice = ({ agentName = "Database Designer", status = "Idle", lo
     );
   };
 
-  // MOCK-DATEN: Nur für Demo-Zwecke - Echte Schema-Daten kommen vom DB-Designer-Agenten
-  const schemaItems = [
-    {
-      id: 1,
-      type: 'active',
-      name: 'users_auth_log',
-      rows: '1.2M',
-      columns: [
-        { name: 'id (UUID)', isPrimary: true },
-        { name: 'user_id (FK)', isForeign: true },
-      ],
-      efficiency: 98
-    },
-    {
-      id: 2,
-      type: 'unoptimized',
-      name: 'transactions_history',
-      detail: "Missing index on 'created_at'"
-    },
-    {
-      id: 3,
-      type: 'view',
-      name: 'daily_metrics_view',
-      detail: 'Materialized • Refreshing...'
-    },
-    {
-      id: 4,
-      type: 'vacuuming',
-      name: 'orders_archived'
-    },
-  ];
+  // ÄNDERUNG 24.01.2026: Schema Items aus echten Tabellen-Daten generieren
+  const getSchemaItems = () => {
+    if (!hasData || tables.length === 0) return [];
 
-  // MOCK-DATEN: Nur für Demo-Zwecke - Echter SQL-Code kommt vom DB-Designer-Agenten
-  const sqlCode = [
-    { line: 1, type: 'normal', content: 'CREATE TABLE public.users_auth_log (', parts: [{ text: 'CREATE TABLE', class: 'text-emerald-400' }, { text: ' public.users_auth_log (', class: 'text-slate-300' }] },
-    { line: 2, type: 'normal', content: '  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),', indent: true },
-    { line: 3, type: 'normal', content: '  user_id UUID NOT NULL REFERENCES users(id),', indent: true },
-    { line: 4, type: 'normal', content: '  login_timestamp TIMESTAMPTZ DEFAULT NOW(),', indent: true },
-    { line: 5, type: 'normal', content: '  ip_address INET,', indent: true },
-    { line: 6, type: 'normal', content: '  device_info JSONB', indent: true },
-    { line: 7, type: 'normal', content: ');' },
-  ];
+    return tables.map((table, index) => ({
+      id: index + 1,
+      type: index === 0 ? 'active' : 'table',
+      name: table.name,
+      columns: table.columns?.map(col => ({
+        name: `${col.name} (${col.type})`,
+        isPrimary: col.isPrimary,
+        isForeign: col.isForeign
+      })) || [],
+      efficiency: 95 + Math.floor(Math.random() * 5) // Platzhalter für echte Metriken
+    }));
+  };
 
-  // MOCK-DATEN: Demo-Migrations-Log-Einträge
-  const migrationEntries = [
-    {
-      title: 'Transaction 0X88A2 (Committed)',
-      items: [
-        { text: 'Table', highlight: 'users_auth_log', suffix: ' created successfully. Storage engine:', highlight2: 'Heap', suffix2: '.' },
-        { text: 'Constraint', highlight: 'fk_user_id', suffix: ' validated against 1.2M rows. Duration:', highlight2: '420ms', suffix2: '.' },
-      ]
-    },
-    {
-      title: 'Query Planner Result',
-      items: [
-        { text: 'Seq Scan skipped.', highlight: 'Index Scan using idx_users_email', suffix: ' utilized.' },
-        { isPatch: true, title: 'OPTIMIZATION DETECTED', text: 'Estimated cost reduced from 154.2 to 12.4 by applying partial index filter.' },
-      ]
-    }
-  ];
-
-  // MOCK-DATEN: Demo-Cluster-Health-Daten
-  const clusterHealth = [
-    { name: 'PRIMARY', value: 92, status: 'OK' },
-    { name: 'REPL-1', value: 99, status: 'OK' },
-    { name: 'REPL-2', value: 100, status: 'SYNC', isSync: true },
-  ];
+  const schemaItems = getSchemaItems();
 
   return (
     <div className="bg-[#0f172a] text-white font-display overflow-hidden h-screen flex flex-col">
@@ -137,14 +103,23 @@ const DBDesignerOffice = ({ agentName = "Database Designer", status = "Idle", lo
           </div>
         </div>
         <div className="flex gap-3">
-          {/* Schema Migration Badge */}
+          {/* Schema Status Badge - ÄNDERUNG 24.01.2026: Dynamisch statt hardcodiert */}
           <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#1e293b] border border-[#334155] relative group hover:border-emerald-500/30 transition-colors">
-            <span className="absolute right-0 top-0 -mt-1 -mr-1 flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-teal-500"></span>
-            </span>
+            {dbStatus === 'completed' && (
+              <span className="absolute right-0 top-0 -mt-1 -mr-1 flex h-2 w-2">
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+            )}
+            {!hasData && (
+              <span className="absolute right-0 top-0 -mt-1 -mr-1 flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-teal-500"></span>
+              </span>
+            )}
             <Table2 size={14} className="text-teal-500" />
-            <span className="text-xs font-semibold text-white">Schema Migration #892</span>
+            <span className="text-xs font-semibold text-white">
+              {hasData ? `${tables.length} Tabellen definiert` : 'Schema in Arbeit...'}
+            </span>
           </div>
           <button className="flex size-9 cursor-pointer items-center justify-center overflow-hidden rounded-lg bg-[#1e293b] hover:bg-[#334155] text-white transition-colors border border-[#334155]">
             <History size={18} />
@@ -171,90 +146,89 @@ const DBDesignerOffice = ({ agentName = "Database Designer", status = "Idle", lo
           </div>
 
           <div className="flex-1 overflow-y-auto dbdesigner-scrollbar p-4 space-y-4">
-            {schemaItems.map((item) => (
-              <div key={item.id} className={item.type === 'active' ? 'relative group' : item.type === 'vacuuming' ? 'group cursor-pointer opacity-80' : 'group cursor-pointer'}>
-                {item.type === 'active' ? (
-                  <>
-                    <div className="absolute -inset-0.5 bg-gradient-to-r from-emerald-600 to-teal-600 rounded-lg opacity-20 blur-sm group-hover:opacity-40 transition-opacity"></div>
-                    <div className="relative bg-[#1e293b] p-3 rounded-lg border border-emerald-500/30 shadow-lg">
-                      <div className="flex justify-between items-start mb-2">
-                        <span className="text-[10px] font-bold text-emerald-300 bg-emerald-950/50 px-1.5 py-0.5 rounded border border-emerald-800 animate-pulse">ACTIVE</span>
-                        <span className="text-[10px] text-slate-400 font-mono">{item.rows} Rows</span>
+            {/* ÄNDERUNG 24.01.2026: Dynamische Schema Explorer Anzeige */}
+            {!hasData ? (
+              <div className="flex flex-col items-center justify-center h-full text-center py-10">
+                <Database size={48} className="text-slate-700 mb-4" />
+                <p className="text-slate-400 text-sm">Warte auf Schema...</p>
+                <p className="text-slate-500 text-xs mt-2">Der DB Designer erstellt das Schema.</p>
+              </div>
+            ) : schemaItems.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-center py-10">
+                <Table2 size={48} className="text-slate-700 mb-4" />
+                <p className="text-slate-400 text-sm">Keine Tabellen definiert</p>
+              </div>
+            ) : (
+              schemaItems.map((item, index) => (
+                <div key={item.id} className={index === 0 ? 'relative group' : 'group cursor-pointer'}>
+                  {index === 0 ? (
+                    <>
+                      {/* Erste Tabelle hervorgehoben */}
+                      <div className="absolute -inset-0.5 bg-gradient-to-r from-emerald-600 to-teal-600 rounded-lg opacity-20 blur-sm group-hover:opacity-40 transition-opacity"></div>
+                      <div className="relative bg-[#1e293b] p-3 rounded-lg border border-emerald-500/30 shadow-lg">
+                        <div className="flex justify-between items-start mb-2">
+                          <span className="text-[10px] font-bold text-emerald-300 bg-emerald-950/50 px-1.5 py-0.5 rounded border border-emerald-800">TABLE</span>
+                          <span className="text-[10px] text-slate-400 font-mono">{item.columns?.length || 0} cols</span>
+                        </div>
+                        <h4 className="text-sm font-semibold text-white mb-2 truncate flex items-center gap-2">
+                          <Table2 size={14} className="text-emerald-400" />
+                          {item.name}
+                        </h4>
+                        {item.columns && item.columns.length > 0 && (
+                          <div className="space-y-1.5 pl-1">
+                            {item.columns.slice(0, 5).map((col, i) => (
+                              <div key={i} className="flex items-center gap-2 text-xs text-slate-400">
+                                {col.isPrimary ? (
+                                  <Key size={12} className="text-yellow-500" />
+                                ) : col.isForeign ? (
+                                  <Link size={12} className="text-blue-400" />
+                                ) : (
+                                  <span className="w-3 h-3" />
+                                )}
+                                <span className="font-mono text-slate-300 truncate">{col.name}</span>
+                              </div>
+                            ))}
+                            {item.columns.length > 5 && (
+                              <p className="text-[10px] text-slate-500 italic">+{item.columns.length - 5} weitere Spalten</p>
+                            )}
+                          </div>
+                        )}
                       </div>
-                      <h4 className="text-sm font-semibold text-white mb-2 truncate flex items-center gap-2">
-                        <Table2 size={14} className="text-emerald-400" />
+                    </>
+                  ) : (
+                    /* Weitere Tabellen */
+                    <div className="bg-[#1e293b]/40 hover:bg-[#1e293b] p-3 rounded-lg border border-[#334155] group-hover:border-slate-500 transition-all">
+                      <div className="flex justify-between items-start mb-1">
+                        <span className="flex items-center gap-1 text-[10px] font-bold text-teal-400 uppercase">
+                          <span className="size-1.5 bg-teal-500 rounded-full"></span>
+                          Table
+                        </span>
+                        <span className="text-[10px] text-slate-500">{item.columns?.length || 0} cols</span>
+                      </div>
+                      <h4 className="text-sm font-medium text-slate-300 group-hover:text-emerald-100 transition-colors flex items-center gap-2">
+                        <Table2 size={14} className="text-slate-400" />
                         {item.name}
                       </h4>
-                      <div className="space-y-1.5 pl-1">
-                        {item.columns.map((col, i) => (
-                          <div key={i} className="flex items-center gap-2 text-xs text-slate-400">
-                            {col.isPrimary ? (
-                              <Key size={12} className="text-yellow-500" />
-                            ) : (
-                              <Link size={12} className="text-slate-500" />
-                            )}
-                            <span className="font-mono text-slate-300">{col.name}</span>
-                          </div>
-                        ))}
-                        <div className="h-px w-full bg-slate-700/50 my-1"></div>
-                        <div className="flex items-center justify-between text-xs text-slate-300">
-                          <span className="flex items-center gap-1.5 text-[10px]">Index Scan</span>
-                          <span className="font-mono text-emerald-400 text-[10px]">{item.efficiency}% Efficiency</span>
-                        </div>
-                      </div>
                     </div>
-                  </>
-                ) : item.type === 'unoptimized' ? (
-                  <div className="bg-[#1e293b]/40 hover:bg-[#1e293b] p-3 rounded-lg border border-[#334155] group-hover:border-slate-500 transition-all">
-                    <div className="flex justify-between items-start mb-1">
-                      <span className="flex items-center gap-1 text-[10px] font-bold text-amber-400 uppercase">
-                        <span className="size-1.5 bg-amber-500 rounded-full"></span>
-                        Unoptimized
-                      </span>
-                      <AlertTriangle size={14} className="text-slate-500" />
-                    </div>
-                    <h4 className="text-sm font-medium text-slate-300 group-hover:text-emerald-100 transition-colors flex items-center gap-2">
-                      <Table2 size={14} className="text-slate-400" />
-                      {item.name}
-                    </h4>
-                    <p className="text-[11px] text-slate-500 mt-1 font-mono truncate">{item.detail}</p>
-                  </div>
-                ) : item.type === 'view' ? (
-                  <div className="bg-[#1e293b]/40 hover:bg-[#1e293b] p-3 rounded-lg border border-[#334155] group-hover:border-slate-500 transition-all">
-                    <div className="flex justify-between items-start mb-1">
-                      <span className="flex items-center gap-1 text-[10px] font-bold text-teal-400 uppercase">
-                        <span className="size-1.5 bg-teal-500 rounded-full"></span>
-                        View
-                      </span>
-                      <Eye size={14} className="text-slate-500" />
-                    </div>
-                    <h4 className="text-sm font-medium text-slate-300 group-hover:text-emerald-100 transition-colors flex items-center gap-2">
-                      <Table2 size={14} className="text-slate-400" />
-                      {item.name}
-                    </h4>
-                    <p className="text-[11px] text-slate-500 mt-1 font-mono truncate">{item.detail}</p>
-                  </div>
-                ) : (
-                  <div className="bg-[#1e293b]/20 p-3 rounded-lg border border-[#334155] border-dashed">
-                    <div className="flex justify-between items-start mb-1">
-                      <span className="text-[10px] font-bold text-slate-500 uppercase">Vacuuming</span>
-                      <Trash2 size={14} className="text-slate-600 animate-pulse" />
-                    </div>
-                    <h4 className="text-sm font-medium text-slate-400">Autovacuum: {item.name}</h4>
-                  </div>
-                )}
-              </div>
-            ))}
+                  )}
+                </div>
+              ))
+            )}
           </div>
 
-          {/* Schema Validation Footer */}
+          {/* Schema Validation Footer - ÄNDERUNG 24.01.2026: Dynamisch */}
           <div className="p-3 border-t border-[#334155] bg-[#0f172a]">
             <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
               <span>Schema Validation</span>
-              <span className="text-emerald-400">No Errors</span>
+              <span className={hasData && dbStatus === 'completed' ? 'text-emerald-400' : 'text-slate-500'}>
+                {!hasData ? 'Warte...' : dbStatus === 'completed' ? 'Validiert' : 'In Arbeit'}
+              </span>
             </div>
             <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden w-full">
-              <div className="h-full w-[100%] bg-gradient-to-r from-emerald-600 to-teal-500 rounded-full"></div>
+              <div
+                className={`h-full rounded-full transition-all ${hasData && dbStatus === 'completed' ? 'bg-gradient-to-r from-emerald-600 to-teal-500' : 'bg-slate-600'}`}
+                style={{ width: hasData ? (dbStatus === 'completed' ? '100%' : '50%') : '0%' }}
+              ></div>
             </div>
           </div>
         </aside>
@@ -286,87 +260,54 @@ const DBDesignerOffice = ({ agentName = "Database Designer", status = "Idle", lo
               ref={logRef}
               className="flex-1 p-5 overflow-y-auto dbdesigner-scrollbar font-mono text-xs space-y-1"
             >
-              {logs.length === 0 ? (
+              {/* ÄNDERUNG 24.01.2026: Dynamische Anzeige basierend auf echten Daten */}
+              {logs.length === 0 && !hasData ? (
+                <div className="flex flex-col items-center justify-center h-full text-center">
+                  <Database size={48} className="text-slate-700 mb-4" />
+                  <p className="text-slate-400">Warte auf DB Designer...</p>
+                  <p className="text-slate-500 text-[10px] mt-2">Das Schema wird hier angezeigt.</p>
+                </div>
+              ) : logs.length === 0 && schema ? (
                 <>
-                  <div className="flex gap-4 group">
-                    <span className="text-slate-600 w-12 shrink-0 pt-0.5 border-r border-slate-800 pr-2 select-none">1</span>
-                    <div className="flex-1">
-                      <p className="text-slate-300">
-                        <span className="text-emerald-400">CREATE TABLE</span> public.users_auth_log (
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex gap-4 group">
-                    <span className="text-slate-600 w-12 shrink-0 pt-0.5 border-r border-slate-800 pr-2 select-none"></span>
-                    <div className="flex-1 pl-4">
-                      <p className="text-slate-300">
-                        id <span className="text-blue-400">UUID</span> <span className="text-emerald-400">PRIMARY KEY DEFAULT</span> gen_random_uuid(),
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex gap-4 group">
-                    <span className="text-slate-600 w-12 shrink-0 pt-0.5 border-r border-slate-800 pr-2 select-none"></span>
-                    <div className="flex-1 pl-4">
-                      <p className="text-slate-300">
-                        user_id <span className="text-blue-400">UUID</span> <span className="text-emerald-400">NOT NULL REFERENCES</span> users(id),
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex gap-4 group">
-                    <span className="text-slate-600 w-12 shrink-0 pt-0.5 border-r border-slate-800 pr-2 select-none"></span>
-                    <div className="flex-1 pl-4">
-                      <p className="text-slate-300">
-                        login_timestamp <span className="text-blue-400">TIMESTAMPTZ</span> <span className="text-emerald-400">DEFAULT NOW</span>(),
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex gap-4 group">
-                    <span className="text-slate-600 w-12 shrink-0 pt-0.5 border-r border-slate-800 pr-2 select-none"></span>
-                    <div className="flex-1 pl-4">
-                      <p className="text-slate-300">
-                        ip_address <span className="text-blue-400">INET</span>,
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex gap-4 group">
-                    <span className="text-slate-600 w-12 shrink-0 pt-0.5 border-r border-slate-800 pr-2 select-none"></span>
-                    <div className="flex-1 pl-4">
-                      <p className="text-slate-300">
-                        device_info <span className="text-blue-400">JSONB</span>
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex gap-4 group">
-                    <span className="text-slate-600 w-12 shrink-0 pt-0.5 border-r border-slate-800 pr-2 select-none"></span>
-                    <div className="flex-1">
-                      <p className="text-slate-300">);</p>
-                    </div>
-                  </div>
-                  <div className="h-2"></div>
-                  <div className="flex gap-4 group relative">
-                    <div className="absolute left-[3.5rem] top-2 bottom-2 w-0.5 bg-emerald-900"></div>
-                    <span className="text-emerald-600 w-12 shrink-0 pt-0.5 border-r border-slate-800 pr-2 select-none">2</span>
+                  {/* Zeige echten Schema-String */}
+                  <div className="flex gap-4 group mb-2">
+                    <span className="text-emerald-600 w-12 shrink-0 pt-0.5 border-r border-slate-800 pr-2 select-none">SQL</span>
                     <div className="flex-1 bg-emerald-950/20 p-2 rounded border-l-2 border-emerald-500">
-                      <p className="text-slate-300">
-                        <span className="text-emerald-400">CREATE INDEX CONCURRENTLY</span> idx_auth_log_timestamp<br />
-                        <span className="text-emerald-400">ON</span> public.users_auth_log (login_timestamp <span className="text-emerald-400">DESC</span>);
-                      </p>
-                      <p className="text-emerald-400/70 italic text-[10px] mt-1">-- Performance hint: Optimized for recent login lookups</p>
+                      <p className="text-emerald-400/70 italic text-[10px] mb-2">-- Generiertes Schema vom DB Designer</p>
                     </div>
                   </div>
-                  <div className="h-2"></div>
-                  <div className="flex gap-4 group">
-                    <span className="text-slate-600 w-12 shrink-0 pt-0.5 border-r border-slate-800 pr-2 select-none">3</span>
-                    <div className="flex-1">
-                      <p className="text-slate-300">
-                        <span className="text-emerald-400">EXPLAIN ANALYZE SELECT</span> * <span className="text-emerald-400">FROM</span> users_auth_log<br />
-                        <span className="text-emerald-400">WHERE</span> user_id = <span className="text-teal-300">'550e8400-e29b-41d4-a716-446655440000'</span>;
-                      </p>
+                  {schema.split('\n').map((line, i) => (
+                    <div key={i} className="flex gap-4 group">
+                      <span className="text-slate-600 w-12 shrink-0 pt-0.5 border-r border-slate-800 pr-2 select-none">{i + 1}</span>
+                      <div className="flex-1">
+                        <p className="text-slate-300 whitespace-pre-wrap">
+                          {line.includes('CREATE TABLE') ? (
+                            <>
+                              <span className="text-emerald-400">CREATE TABLE</span>
+                              {line.replace('CREATE TABLE', '')}
+                            </>
+                          ) : line.includes('PRIMARY KEY') ? (
+                            <>
+                              {line.split('PRIMARY KEY')[0]}
+                              <span className="text-emerald-400">PRIMARY KEY</span>
+                              {line.split('PRIMARY KEY')[1] || ''}
+                            </>
+                          ) : line.includes('REFERENCES') ? (
+                            <>
+                              {line.split('REFERENCES')[0]}
+                              <span className="text-blue-400">REFERENCES</span>
+                              {line.split('REFERENCES')[1] || ''}
+                            </>
+                          ) : (
+                            line
+                          )}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex gap-4 group animate-pulse">
-                    <span className="text-emerald-600 w-12 shrink-0 pt-0.5 border-r border-slate-800 pr-2 select-none">4</span>
-                    <span className="w-2 h-4 bg-emerald-500 block"></span>
+                  ))}
+                  <div className="flex gap-4 group animate-pulse mt-2">
+                    <span className="text-emerald-600 w-12 shrink-0 pt-0.5 border-r border-slate-800 pr-2 select-none">✓</span>
+                    <span className="text-emerald-400">Schema erfolgreich generiert</span>
                   </div>
                 </>
               ) : (
@@ -408,32 +349,56 @@ const DBDesignerOffice = ({ agentName = "Database Designer", status = "Idle", lo
               ref={migrationLogRef}
               className="flex-1 p-6 overflow-y-auto dbdesigner-scrollbar font-mono text-sm leading-6"
             >
+              {/* ÄNDERUNG 24.01.2026: Dynamischer Migration Log basierend auf echten Daten */}
               <div className="space-y-6">
-                {migrationEntries.map((entry, entryIndex) => (
-                  <div key={entryIndex}>
-                    <h5 className="text-slate-500 text-xs uppercase tracking-wider mb-2 border-b border-slate-800 pb-1">{entry.title}</h5>
-                    <ul className="space-y-2">
-                      {entry.items.map((item, itemIndex) => (
-                        <li key={itemIndex} className="flex items-start text-slate-300">
-                          <span className="text-emerald-500 mr-2">●</span>
-                          {item.isPatch ? (
-                            <div className="bg-slate-800/50 p-2 rounded w-full border border-slate-700/50 border-l-4 border-l-emerald-500">
-                              <span className="text-xs text-emerald-400 block mb-1 font-bold">{item.title}</span>
-                              <span>{item.text}</span>
-                            </div>
-                          ) : (
-                            <span>
-                              {item.text} <span className="text-teal-300">{item.highlight}</span>{item.suffix}
-                              {item.highlight2 && <span className="text-emerald-400">{item.highlight2}</span>}
-                              {item.suffix2}
-                            </span>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
+                {!hasData ? (
+                  <div className="flex flex-col items-center justify-center h-full text-center py-8">
+                    <FileText size={32} className="text-slate-700 mb-3" />
+                    <p className="text-slate-500 text-xs">Warte auf Schema-Erstellung...</p>
                   </div>
-                ))}
-                <div className="h-4 w-2 bg-emerald-500 animate-pulse mt-4"></div>
+                ) : (
+                  <>
+                    {/* Tabellen-Übersicht aus echten Daten */}
+                    <div>
+                      <h5 className="text-slate-500 text-xs uppercase tracking-wider mb-2 border-b border-slate-800 pb-1">
+                        Schema Erstellung ({dbStatus === 'completed' ? 'Abgeschlossen' : 'In Arbeit'})
+                      </h5>
+                      <ul className="space-y-2">
+                        {tables.map((table, i) => (
+                          <li key={i} className="flex items-start text-slate-300">
+                            <span className="text-emerald-500 mr-2">●</span>
+                            <span>
+                              Tabelle <span className="text-teal-300">{table.name}</span> erstellt.
+                              {table.columns && table.columns.length > 0 && (
+                                <span className="text-slate-500"> ({table.columns.length} Spalten)</span>
+                              )}
+                            </span>
+                          </li>
+                        ))}
+                        {tables.length === 0 && (
+                          <li className="text-slate-500 italic">Keine Tabellen definiert</li>
+                        )}
+                      </ul>
+                    </div>
+
+                    {/* Status-Info */}
+                    {dbStatus === 'completed' && (
+                      <div>
+                        <h5 className="text-slate-500 text-xs uppercase tracking-wider mb-2 border-b border-slate-800 pb-1">Status</h5>
+                        <ul className="space-y-2">
+                          <li className="flex items-start text-slate-300">
+                            <span className="text-emerald-500 mr-2">●</span>
+                            <div className="bg-slate-800/50 p-2 rounded w-full border border-slate-700/50 border-l-4 border-l-emerald-500">
+                              <span className="text-xs text-emerald-400 block mb-1 font-bold">SCHEMA VALIDIERT</span>
+                              <span>Alle {tables.length} Tabellen wurden erfolgreich erstellt und validiert.</span>
+                            </div>
+                          </li>
+                        </ul>
+                      </div>
+                    )}
+                  </>
+                )}
+                {hasData && <div className="h-4 w-2 bg-emerald-500 animate-pulse mt-4"></div>}
               </div>
             </div>
 
@@ -458,77 +423,103 @@ const DBDesignerOffice = ({ agentName = "Database Designer", status = "Idle", lo
               <Activity size={16} className="text-emerald-500" />
               DB Performance
             </h3>
+            {/* ÄNDERUNG 24.01.2026: Model-Info anzeigen */}
+            {model && (
+              <p className="text-[10px] text-slate-500 mt-1 font-mono">Model: {model}</p>
+            )}
           </div>
 
           <div className="flex-1 overflow-y-auto dbdesigner-scrollbar p-5 space-y-6">
-            {/* Query Latency */}
-            <div className="bg-[#1e293b] rounded-xl p-4 border border-[#334155] relative overflow-hidden group">
-              <div className="absolute top-0 right-0 p-2 opacity-10">
-                <Activity size={60} />
+            {/* ÄNDERUNG 24.01.2026: Warte-Zustand wenn keine Daten */}
+            {!hasData ? (
+              <div className="flex flex-col items-center justify-center h-full text-center py-10">
+                <Database size={48} className="text-slate-600 mb-4" />
+                <p className="text-slate-400 text-sm">Warte auf Schema-Daten...</p>
+                <p className="text-slate-500 text-xs mt-2">Der DB Designer erstellt das Schema.</p>
               </div>
-              <p className="text-xs text-slate-400 uppercase font-semibold mb-1">Query Latency</p>
-              <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-black text-white">4.2ms</span>
-                <span className="text-sm text-teal-400 font-medium font-mono">P99</span>
-              </div>
-              <div className="mt-3 h-2 w-full bg-[#0f172a] rounded-full overflow-hidden flex gap-0.5">
-                <div className="h-full w-[15%] bg-emerald-600 shadow-[0_0_10px_rgba(16,185,129,0.5)]"></div>
-                <div className="h-full w-[30%] bg-teal-500/80"></div>
-                <div className="h-full w-[55%] bg-slate-700/20"></div>
-              </div>
-              <div className="flex justify-between mt-1 text-[9px] text-slate-500 uppercase font-bold">
-                <span>Fast</span>
-                <span>Avg</span>
-                <span>Slow</span>
-              </div>
-            </div>
-
-            {/* Storage Usage */}
-            <div className="bg-[#1e293b] rounded-lg p-4 border border-[#334155]">
-              <h4 className="text-xs font-bold text-slate-300 mb-3 flex items-center gap-2">
-                <HardDrive size={14} className="text-emerald-400" />
-                Storage Usage
-              </h4>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-[#0f172a] p-2 rounded border border-slate-700/50">
-                  <p className="text-[9px] text-slate-400 uppercase">Data Size</p>
-                  <p className="text-lg font-bold text-white">84 <span className="text-[10px] text-slate-500 font-normal">GB</span></p>
-                </div>
-                <div className="bg-[#0f172a] p-2 rounded border border-slate-700/50">
-                  <p className="text-[9px] text-slate-400 uppercase">Index Size</p>
-                  <p className="text-lg font-bold text-white">12 <span className="text-[10px] text-slate-500 font-normal">GB</span></p>
-                </div>
-                <div className="col-span-2 bg-[#0f172a] p-2 rounded border border-slate-700/50 flex items-center justify-between">
-                  <div>
-                    <p className="text-[9px] text-slate-400 uppercase">Index Health</p>
-                    <p className="text-lg font-bold text-white">99.4% <span className="text-[10px] text-slate-500 font-normal">Hit Ratio</span></p>
+            ) : (
+              <>
+                {/* Schema Status */}
+                <div className="bg-[#1e293b] rounded-xl p-4 border border-[#334155] relative overflow-hidden group">
+                  <div className="absolute top-0 right-0 p-2 opacity-10">
+                    <Activity size={60} />
                   </div>
-                  <div className="size-8 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin"></div>
+                  <p className="text-xs text-slate-400 uppercase font-semibold mb-1">Schema Status</p>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-3xl font-black text-white">{tables.length}</span>
+                    <span className="text-sm text-teal-400 font-medium font-mono">Tabellen</span>
+                  </div>
+                  <div className="mt-3 h-2 w-full bg-[#0f172a] rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-emerald-600 shadow-[0_0_10px_rgba(16,185,129,0.5)] transition-all"
+                      style={{ width: dbStatus === 'completed' ? '100%' : '50%' }}
+                    ></div>
+                  </div>
+                  <div className="flex justify-between mt-1 text-[9px] text-slate-500 uppercase font-bold">
+                    <span>Design</span>
+                    <span>Validation</span>
+                    <span>{dbStatus === 'completed' ? 'Fertig' : 'In Arbeit'}</span>
+                  </div>
                 </div>
-              </div>
-            </div>
 
-            {/* Cluster Health */}
-            <div className="bg-[#1e293b] rounded-lg p-4 border border-[#334155] flex flex-col justify-between">
-              <div className="flex justify-between items-center mb-2">
-                <p className="text-xs text-slate-400 uppercase font-semibold">Cluster Health</p>
-                <span className="text-[10px] text-emerald-300 bg-emerald-950 px-1.5 rounded border border-emerald-900">Live</span>
-              </div>
-              <div className="space-y-2">
-                {clusterHealth.map((node, i) => (
-                  <div key={i} className="flex items-center gap-2 text-[10px]">
-                    <span className="w-12 text-slate-500 text-right">{node.name}</span>
-                    <div className="flex-1 h-2 bg-[#0f172a] rounded-sm overflow-hidden">
-                      <div
-                        className={`h-full rounded-sm ${node.isSync ? 'bg-teal-500 shadow-[0_0_8px_rgba(16,185,129,0.4)] animate-pulse' : 'bg-emerald-500'}`}
-                        style={{ width: `${node.value}%` }}
-                      ></div>
+                {/* Schema Details */}
+                <div className="bg-[#1e293b] rounded-lg p-4 border border-[#334155]">
+                  <h4 className="text-xs font-bold text-slate-300 mb-3 flex items-center gap-2">
+                    <HardDrive size={14} className="text-emerald-400" />
+                    Schema Details
+                  </h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-[#0f172a] p-2 rounded border border-slate-700/50">
+                      <p className="text-[9px] text-slate-400 uppercase">Tabellen</p>
+                      <p className="text-lg font-bold text-white">{tables.length}</p>
                     </div>
-                    <span className="w-8 text-slate-300 text-right">{node.status}</span>
+                    <div className="bg-[#0f172a] p-2 rounded border border-slate-700/50">
+                      <p className="text-[9px] text-slate-400 uppercase">Spalten</p>
+                      <p className="text-lg font-bold text-white">
+                        {tables.reduce((sum, t) => sum + (t.columns?.length || 0), 0)}
+                      </p>
+                    </div>
+                    <div className="col-span-2 bg-[#0f172a] p-2 rounded border border-slate-700/50 flex items-center justify-between">
+                      <div>
+                        <p className="text-[9px] text-slate-400 uppercase">Status</p>
+                        <p className="text-lg font-bold text-emerald-400">
+                          {dbStatus === 'completed' ? 'Fertig' : 'In Arbeit'}
+                        </p>
+                      </div>
+                      {dbStatus === 'completed' ? (
+                        <div className="size-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                          <span className="text-emerald-400">✓</span>
+                        </div>
+                      ) : (
+                        <div className="size-8 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin"></div>
+                      )}
+                    </div>
                   </div>
-                ))}
-              </div>
-            </div>
+                </div>
+
+                {/* Table List */}
+                <div className="bg-[#1e293b] rounded-lg p-4 border border-[#334155] flex flex-col justify-between">
+                  <div className="flex justify-between items-center mb-2">
+                    <p className="text-xs text-slate-400 uppercase font-semibold">Tabellen-Übersicht</p>
+                    <span className="text-[10px] text-emerald-300 bg-emerald-950 px-1.5 rounded border border-emerald-900">
+                      {tables.length} Total
+                    </span>
+                  </div>
+                  <div className="space-y-2 max-h-32 overflow-y-auto">
+                    {tables.map((table, i) => (
+                      <div key={i} className="flex items-center gap-2 text-[10px]">
+                        <Table2 size={12} className="text-emerald-500" />
+                        <span className="flex-1 text-slate-300 truncate">{table.name}</span>
+                        <span className="text-slate-500">{table.columns?.length || 0} cols</span>
+                      </div>
+                    ))}
+                    {tables.length === 0 && (
+                      <p className="text-slate-500 text-xs italic">Keine Tabellen definiert</p>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Map Footer */}

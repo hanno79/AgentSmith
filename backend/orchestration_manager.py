@@ -13,6 +13,7 @@ import re
 import traceback
 import contextvars
 import threading
+import base64
 from datetime import datetime
 from typing import Callable, Optional, Dict, Any, List
 from dotenv import load_dotenv
@@ -36,7 +37,8 @@ from agents.researcher_agent import create_researcher
 from agents.database_designer_agent import create_database_designer
 from agents.techstack_architect_agent import create_techstack_architect
 from agents.security_agent import create_security_agent
-from agents.tester_agent import create_tester, test_web_ui, summarize_ui_result
+# ÄNDERUNG 24.01.2026: test_project für intelligente Tests mit tech_blueprint
+from agents.tester_agent import create_tester, test_web_ui, test_project, summarize_ui_result
 from agents.memory_agent import (
     update_memory, get_lessons_for_prompt, learn_from_error,
     extract_error_pattern, generate_tags_from_context
@@ -47,6 +49,9 @@ from budget_tracker import get_budget_tracker
 from model_router import get_model_router
 
 from crewai import Task
+
+# ÄNDERUNG 24.01.2026: Import aus zentraler file_utils (REGEL 13 - Single Source of Truth)
+from file_utils import find_html_file, find_python_entry
 
 # =====================================================================
 # LiteLLM Callback für Budget-Tracking
@@ -196,8 +201,157 @@ class OrchestrationManager:
         error_str = str(e).lower()
         rate_limit_pattern = r'\brate[_\s-]?limit\b'
         is_rate_limit = (status_code in [429, 402]) or bool(re.search(rate_limit_pattern, error_str))
-        
+
         return is_rate_limit
+
+    def _extract_tables_from_schema(self, schema: str) -> List[Dict[str, Any]]:
+        """
+        Extrahiert Tabellen-Informationen aus einem SQL-Schema-String.
+
+        Args:
+            schema: SQL-Schema als String
+
+        Returns:
+            Liste von Tabellen-Dictionaries mit name, columns, type
+        """
+        tables = []
+        if not schema:
+            return tables
+
+        # Suche nach CREATE TABLE Statements
+        table_pattern = r'CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?[\"\`]?(\w+)[\"\`]?\s*\((.*?)\);'
+        matches = re.findall(table_pattern, schema, re.IGNORECASE | re.DOTALL)
+
+        for match in matches:
+            table_name = match[0]
+            columns_str = match[1]
+
+            # Extrahiere Spalten-Namen
+            columns = []
+            for line in columns_str.split(','):
+                line = line.strip()
+                if line and not line.upper().startswith(('PRIMARY', 'FOREIGN', 'UNIQUE', 'CHECK', 'INDEX', 'CONSTRAINT')):
+                    col_match = re.match(r'[\"\`]?(\w+)[\"\`]?\s+(\w+)', line)
+                    if col_match:
+                        col_name = col_match.group(1)
+                        col_type = col_match.group(2)
+                        is_primary = 'PRIMARY KEY' in line.upper()
+                        is_foreign = 'REFERENCES' in line.upper() or 'FOREIGN' in line.upper()
+                        columns.append({
+                            "name": col_name,
+                            "type": col_type,
+                            "isPrimary": is_primary,
+                            "isForeign": is_foreign
+                        })
+
+            tables.append({
+                "name": table_name,
+                "columns": columns,
+                "type": "table"
+            })
+
+        return tables[:10]  # Limitiere auf 10 Tabellen für UI
+
+    # ÄNDERUNG 24.01.2026: Hilfsfunktion für Security-Vulnerabilities Extraktion
+    def _extract_vulnerabilities(self, security_result: str) -> List[Dict[str, Any]]:
+        """
+        Extrahiert Vulnerabilities aus dem Security-Agent Output.
+
+        Args:
+            security_result: Rohtext-Ergebnis der Sicherheitsanalyse
+
+        Returns:
+            Liste von Vulnerability-Dictionaries mit severity, description, type
+        """
+        vulnerabilities = []
+        if not security_result:
+            return vulnerabilities
+
+        # Suche nach VULNERABILITY: Patterns im Agent-Output
+        vuln_pattern = r'VULNERABILITY:\s*(.+?)(?=VULNERABILITY:|$)'
+        matches = re.findall(vuln_pattern, security_result, re.IGNORECASE | re.DOTALL)
+
+        for match in matches:
+            vuln_text = match.strip()
+            severity = "medium"
+
+            # Severity-Klassifikation basierend auf Schlüsselwörtern
+            if any(word in vuln_text.lower() for word in ["critical", "kritisch", "sql injection", "rce", "remote code"]):
+                severity = "critical"
+            elif any(word in vuln_text.lower() for word in ["high", "hoch", "xss", "csrf", "injection"]):
+                severity = "high"
+            elif any(word in vuln_text.lower() for word in ["low", "niedrig", "info", "informational"]):
+                severity = "low"
+
+            vulnerabilities.append({
+                "severity": severity,
+                "description": vuln_text[:200],
+                "type": "SECURITY_ISSUE"
+            })
+
+        return vulnerabilities[:10]  # Limitiere auf 10 für UI
+
+    # ÄNDERUNG 24.01.2026: Hilfsfunktion für Design-Daten Extraktion
+    def _extract_design_data(self, design_concept: str) -> Dict[str, Any]:
+        """
+        Extrahiert strukturierte Design-Daten aus Designer Agent Output.
+
+        Args:
+            design_concept: Rohtext-Design-Konzept vom Designer Agent
+
+        Returns:
+            Dictionary mit colorPalette, typography, atomicAssets, qualityScore
+        """
+        result = {
+            "colorPalette": [],
+            "typography": [],
+            "atomicAssets": [],
+            "qualityScore": {"overall": 0, "contrast": 0, "hierarchy": 0, "consistency": 0}
+        }
+        if not design_concept:
+            return result
+
+        # Extrahiere HEX-Farben aus dem Konzept
+        hex_pattern = r'#([0-9A-Fa-f]{6})\b'
+        hex_matches = re.findall(hex_pattern, design_concept)
+        color_names = ["Primary", "Secondary", "Accent", "Neutral", "Background"]
+        for i, hex_val in enumerate(hex_matches[:5]):
+            result["colorPalette"].append({
+                "name": color_names[i] if i < len(color_names) else f"Color{i+1}",
+                "hex": f"#{hex_val.upper()}"
+            })
+
+        # Extrahiere Typography - suche nach bekannten Font-Namen
+        font_pattern = r'\b(Inter|Roboto|Open Sans|Lato|Montserrat|Poppins|Raleway|Nunito|Source Sans|Fira Sans)\b'
+        font_matches = list(set(re.findall(font_pattern, design_concept, re.IGNORECASE)))
+        primary_font = font_matches[0] if font_matches else "Inter"
+        for config in [("Display", "700", "48px"), ("Heading", "600", "24px"), ("Body", "400", "16px")]:
+            result["typography"].append({
+                "name": config[0],
+                "font": primary_font,
+                "weight": config[1],
+                "size": config[2]
+            })
+
+        # Extrahiere Atomic Assets - suche nach UI-Komponenten-Namen
+        component_pattern = r'\b(Button|Card|Input|Modal|Form|Header|Footer|Navbar|Sidebar|Table|List)\b'
+        component_matches = list(set(re.findall(component_pattern, design_concept, re.IGNORECASE)))
+        for comp in component_matches[:4]:
+            result["atomicAssets"].append({
+                "name": f"{comp.title()} Component",
+                "status": "pending"
+            })
+
+        # Quality Score basierend auf Vollständigkeit des Konzepts
+        score = min(100, len(result["colorPalette"]) * 20 + len(result["typography"]) * 15 + len(result["atomicAssets"]) * 10 + 25)
+        result["qualityScore"] = {
+            "overall": score,
+            "contrast": min(100, 70 + len(result["colorPalette"]) * 5),
+            "hierarchy": min(100, 65 + len(result["typography"]) * 10),
+            "consistency": min(100, 75 + len(result["atomicAssets"]) * 5)
+        }
+
+        return result
 
     def run_task(self, user_goal: str):
         try:
@@ -318,7 +472,21 @@ class OrchestrationManager:
                         self._ui_log("TechArchitect", "Warning", f"Blueprint-Parsing fehlgeschlagen, verwende Fallback: {e}")
                     
                     self._ui_log("TechArchitect", "Blueprint", json.dumps(self.tech_blueprint, ensure_ascii=False))
-                    
+
+                    # ÄNDERUNG 24.01.2026: Strukturiertes TechStackOutput Event für Frontend Office
+                    self._ui_log("TechArchitect", "TechStackOutput", json.dumps({
+                        "blueprint": self.tech_blueprint,
+                        "model": self.model_router.get_model("techstack_architect"),
+                        "decisions": [
+                            {"type": "Sprache", "value": self.tech_blueprint.get("language", "unknown")},
+                            {"type": "Framework", "value": self.tech_blueprint.get("project_type", "unknown")},
+                            {"type": "Datenbank", "value": self.tech_blueprint.get("database", "keine")},
+                            {"type": "Server", "value": f"Port {self.tech_blueprint.get('server_port', '-')}" if self.tech_blueprint.get("requires_server") else "Nicht benötigt"}
+                        ],
+                        "dependencies": self.tech_blueprint.get("dependencies", []),
+                        "reasoning": self.tech_blueprint.get("reasoning", "")
+                    }, ensure_ascii=False))
+
                     with open(os.path.join(self.project_path, "tech_blueprint.json"), "w", encoding="utf-8") as f:
                         json.dump(self.tech_blueprint, f, indent=2, ensure_ascii=False)
 
@@ -388,6 +556,16 @@ class OrchestrationManager:
                         task_db = Task(description=f"Schema für {user_goal}", expected_output="Schema", agent=agent_db)
                         self.database_schema = str(task_db.execute_sync())
 
+                        # ÄNDERUNG 24.01.2026: DBDesignerOutput Event für Frontend Office
+                        dbdesigner_model = self.model_router.get_model("database_designer") if self.model_router else "unknown"
+                        self._ui_log("DBDesigner", "DBDesignerOutput", json.dumps({
+                            "schema": self.database_schema[:2000] if self.database_schema else "",
+                            "model": dbdesigner_model,
+                            "status": "completed",
+                            "tables": self._extract_tables_from_schema(self.database_schema),
+                            "timestamp": datetime.now().isoformat()
+                        }, ensure_ascii=False))
+
                 if "designer" in plan_data["plan"]:
                     self._ui_log("Designer", "Status", "Erstelle Design-Konzept...")
                     set_current_agent("Designer", project_id)  # Budget-Tracking
@@ -395,6 +573,58 @@ class OrchestrationManager:
                     if agent_des:
                         task_des = Task(description=f"Design für {user_goal}", expected_output="Konzept", agent=agent_des)
                         self.design_concept = str(task_des.execute_sync())
+
+                        # ÄNDERUNG 24.01.2026: DesignerOutput Event für Frontend Office
+                        designer_model = self.model_router.get_model("designer") if self.model_router else "unknown"
+                        design_data = self._extract_design_data(self.design_concept)
+
+                        self._ui_log("Designer", "DesignerOutput", json.dumps({
+                            "colorPalette": design_data["colorPalette"],
+                            "typography": design_data["typography"],
+                            "atomicAssets": design_data["atomicAssets"],
+                            "qualityScore": design_data["qualityScore"],
+                            "iterationInfo": {"current": 1, "progress": 100},
+                            "viewport": {"width": 1440, "height": 900},
+                            "previewUrl": f"file://{self.project_path}/index.html" if self.project_path else "",
+                            "concept": self.design_concept[:2000] if self.design_concept else "",
+                            "model": designer_model,
+                            "timestamp": datetime.now().isoformat()
+                        }, ensure_ascii=False))
+
+                # ÄNDERUNG 24.01.2026: Security Agent für Sicherheitsanalyse
+                # Security immer ausführen - kritisch für alle Projekte
+                self._ui_log("Security", "Status", "Starte Sicherheitsanalyse...")
+                set_current_agent("Security", project_id)  # Budget-Tracking
+                agent_security = create_security_agent(self.config, project_rules, router=self.model_router)
+                if agent_security:
+                    security_prompt = f"Analysiere die Anforderungen auf potenzielle Sicherheitsrisiken: {user_goal}"
+                    task_security = Task(
+                        description=security_prompt,
+                        expected_output="SECURE wenn keine Risiken, oder VULNERABILITY: [Beschreibung] für jedes Risiko",
+                        agent=agent_security
+                    )
+                    try:
+                        security_result = str(task_security.execute_sync())
+
+                        # SecurityOutput Event für Frontend Office
+                        security_model = self.model_router.get_model("security") if self.model_router else "unknown"
+                        vulnerabilities = self._extract_vulnerabilities(security_result)
+                        overall_status = "SECURE" if "SECURE" in security_result.upper() and not vulnerabilities else "WARNING"
+                        if any(v["severity"] == "critical" for v in vulnerabilities):
+                            overall_status = "CRITICAL"
+
+                        self._ui_log("Security", "SecurityOutput", json.dumps({
+                            "vulnerabilities": vulnerabilities,
+                            "overall_status": overall_status,
+                            "scan_result": security_result[:1000],
+                            "model": security_model,
+                            "scanned_files": 0,  # Initial-Scan hat noch keine Dateien
+                            "timestamp": datetime.now().isoformat()
+                        }, ensure_ascii=False))
+
+                        self._ui_log("Security", "Result", f"Analyse abgeschlossen: {overall_status} ({len(vulnerabilities)} Findings)")
+                    except Exception as sec_err:
+                        self._ui_log("Security", "Error", f"Sicherheitsanalyse fehlgeschlagen: {sec_err}")
 
             # 🔄 DEV LOOP
             max_retries = self.config.get("max_retries", 3)
@@ -464,31 +694,54 @@ class OrchestrationManager:
                     except Exception as mem_err:
                         self._ui_log("Memory", "Error", f"Memory-Operation fehlgeschlagen: {mem_err}")
 
-                # UI Testing (Playwright) - nur wenn relevant
+                # ÄNDERUNG 24.01.2026: Intelligente Test-Logik mit tech_blueprint und Server-Integration
+                # test_project() nutzt tech_blueprint um:
+                # - Server via run.bat zu starten (wenn requires_server=true)
+                # - Auf Server-Verfügbarkeit zu warten (Port-Check)
+                # - Playwright-Tests gegen URL oder Datei durchzuführen
+                # - Sauberes Cleanup nach Tests
                 test_summary = "Keine UI-Tests durchgeführt."
-                if project_type == "webapp" or (self.output_path and self.output_path.endswith((".html", ".js"))):
-                    self._ui_log("Tester", "Status", "Starte UI-Tests...")
-                    set_current_agent("Tester", project_id)  # Budget-Tracking
-                    try:
-                        ui_result = test_web_ui(self.output_path)
-                        test_summary = summarize_ui_result(ui_result)
-                        self._ui_log("Tester", "Result", test_summary)
-                        if ui_result["status"] == "FAIL":
-                            sandbox_failed = True  # UI-Fehler blockieren auch
-                            # Memory: Lerne aus UI-Test-Fehlern (geschützt)
-                            try:
-                                memory_path = os.path.join(self.base_dir, "memory", "global_memory.json")
-                                error_msg = extract_error_pattern(test_summary)
-                                tags = generate_tags_from_context(self.tech_blueprint, test_summary)
-                                tags.append("ui-test")
-                                learn_result = learn_from_error(memory_path, error_msg, tags)
-                                self._ui_log("Memory", "Learning", f"UI-Test: {learn_result}")
-                            except Exception as mem_err:
-                                self._ui_log("Memory", "Error", f"Memory-Operation fehlgeschlagen: {mem_err}")
-                    except Exception as te:
-                        test_summary = f"❌ Test-Runner Fehler: {te}"
-                        self._ui_log("Tester", "Error", test_summary)
-                        sandbox_failed = True
+                set_current_agent("Tester", project_id)  # Budget-Tracking
+                self._ui_log("Tester", "Status", f"Starte Tests für Projekt-Typ '{project_type}'...")
+
+                try:
+                    ui_result = test_project(self.project_path, self.tech_blueprint, self.config)
+                    test_summary = summarize_ui_result(ui_result)
+                    self._ui_log("Tester", "Result", test_summary)
+
+                    # ÄNDERUNG 24.01.2026: Screenshot als Base64 für Live-Vorschau senden
+                    screenshot_base64 = None
+                    if ui_result.get("screenshot") and os.path.exists(ui_result["screenshot"]):
+                        try:
+                            with open(ui_result["screenshot"], "rb") as img_file:
+                                screenshot_base64 = f"data:image/png;base64,{base64.b64encode(img_file.read()).decode('utf-8')}"
+                        except Exception as img_err:
+                            self._ui_log("Tester", "Warning", f"Screenshot konnte nicht geladen werden: {img_err}")
+
+                    # UITestResult Event für Frontend (Live Canvas + TesterOffice)
+                    self._ui_log("Tester", "UITestResult", json.dumps({
+                        "status": ui_result["status"],
+                        "issues": ui_result.get("issues", []),
+                        "screenshot": screenshot_base64,
+                        "model": self.model_router.get_model("tester") if hasattr(self, 'model_router') else ""
+                    }, ensure_ascii=False))
+
+                    if ui_result["status"] in ["FAIL", "ERROR"]:
+                        sandbox_failed = True  # UI-Fehler blockieren auch
+                        # Memory: Lerne aus Test-Fehlern (geschützt)
+                        try:
+                            memory_path = os.path.join(self.base_dir, "memory", "global_memory.json")
+                            error_msg = extract_error_pattern(test_summary)
+                            tags = generate_tags_from_context(self.tech_blueprint, test_summary)
+                            tags.append("ui-test")
+                            learn_result = learn_from_error(memory_path, error_msg, tags)
+                            self._ui_log("Memory", "Learning", f"Test: {learn_result}")
+                        except Exception as mem_err:
+                            self._ui_log("Memory", "Error", f"Memory-Operation fehlgeschlagen: {mem_err}")
+                except Exception as te:
+                    test_summary = f"❌ Test-Runner Fehler: {te}"
+                    self._ui_log("Tester", "Error", test_summary)
+                    sandbox_failed = True
 
                 # Review
                 set_current_agent("Reviewer", project_id)  # Budget-Tracking
@@ -511,7 +764,22 @@ class OrchestrationManager:
                         review_output = str(task_review.execute_sync())
                     else:
                         raise e
-                
+
+                # ÄNDERUNG 24.01.2026: ReviewOutput Event für Frontend Office
+                reviewer_model = self.model_router.get_model("reviewer") if self.model_router else "unknown"
+                review_verdict = "OK" if "OK" in review_output.upper() and not sandbox_failed else "FEEDBACK"
+                self._ui_log("Reviewer", "ReviewOutput", json.dumps({
+                    "verdict": review_verdict,
+                    "feedback": review_output if review_verdict == "FEEDBACK" else "",
+                    "model": reviewer_model,
+                    "iteration": iteration + 1,
+                    "maxIterations": max_retries,
+                    "sandboxStatus": "PASS" if not sandbox_failed else "FAIL",
+                    "sandboxResult": sandbox_result[:500] if sandbox_result else "",
+                    "testSummary": test_summary[:500] if test_summary else "",
+                    "reviewOutput": review_output[:1000] if review_output else ""
+                }, ensure_ascii=False))
+
                 # STRIKTER CHECK: Wenn Sandbox/Tester '❌' liefert, darf Reviewer nicht 'OK' sagen
                 if "OK" in review_output.upper() and not sandbox_failed:
                     success = True
