@@ -63,6 +63,23 @@ const useWebSocket = (setLogs, activeAgents, setActiveAgents, setAgentData, setS
         }
       }
 
+      // ÄNDERUNG 25.01.2026: CoderTasksOutput Event für granulare Security-Tasks
+      if (data.event === 'CoderTasksOutput' && data.agent === 'Coder') {
+        try {
+          const payload = JSON.parse(data.message);
+          setAgentData(prev => ({
+            ...prev,
+            coder: {
+              ...prev.coder,
+              tasks: payload.tasks || [],
+              taskCount: payload.count || 0
+            }
+          }));
+        } catch (e) {
+          console.warn('CoderTasksOutput parsen fehlgeschlagen:', e);
+        }
+      }
+
       // ResearchOutput Event für Researcher Office
       if (data.event === 'ResearchOutput' && data.agent === 'Researcher') {
         try {

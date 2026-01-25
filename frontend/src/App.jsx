@@ -65,7 +65,8 @@ const App = () => {
 
   // Strukturierte Agent-Daten für Live-Anzeige in Agent Offices
   const [agentData, setAgentData] = useState({
-    coder: { code: '', files: [], iteration: 0, maxIterations: 3, model: '' },
+    // ÄNDERUNG 25.01.2026: Erweitert mit tasks und taskCount für Security-Tasks
+    coder: { code: '', files: [], iteration: 0, maxIterations: 3, model: '', tasks: [], taskCount: 0 },
     // ÄNDERUNG 24.01.2026: Reviewer Echtzeit-Daten
     reviewer: {
       verdict: '',           // "OK" oder "FEEDBACK"
@@ -205,6 +206,7 @@ const App = () => {
         logs={logs.filter(l => l.agent === 'Coder')} onBack={() => setCurrentRoom('mission-control')}
         color="blue" code={agentData.coder.code} files={agentData.coder.files}
         iteration={agentData.coder.iteration} maxIterations={agentData.coder.maxIterations} model={agentData.coder.model}
+        tasks={agentData.coder.tasks} taskCount={agentData.coder.taskCount}
       />
     );
   }

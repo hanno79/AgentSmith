@@ -713,14 +713,50 @@ class OrchestrationManager:
                 if not self.is_first_run: c_prompt += f"\nAlt-Code:\n{self.current_code}\n"
                 if feedback: c_prompt += f"\nKorrektur: {feedback}\n"
 
-                # ÄNDERUNG 24.01.2026: Security Vulnerabilities an Coder übergeben
+                # ÄNDERUNG 25.01.2026: Granulare Security-Tasks mit Priorisierung
                 if hasattr(self, 'security_vulnerabilities') and self.security_vulnerabilities:
-                    security_issues = "\n".join([
-                        f"- [{v.get('severity', 'unknown').upper()}] {v.get('description', 'Unbekannte Schwachstelle')}"
-                        for v in self.security_vulnerabilities
-                    ])
-                    c_prompt += f"\n\n⚠️ SECURITY ISSUES (MÜSSEN BEHOBEN WERDEN):\n{security_issues}\n"
-                    c_prompt += "WICHTIG: Diese Sicherheitslücken MÜSSEN im generierten Code behoben werden!\n"
+                    # Sortiere nach Severity (CRITICAL zuerst)
+                    severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+                    sorted_vulns = sorted(
+                        self.security_vulnerabilities,
+                        key=lambda v: severity_order.get(v.get("severity", "medium"), 2)
+                    )
+
+                    # Generiere strukturierte Tasks für Frontend und Prompt
+                    coder_tasks = []
+                    task_prompt_lines = []
+
+                    for i, vuln in enumerate(sorted_vulns, 1):
+                        task_id = f"SEC-{i:03d}"
+                        severity = vuln.get("severity", "medium").upper()
+                        description = vuln.get("description", "Unbekannte Schwachstelle")
+                        fix = vuln.get("fix", "Bitte beheben")
+
+                        coder_tasks.append({
+                            "id": task_id,
+                            "type": "security",
+                            "severity": vuln.get("severity", "medium"),
+                            "description": description,
+                            "fix": fix,
+                            "status": "pending"
+                        })
+
+                        task_prompt_lines.append(
+                            f"TASK {task_id} [{severity}]: {description}\n"
+                            f"   -> LÖSUNG: {fix}"
+                        )
+
+                    # WebSocket Event für Frontend (CoderOffice Task-Liste)
+                    self._ui_log("Coder", "CoderTasksOutput", json.dumps({
+                        "tasks": coder_tasks,
+                        "count": len(coder_tasks),
+                        "iteration": iteration + 1
+                    }, ensure_ascii=False))
+
+                    # Prompt mit nummerierten, priorisierten Tasks
+                    c_prompt += "\n\n⚠️ SECURITY TASKS (priorisiert nach Severity - CRITICAL zuerst):\n"
+                    c_prompt += "\n".join(task_prompt_lines)
+                    c_prompt += "\n\nWICHTIG: Bearbeite die Tasks in der angegebenen Reihenfolge! Implementiere die LÖSUNG für jeden Task!\n"
 
                 c_prompt += "Format: ### FILENAME: path/to/file.ext"
 

@@ -1,8 +1,9 @@
 /**
  * Author: rahn
- * Datum: 24.01.2026
- * Version: 1.0
+ * Datum: 25.01.2026
+ * Version: 1.1
  * Beschreibung: Coder Office - Detailansicht für den Coder-Agenten mit Code-Ausgabe.
+ *               ÄNDERUNG 25.01.2026: Security-Tasks in Sidebar anzeigen mit FIX-Vorschlägen.
  */
 
 import React, { useRef, useEffect } from 'react';
@@ -22,7 +23,9 @@ import {
   History,
   Settings,
   StopCircle,
-  MessageSquarePlus
+  MessageSquarePlus,
+  Shield,
+  AlertTriangle
 } from 'lucide-react';
 
 const CoderOffice = ({
@@ -36,7 +39,10 @@ const CoderOffice = ({
   files = [],
   iteration = 0,
   maxIterations = 3,
-  model = ''
+  model = '',
+  // ÄNDERUNG 25.01.2026: Security-Tasks Props
+  tasks = [],
+  taskCount = 0
 }) => {
   const { logRef, getStatusBadge, formatTime } = useOfficeCommon(logs);
   const codeOutputRef = useRef(null);
@@ -48,28 +54,33 @@ const CoderOffice = ({
     }
   }, [code]);
 
-  // Dynamische Task-Generierung basierend auf echten Daten
-  const tasks = iteration > 0 ? [
-    {
-      id: `T-${iteration}`,
-      title: `Code Generation - Iteration ${iteration}/${maxIterations}`,
-      status: 'current',
-      steps: [
-        { text: 'Analyze requirements', done: true },
-        { text: 'Generate code', done: status === 'Files' || status === 'CodeOutput' || status === 'Success' },
-        { text: 'Create files', done: files.length > 0, current: status === 'Files' },
-        { text: 'Await review', done: status === 'Success', current: status !== 'Success' && files.length > 0 },
+  // ÄNDERUNG 25.01.2026: Security-Tasks haben Priorität, sonst Iteration-Tasks
+  const displayTasks = tasks.length > 0
+    ? tasks.map((task, i) => ({
+        id: task.id,
+        title: task.description,
+        status: i === 0 ? 'current' : 'queued',
+        severity: task.severity,
+        fix: task.fix,
+        type: task.type
+      }))
+    : iteration > 0 ? [
+        {
+          id: `T-${iteration}`,
+          title: `Code Generation - Iteration ${iteration}/${maxIterations}`,
+          status: 'current',
+          steps: [
+            { text: 'Analyze requirements', done: true },
+            { text: 'Generate code', done: status === 'Files' || status === 'CodeOutput' || status === 'Success' },
+            { text: 'Create files', done: files.length > 0, current: status === 'Files' },
+            { text: 'Await review', done: status === 'Success', current: status !== 'Success' && files.length > 0 },
+          ]
+        }
       ]
-    },
-    ...(iteration < maxIterations ? [{
-      id: `T-${iteration + 1}`,
-      title: `Next Iteration (if needed)`,
-      status: 'queued',
-      dependency: 'Review Feedback'
-    }] : [])
-  ] : [
-    { id: 'T-0', title: 'Waiting for task...', status: 'queued' }
-  ];
+    : [{ id: 'T-0', title: 'Warte auf Aufgaben...', status: 'queued' }];
+
+  // Prüfe ob Security-Tasks vorhanden sind
+  const hasSecurityTasks = tasks.length > 0;
 
   // FALLBACK: Platzhalter-Code wenn noch kein echter Code vom Coder-Agenten vorhanden ist
   const displayCode = code || `// Warte auf Code-Generierung...
@@ -136,60 +147,93 @@ const CoderOffice = ({
         {/* Grid Background */}
         <div className="absolute inset-0 bg-grid-pattern grid-bg opacity-[0.05] pointer-events-none"></div>
 
-        {/* Left Sidebar - Task Queue */}
+        {/* Left Sidebar - Task Queue / Security Tasks */}
         <aside className="w-[300px] border-r border-[#334155] bg-[#0f172a]/50 flex flex-col z-10 backdrop-blur-sm">
           <div className="p-4 border-b border-[#334155] flex justify-between items-center">
             <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
-              <CheckCircle size={16} className="text-blue-400" />
-              Task Queue
+              {hasSecurityTasks ? (
+                <>
+                  <Shield size={16} className="text-red-400" />
+                  Security Tasks
+                </>
+              ) : (
+                <>
+                  <CheckCircle size={16} className="text-blue-400" />
+                  Task Queue
+                </>
+              )}
             </h3>
-            <span className="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">{tasks.length} Tasks</span>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded ${hasSecurityTasks ? 'bg-red-800/50 text-red-300 border border-red-500/30' : 'bg-slate-800 text-slate-400'}`}>
+              {hasSecurityTasks ? `${taskCount} Fixes` : `${displayTasks.length} Tasks`}
+            </span>
           </div>
 
-          <div className="flex-1 overflow-y-auto office-scrollbar p-4 space-y-4">
-            {/* Current Task */}
-            {tasks.filter(t => t.status === 'current').map(task => (
-              <div key={task.id} className="relative group">
-                <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-lg opacity-30 blur-sm"></div>
-                <div className="relative bg-[#1e293b] p-3 rounded-lg border border-blue-500/50 shadow-lg">
+          <div className="flex-1 overflow-y-auto office-scrollbar p-4 space-y-3">
+            {/* ÄNDERUNG 25.01.2026: Security-Tasks mit Severity und FIX-Vorschlägen */}
+            {displayTasks.map((task, i) => (
+              <div key={task.id} className={`relative ${task.status === 'current' ? 'group' : 'opacity-60 hover:opacity-100'}`}>
+                {/* Glow-Effekt für aktiven Task */}
+                {task.status === 'current' && (
+                  <div className={`absolute -inset-0.5 rounded-lg opacity-30 blur-sm ${
+                    task.severity === 'critical' ? 'bg-gradient-to-r from-red-500 to-orange-500' :
+                    task.severity === 'high' ? 'bg-gradient-to-r from-orange-500 to-amber-500' :
+                    task.severity ? 'bg-gradient-to-r from-amber-500 to-yellow-500' :
+                    'bg-gradient-to-r from-blue-500 to-cyan-500'
+                  }`}></div>
+                )}
+                <div className={`relative p-3 rounded-lg border ${
+                  task.status === 'current'
+                    ? task.severity === 'critical' ? 'bg-red-950/50 border-red-500/50' :
+                      task.severity === 'high' ? 'bg-orange-950/50 border-orange-500/50' :
+                      task.severity ? 'bg-amber-950/50 border-amber-500/50' :
+                      'bg-[#1e293b] border-blue-500/50'
+                    : 'bg-[#1e293b]/50 border-[#334155]'
+                }`}>
                   <div className="flex justify-between items-start mb-2">
-                    <span className="text-xs font-bold text-blue-400">CURRENT FOCUS</span>
-                    <span className="text-[10px] text-slate-400 font-mono">ID: {task.id}</span>
+                    <div className="flex items-center gap-2">
+                      {/* Severity Badge für Security-Tasks */}
+                      {task.severity ? (
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase ${
+                          task.severity === 'critical' ? 'bg-red-500/20 text-red-300' :
+                          task.severity === 'high' ? 'bg-orange-500/20 text-orange-300' :
+                          task.severity === 'medium' ? 'bg-amber-500/20 text-amber-300' :
+                          'bg-slate-500/20 text-slate-300'
+                        }`}>{task.severity}</span>
+                      ) : (
+                        <span className="text-xs font-bold text-blue-400">
+                          {task.status === 'current' ? 'AKTIV' : 'QUEUED'}
+                        </span>
+                      )}
+                      {task.status === 'current' && task.severity && (
+                        <span className="text-[10px] font-bold text-blue-400">AKTIV</span>
+                      )}
+                    </div>
+                    <span className="text-[10px] text-slate-400 font-mono">{task.id}</span>
                   </div>
-                  <h4 className="text-sm font-semibold text-white mb-2">{task.title}</h4>
-                  <div className="space-y-2">
-                    {task.steps?.map((step, i) => (
-                      <div key={i} className={`flex items-center gap-2 text-xs ${step.current ? 'text-white' : step.done ? 'text-slate-300' : 'text-slate-500'}`}>
-                        {step.done ? (
-                          <CheckCircle size={14} className="text-green-400" />
-                        ) : step.current ? (
-                          <div className="size-3.5 flex items-center justify-center">
-                            <div className="size-2 bg-blue-500 rounded-full animate-pulse"></div>
-                          </div>
-                        ) : (
-                          <Circle size={14} />
-                        )}
-                        <span className={step.current ? 'font-medium' : ''}>{step.text}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            ))}
+                  <h4 className="text-sm font-semibold text-white mb-2 line-clamp-2">{task.title}</h4>
 
-            {/* Queued Tasks */}
-            {tasks.filter(t => t.status !== 'current').map(task => (
-              <div key={task.id} className="opacity-60 hover:opacity-100 transition-opacity">
-                <div className="bg-[#1e293b]/50 p-3 rounded-lg border border-[#334155]">
-                  <div className="flex justify-between items-start mb-1">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase">
-                      {task.status === 'next' ? 'Next' : 'Queued'}
-                    </span>
-                    <GripVertical size={14} className="text-slate-500" />
-                  </div>
-                  <h4 className="text-sm font-medium text-slate-300">{task.title}</h4>
-                  {task.dependency && (
-                    <p className="text-[11px] text-slate-500 mt-1">Dependant on: {task.dependency}</p>
+                  {/* FIX-Vorschlag für Security-Tasks */}
+                  {task.fix && task.status === 'current' && (
+                    <p className="text-[11px] text-green-400 mt-1 flex items-start gap-1">
+                      <span className="text-green-500 shrink-0">→</span>
+                      <span className="line-clamp-3">{task.fix}</span>
+                    </p>
+                  )}
+
+                  {/* Steps für normale Tasks */}
+                  {task.steps && (
+                    <div className="space-y-1.5 mt-2">
+                      {task.steps.map((step, si) => (
+                        <div key={si} className={`flex items-center gap-2 text-xs ${
+                          step.current ? 'text-white' : step.done ? 'text-slate-300' : 'text-slate-500'
+                        }`}>
+                          {step.done ? <CheckCircle size={14} className="text-green-400" /> :
+                           step.current ? <div className="size-2 bg-blue-500 rounded-full animate-pulse" /> :
+                           <Circle size={14} />}
+                          <span className={step.current ? 'font-medium' : ''}>{step.text}</span>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
               </div>
