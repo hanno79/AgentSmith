@@ -1,11 +1,12 @@
 /**
  * Author: rahn
  * Datum: 25.01.2026
- * Version: 1.3
+ * Version: 1.4
  * Beschreibung: AgentCard Komponente - Zeigt Status und Logs eines einzelnen Agenten.
  *               Mit farbigem Glow-Effekt bei aktiven Agenten.
  *               ÄNDERUNG 25.01.2026: Bug Fix - Glow nur bei explizit aktiven Status (nicht bei *Output).
  *               ÄNDERUNG 25.01.2026: Worker-Anzeige für parallele Verarbeitung (Badge mit aktiv/total).
+ *               ÄNDERUNG 25.01.2026: Kompaktere Status-Badges und gefilterte Logs.
  */
 
 import React from 'react';
@@ -66,6 +67,48 @@ const activeStates = [
   'designing',        // Designer arbeitet
 ];
 
+// ÄNDERUNG 25.01.2026: Status-Mapping für kompakte Anzeige
+const statusDisplayMap = {
+  'CodeOutput': 'Code',
+  'CoderTasksOutput': 'Tasks',
+  'WorkerStatus': 'Active',
+  'ResearchOutput': 'Done',
+  'TechStackOutput': 'Stack',
+  'DBDesignerOutput': 'Schema',
+  'DesignerOutput': 'Design',
+  'ReviewOutput': 'Review',
+  'UITestResult': 'Test',
+  'SecurityOutput': 'Scan',
+  'SecurityRescanOutput': 'Rescan',
+  'TokenMetrics': 'Metrics',
+  'RescanStart': 'Scan...',
+  'RescanResult': 'Result',
+};
+
+// ÄNDERUNG 25.01.2026: Events die aus Logs gefiltert werden (interne/technische Events)
+const hiddenLogEvents = ['WorkerStatus', 'TokenMetrics', 'LoopDecision'];
+
+/**
+ * Formatiert den Status für kompakte Anzeige
+ */
+const formatStatus = (status) => {
+  if (!status) return 'Idle';
+  // Prüfe auf bekannte Mappings
+  if (statusDisplayMap[status]) return statusDisplayMap[status];
+  // Kürze lange Status auf max 10 Zeichen
+  if (status.length > 10) return status.substring(0, 8) + '..';
+  return status;
+};
+
+/**
+ * Filtert und formatiert Logs für die Anzeige
+ */
+const filterLogs = (logs) => {
+  return logs
+    .filter(l => !hiddenLogEvents.includes(l.event))  // Technische Events ausblenden
+    .filter(l => !l.message?.startsWith('{'));         // JSON-Nachrichten ausblenden
+};
+
 /**
  * AgentCard Komponente - Zeigt einen einzelnen Agenten mit Status und Logs.
  *
@@ -99,55 +142,59 @@ const AgentCard = ({ name, icon, color, status, logs, onOpenOffice, workers = []
         {React.cloneElement(icon, { size: 64 })}
       </div>
 
-      {/* Header mit Name und Status */}
+      {/* Header mit Name und Status - ÄNDERUNG 25.01.2026: Kompakteres Layout */}
       <div className="flex justify-between items-start mb-4 relative z-10">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <div className={`p-2 rounded-lg bg-slate-800 border border-border-dark ${colors[color].split(' ')[1]}`}>
             {icon}
           </div>
-          <div>
-            <h4 className="font-bold uppercase tracking-tight">{name}</h4>
-            <p className="text-[10px] text-slate-500">Node Status: Online</p>
+          <div className="min-w-0">
+            <h4 className="font-bold uppercase tracking-tight text-sm">{name}</h4>
+            <p className="text-[9px] text-slate-500">Online</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {/* ÄNDERUNG 25.01.2026: Worker-Anzeige wenn mehrere Worker vorhanden */}
+        {/* ÄNDERUNG 25.01.2026: Badges in Spalte statt Zeile auf engem Platz */}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {/* Worker-Badge: kompakter */}
           {totalWorkers > 1 && (
-            <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full border text-[9px] font-medium ${
+            <div className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-full border text-[8px] font-medium ${
               activeWorkers > 0 ? colors[color] : 'bg-[#283039] border-border-dark text-slate-500'
-            }`}>
-              <Users size={10} />
+            }`} title={`${activeWorkers} von ${totalWorkers} Worker aktiv`}>
+              <Users size={9} />
               <span>{activeWorkers}/{totalWorkers}</span>
             </div>
           )}
-          <div className={`px-2 py-0.5 rounded-full border text-[9px] font-bold uppercase transition-all ${status !== 'Idle' ? colors[color] : 'bg-[#283039] border-border-dark text-slate-500'
-            }`}>
-            {status}
+          {/* Status-Badge: gekürzt */}
+          <div className={`px-1.5 py-0.5 rounded-full border text-[8px] font-bold uppercase transition-all max-w-[60px] truncate ${
+            status !== 'Idle' ? colors[color] : 'bg-[#283039] border-border-dark text-slate-500'
+          }`} title={status}>
+            {formatStatus(status)}
           </div>
+          {/* Office-Button */}
           {onOpenOffice && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 onOpenOffice(name.toLowerCase().replace(' ', ''));
               }}
-              className={`p-1.5 rounded-lg border transition-all hover:scale-105 ${colors[color]}`}
+              className={`p-1 rounded-lg border transition-all hover:scale-105 ${colors[color]}`}
               title={`${name} Office öffnen`}
             >
-              <ExternalLink size={12} />
+              <ExternalLink size={11} />
             </button>
           )}
         </div>
       </div>
 
-      {/* Log-Ausgabe */}
-      <div className="bg-black/50 rounded-lg p-3 h-24 overflow-y-auto terminal-scroll font-mono text-[10px] border border-white/5 relative z-10">
-        {logs.slice(-5).map((l, i) => (
-          <div key={i} className="mb-1">
-            <span className="opacity-50 mr-2">&gt;</span>
-            <span className="text-slate-300">{l.message}</span>
+      {/* Log-Ausgabe - ÄNDERUNG 25.01.2026: Gefilterte Logs (keine JSON/technischen Events) */}
+      <div className="bg-black/50 rounded-lg p-2.5 h-20 overflow-y-auto terminal-scroll font-mono text-[9px] border border-white/5 relative z-10">
+        {filterLogs(logs).slice(-4).map((l, i) => (
+          <div key={i} className="mb-0.5 leading-tight">
+            <span className="opacity-40 mr-1.5">&gt;</span>
+            <span className="text-slate-300 break-words">{l.message?.substring(0, 80)}{l.message?.length > 80 ? '...' : ''}</span>
           </div>
         ))}
-        {logs.length === 0 && <div className="text-slate-600 italic mt-6 text-center">Warte auf Aufgabe...</div>}
+        {filterLogs(logs).length === 0 && <div className="text-slate-600 italic mt-4 text-center text-[9px]">Warte auf Aufgabe...</div>}
       </div>
     </motion.div>
   );
