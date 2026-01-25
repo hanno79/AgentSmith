@@ -1,12 +1,13 @@
 /**
  * Author: rahn
  * Datum: 25.01.2026
- * Version: 1.4
+ * Version: 1.5
  * Beschreibung: AgentCard Komponente - Zeigt Status und Logs eines einzelnen Agenten.
  *               Mit farbigem Glow-Effekt bei aktiven Agenten.
  *               ÄNDERUNG 25.01.2026: Bug Fix - Glow nur bei explizit aktiven Status (nicht bei *Output).
  *               ÄNDERUNG 25.01.2026: Worker-Anzeige für parallele Verarbeitung (Badge mit aktiv/total).
  *               ÄNDERUNG 25.01.2026: Kompaktere Status-Badges und gefilterte Logs.
+ *               ÄNDERUNG 25.01.2026: BUG FIX - Glow-Effekt auch bei aktiven Workern (activeWorkers > 0).
  */
 
 import React from 'react';
@@ -125,7 +126,8 @@ const AgentCard = ({ name, icon, color, status, logs, onOpenOffice, workers = []
   const activeWorkers = workers.filter(w => w.status === 'working').length;
   const totalWorkers = workers.length;
   // ÄNDERUNG 25.01.2026: Prüfe ob Status in activeStates ODER mit "Status" beginnt
-  const isActive = status && (activeStates.includes(status) || status === 'Status');
+  // ÄNDERUNG 25.01.2026: BUG FIX - Glow auch wenn Worker aktiv sind!
+  const isActive = (status && (activeStates.includes(status) || status === 'Status')) || activeWorkers > 0;
 
   return (
     <motion.div
