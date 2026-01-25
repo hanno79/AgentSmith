@@ -1,7 +1,7 @@
 /**
  * Author: rahn
  * Datum: 24.01.2026
- * Version: 1.1
+ * Version: 1.2
  * Beschreibung: Tester Office - Detailansicht für den Tester-Agenten mit UI-Tests und Coverage.
  *
  * # ÄNDERUNG 24.01.2026: Echte Echtzeit-Daten statt Dummy-Daten
@@ -9,11 +9,13 @@
  * - Dummy-Daten entfernt (Regel 10 Compliance)
  * - Browser-Vorschau für Playwright-Screenshots hinzugefügt
  * - "Warte auf Daten..." Zustände implementiert
+ * # ÄNDERUNG 25.01.2026: WorkerPanel für parallele Worker-Anzeige
  */
 
 import React from 'react';
 import { useOfficeCommon } from './hooks/useOfficeCommon';
 import { motion } from 'framer-motion';
+import WorkerPanel from './components/WorkerPanel';
 import {
   ArrowLeft,
   Bug,
@@ -48,7 +50,9 @@ const TesterOffice = ({
   stability = null,
   risk = null,
   screenshot = null,
-  model = ""
+  model = "",
+  // ÄNDERUNG 25.01.2026: Worker-Pool Props
+  workers = []
 }) => {
   const { logRef, getStatusBadge, formatTime } = useOfficeCommon(logs);
 
@@ -276,6 +280,11 @@ const TesterOffice = ({
                   />
                 </div>
               </div>
+            )}
+
+            {/* ÄNDERUNG 25.01.2026: Worker-Panel für parallele Verarbeitung */}
+            {workers && workers.length > 1 && (
+              <WorkerPanel workers={workers} color="orange" />
             )}
           </div>
 

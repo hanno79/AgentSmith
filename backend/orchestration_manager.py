@@ -2,9 +2,12 @@
 """
 Author: rahn
 Datum: 25.01.2026
-Version: 1.4
+Version: 1.7
 Beschreibung: Orchestration Manager - Backend-Koordination mit LiteLLM Callbacks und Agent-Steuerung.
               ÄNDERUNG 25.01.2026: TokenMetrics WebSocket Event für Live-Metriken im CoderOffice.
+              ÄNDERUNG 25.01.2026: Verbesserte OK-Erkennung und Debug-Logging für DEV LOOP.
+              ÄNDERUNG 25.01.2026: Initial-Security-Scan ENTFERNT - Security nur noch im DEV LOOP nach Code.
+              ÄNDERUNG 25.01.2026: OfficeManager für Worker-Pool-Tracking integriert.
 """
 
 import os
@@ -48,6 +51,7 @@ from sandbox_runner import run_sandbox
 from logger_utils import log_event
 from budget_tracker import get_budget_tracker
 from model_router import get_model_router
+from .worker_pool import OfficeManager, WorkerStatus
 
 from crewai import Task
 
@@ -172,6 +176,21 @@ class OrchestrationManager:
         # ModelRouter für automatisches Fallback bei Rate Limits
         self.model_router = get_model_router(self.config)
 
+        # ÄNDERUNG 25.01.2026: OfficeManager für Worker-Pool-Tracking
+        self.office_manager = OfficeManager(
+            on_status_change=self._handle_worker_status_change,
+            config={
+                "coder": {"max_workers": 3},
+                "tester": {"max_workers": 2},
+                "designer": {"max_workers": 1},
+                "db_designer": {"max_workers": 1},
+                "security": {"max_workers": 1},
+                "researcher": {"max_workers": 1},
+                "reviewer": {"max_workers": 1},
+                "techstack_architect": {"max_workers": 1},
+            }
+        )
+
         # Callback für UI-Updates
         self.on_log: Optional[Callable[[str, str, str], None]] = None
 
@@ -183,6 +202,85 @@ class OrchestrationManager:
         if self.on_log:
             self.on_log(agent, event, message)
         log_event(agent, event, message)
+
+    # ÄNDERUNG 25.01.2026: Worker-Status-Callback für WebSocket-Events
+    async def _handle_worker_status_change(self, data: Dict[str, Any]):
+        """
+        Callback für Worker-Pool Status-Änderungen.
+        Sendet WorkerStatus Event an Frontend via WebSocket.
+        """
+        if self.on_log:
+            # Mapping von Office-Namen zu Agent-Namen für das Frontend
+            agent_names = {
+                "coder": "Coder",
+                "tester": "Tester",
+                "designer": "Designer",
+                "db_designer": "DBDesigner",
+                "security": "Security",
+                "researcher": "Researcher",
+                "reviewer": "Reviewer",
+                "techstack_architect": "TechArchitect"
+            }
+            agent_name = agent_names.get(data.get("office"), "System")
+            self.on_log(agent_name, "WorkerStatus", json.dumps(data, ensure_ascii=False))
+
+    def _update_worker_status(self, office: str, worker_status: str, task_description: str = None, model: str = None):
+        """
+        Synchrone Helper-Methode zum Aktualisieren des Worker-Status.
+        Sendet WorkerStatus Event an Frontend.
+
+        Args:
+            office: Name des Office (coder, tester, etc.)
+            worker_status: "working" oder "idle"
+            task_description: Beschreibung der aktuellen Aufgabe
+            model: Verwendetes Modell
+        """
+        pool = self.office_manager.get_pool(office)
+        if pool:
+            # Finde ersten verfügbaren Worker
+            workers = pool.get_idle_workers() if worker_status == "idle" else pool.get_active_workers()
+            if workers or worker_status == "working":
+                # Bei "working" den ersten idle Worker nehmen
+                if worker_status == "working":
+                    idle_workers = pool.get_idle_workers()
+                    if idle_workers:
+                        worker = idle_workers[0]
+                        worker.status = WorkerStatus.WORKING
+                        worker.current_task_description = task_description
+                        worker.model = model
+                    else:
+                        return  # Kein Worker verfügbar
+                else:
+                    # Bei "idle" den ersten arbeitenden Worker auf idle setzen
+                    active_workers = pool.get_active_workers()
+                    if active_workers:
+                        worker = active_workers[0]
+                        worker.status = WorkerStatus.IDLE
+                        worker.current_task_description = None
+                        worker.current_task = None
+                        worker.tasks_completed += 1
+                    else:
+                        return  # Kein aktiver Worker zum Idle-Setzen
+
+            # Agent-Namen Mapping
+            agent_names = {
+                "coder": "Coder",
+                "tester": "Tester",
+                "designer": "Designer",
+                "db_designer": "DBDesigner",
+                "security": "Security",
+                "researcher": "Researcher",
+                "reviewer": "Reviewer",
+                "techstack_architect": "TechArchitect"
+            }
+            agent_name = agent_names.get(office, "System")
+
+            # WorkerStatus Event senden
+            self._ui_log(agent_name, "WorkerStatus", json.dumps({
+                "office": office,
+                "pool_status": pool.get_status(),
+                "event": "task_assigned" if worker_status == "working" else "task_completed"
+            }, ensure_ascii=False))
 
     def _is_rate_limit_error(self, e: Exception) -> bool:
         """
@@ -452,6 +550,8 @@ class OrchestrationManager:
                 try:
                     self._ui_log("Researcher", "Status", f"Sucht Kontext... (max. {RESEARCH_TIMEOUT_SECONDS}s)")
                     set_current_agent("Researcher", project_id)  # Budget-Tracking
+                    # ÄNDERUNG 25.01.2026: Worker-Status auf "working" setzen
+                    self._update_worker_status("researcher", "working", f"Recherche: {research_query[:50]}...", research_model)
                     res_agent = create_researcher(self.config, self.config.get("templates", {}).get("webapp", {}), router=self.model_router)
                     res_task = Task(
                         description=research_query,
@@ -465,6 +565,8 @@ class OrchestrationManager:
                     )
                     start_context = f"\n\nRecherche-Ergebnisse:\n{research_result}"
                     self._ui_log("Researcher", "Result", "Recherche abgeschlossen.")
+                    # ÄNDERUNG 25.01.2026: Worker-Status auf "idle" setzen
+                    self._update_worker_status("researcher", "idle")
 
                     # ResearchOutput Event: Status "completed"
                     self._ui_log("Researcher", "ResearchOutput", json.dumps({
@@ -477,6 +579,8 @@ class OrchestrationManager:
 
                 except TimeoutError as te:
                     self._ui_log("Researcher", "Timeout", f"Recherche abgebrochen: {te}")
+                    # ÄNDERUNG 25.01.2026: Worker-Status auf "idle" setzen (auch bei Timeout)
+                    self._update_worker_status("researcher", "idle")
                     start_context = ""  # Ohne Recherche-Kontext fortfahren
 
                     # ResearchOutput Event: Status "timeout"
@@ -490,6 +594,8 @@ class OrchestrationManager:
 
                 except Exception as e:
                     self._ui_log("Researcher", "Error", f"Recherche fehlgeschlagen: {e}")
+                    # ÄNDERUNG 25.01.2026: Worker-Status auf "idle" setzen (auch bei Fehler)
+                    self._update_worker_status("researcher", "idle")
 
                     # ResearchOutput Event: Status "error"
                     self._ui_log("Researcher", "ResearchOutput", json.dumps({
@@ -522,6 +628,8 @@ class OrchestrationManager:
                 if "techstack_architect" in plan_data["plan"]:
                     self._ui_log("TechArchitect", "Status", "Analysiere TechStack...")
                     set_current_agent("TechStack-Architect", project_id)  # Budget-Tracking
+                    # ÄNDERUNG 25.01.2026: Worker-Status auf "working" setzen
+                    self._update_worker_status("techstack_architect", "working", "Analysiere TechStack...", self.model_router.get_model("techstack_architect"))
                     agent_techstack = create_techstack_architect(self.config, self.config.get("templates", {}).get("webapp", {}), router=self.model_router)
                     techstack_task = Task(
                         description=f"Entscheide TechStack für: {user_goal}",
@@ -539,6 +647,8 @@ class OrchestrationManager:
                         self._ui_log("TechArchitect", "Warning", f"Blueprint-Parsing fehlgeschlagen, verwende Fallback: {e}")
                     
                     self._ui_log("TechArchitect", "Blueprint", json.dumps(self.tech_blueprint, ensure_ascii=False))
+                    # ÄNDERUNG 25.01.2026: Worker-Status auf "idle" setzen
+                    self._update_worker_status("techstack_architect", "idle")
 
                     # ÄNDERUNG 24.01.2026: Strukturiertes TechStackOutput Event für Frontend Office
                     self._ui_log("TechArchitect", "TechStackOutput", json.dumps({
@@ -620,13 +730,17 @@ class OrchestrationManager:
                 if "database_designer" in plan_data["plan"]:
                     self._ui_log("DBDesigner", "Status", "Erstelle Schema...")
                     set_current_agent("Database-Designer", project_id)  # Budget-Tracking
+                    dbdesigner_model = self.model_router.get_model("database_designer") if self.model_router else "unknown"
+                    # ÄNDERUNG 25.01.2026: Worker-Status auf "working" setzen
+                    self._update_worker_status("db_designer", "working", "Erstelle Schema...", dbdesigner_model)
                     agent_db = create_database_designer(self.config, project_rules, router=self.model_router)
                     if agent_db:
                         task_db = Task(description=f"Schema für {user_goal}", expected_output="Schema", agent=agent_db)
                         self.database_schema = str(task_db.execute_sync())
+                        # ÄNDERUNG 25.01.2026: Worker-Status auf "idle" setzen
+                        self._update_worker_status("db_designer", "idle")
 
                         # ÄNDERUNG 24.01.2026: DBDesignerOutput Event für Frontend Office
-                        dbdesigner_model = self.model_router.get_model("database_designer") if self.model_router else "unknown"
                         self._ui_log("DBDesigner", "DBDesignerOutput", json.dumps({
                             "schema": self.database_schema[:2000] if self.database_schema else "",
                             "model": dbdesigner_model,
@@ -638,13 +752,17 @@ class OrchestrationManager:
                 if "designer" in plan_data["plan"]:
                     self._ui_log("Designer", "Status", "Erstelle Design-Konzept...")
                     set_current_agent("Designer", project_id)  # Budget-Tracking
+                    designer_model = self.model_router.get_model("designer") if self.model_router else "unknown"
+                    # ÄNDERUNG 25.01.2026: Worker-Status auf "working" setzen
+                    self._update_worker_status("designer", "working", "Erstelle Design-Konzept...", designer_model)
                     agent_des = create_designer(self.config, project_rules, router=self.model_router)
                     if agent_des:
                         task_des = Task(description=f"Design für {user_goal}", expected_output="Konzept", agent=agent_des)
                         self.design_concept = str(task_des.execute_sync())
+                        # ÄNDERUNG 25.01.2026: Worker-Status auf "idle" setzen
+                        self._update_worker_status("designer", "idle")
 
                         # ÄNDERUNG 24.01.2026: DesignerOutput Event für Frontend Office
-                        designer_model = self.model_router.get_model("designer") if self.model_router else "unknown"
                         design_data = self._extract_design_data(self.design_concept)
 
                         self._ui_log("Designer", "DesignerOutput", json.dumps({
@@ -660,42 +778,10 @@ class OrchestrationManager:
                             "timestamp": datetime.now().isoformat()
                         }, ensure_ascii=False))
 
-                # ÄNDERUNG 24.01.2026: Security Agent für Sicherheitsanalyse
-                # Security immer ausführen - kritisch für alle Projekte
-                self._ui_log("Security", "Status", "Starte Sicherheitsanalyse...")
-                set_current_agent("Security", project_id)  # Budget-Tracking
-                # agent_security bereits oben erstellt (Zeile 615)
-                if agent_security:
-                    security_prompt = f"Analysiere die Anforderungen auf potenzielle Sicherheitsrisiken: {user_goal}"
-                    task_security = Task(
-                        description=security_prompt,
-                        expected_output="SECURE wenn keine Risiken, oder VULNERABILITY: [Beschreibung] für jedes Risiko",
-                        agent=agent_security
-                    )
-                    try:
-                        security_result = str(task_security.execute_sync())
-
-                        # SecurityOutput Event für Frontend Office
-                        security_model = self.model_router.get_model("security") if self.model_router else "unknown"
-                        vulnerabilities = self._extract_vulnerabilities(security_result)
-                        # ÄNDERUNG 24.01.2026: Speichere Vulnerabilities für Coder-Feedback
-                        self.security_vulnerabilities = vulnerabilities
-                        overall_status = "SECURE" if "SECURE" in security_result.upper() and not vulnerabilities else "WARNING"
-                        if any(v["severity"] == "critical" for v in vulnerabilities):
-                            overall_status = "CRITICAL"
-
-                        self._ui_log("Security", "SecurityOutput", json.dumps({
-                            "vulnerabilities": vulnerabilities,
-                            "overall_status": overall_status,
-                            "scan_result": security_result[:1000],
-                            "model": security_model,
-                            "scanned_files": 0,  # Initial-Scan hat noch keine Dateien
-                            "timestamp": datetime.now().isoformat()
-                        }, ensure_ascii=False))
-
-                        self._ui_log("Security", "Result", f"Analyse abgeschlossen: {overall_status} ({len(vulnerabilities)} Findings)")
-                    except Exception as sec_err:
-                        self._ui_log("Security", "Error", f"Sicherheitsanalyse fehlgeschlagen: {sec_err}")
+                # ÄNDERUNG 25.01.2026: Initial-Security-Scan auf Anforderungen ENTFERNT
+                # Security-Analyse erfolgt jetzt NUR im DEV LOOP nach Code-Generierung (Re-Scan)
+                # Begründung: Es macht keinen Sinn, Vulnerabilities zu finden bevor Code existiert
+                self._ui_log("Security", "Status", "Security-Scan wird nach Code-Generierung durchgeführt...")
 
             # 🔄 DEV LOOP
             max_retries = self.config.get("max_retries", 3)
@@ -718,6 +804,9 @@ class OrchestrationManager:
 
                 # Budget-Tracking für Coder
                 set_current_agent("Coder", project_id)
+                # ÄNDERUNG 25.01.2026: Worker-Status auf "working" setzen
+                coder_model = self.model_router.get_model("coder") if self.model_router else "unknown"
+                self._update_worker_status("coder", "working", f"Iteration {iteration+1}/{max_retries}", coder_model)
 
                 c_prompt = f"Ziel: {user_goal}\nTech: {self.tech_blueprint}\nDB: {self.database_schema[:200]}\n"
                 if not self.is_first_run: c_prompt += f"\nAlt-Code:\n{self.current_code}\n"
@@ -804,6 +893,8 @@ class OrchestrationManager:
                     "max_iterations": max_retries,
                     "model": current_model
                 }, ensure_ascii=False))
+                # ÄNDERUNG 25.01.2026: Worker-Status auf "idle" setzen nach Code-Generierung
+                self._update_worker_status("coder", "idle")
 
                 # ÄNDERUNG 25.01.2026: TokenMetrics Event für Live-Metriken im CoderOffice
                 try:
@@ -842,6 +933,8 @@ class OrchestrationManager:
                 test_summary = "Keine UI-Tests durchgeführt."
                 set_current_agent("Tester", project_id)  # Budget-Tracking
                 self._ui_log("Tester", "Status", f"Starte Tests für Projekt-Typ '{project_type}'...")
+                # ÄNDERUNG 25.01.2026: Worker-Status auf "working" setzen
+                self._update_worker_status("tester", "working", f"Teste {project_type}...", self.model_router.get_model("tester") if self.model_router else "")
 
                 try:
                     ui_result = test_project(self.project_path, self.tech_blueprint, self.config)
@@ -864,6 +957,8 @@ class OrchestrationManager:
                         "screenshot": screenshot_base64,
                         "model": self.model_router.get_model("tester") if hasattr(self, 'model_router') else ""
                     }, ensure_ascii=False))
+                    # ÄNDERUNG 25.01.2026: Worker-Status auf "idle" setzen
+                    self._update_worker_status("tester", "idle")
 
                     if ui_result["status"] in ["FAIL", "ERROR"]:
                         sandbox_failed = True  # UI-Fehler blockieren auch
@@ -880,11 +975,15 @@ class OrchestrationManager:
                 except Exception as te:
                     test_summary = f"❌ Test-Runner Fehler: {te}"
                     self._ui_log("Tester", "Error", test_summary)
+                    # ÄNDERUNG 25.01.2026: Worker-Status auf "idle" setzen (auch bei Fehler)
+                    self._update_worker_status("tester", "idle")
                     sandbox_failed = True
 
                 # Review
                 set_current_agent("Reviewer", project_id)  # Budget-Tracking
                 r_prompt = f"Review Code: {self.current_code[:500]}\nSandbox: {sandbox_result}\nTester: {test_summary}"
+                # ÄNDERUNG 25.01.2026: Worker-Status auf "working" setzen
+                self._update_worker_status("reviewer", "working", "Prüfe Code...", self.model_router.get_model("reviewer") if self.model_router else "")
 
                 # ÄNDERUNG 24.01.2026: Review mit "No Response" Handling und automatischem Modellwechsel
                 MAX_REVIEW_RETRIES = 3
@@ -946,6 +1045,8 @@ class OrchestrationManager:
                     "testSummary": test_summary[:500] if test_summary else "",
                     "reviewOutput": review_output if review_output else ""
                 }, ensure_ascii=False))
+                # ÄNDERUNG 25.01.2026: Worker-Status auf "idle" setzen
+                self._update_worker_status("reviewer", "idle")
 
                 # ÄNDERUNG 24.01.2026: Security Re-Scan - Prüfe generierten Code auf Sicherheitslücken
                 security_passed = True  # Default: Security-Gate bestanden
@@ -954,6 +1055,8 @@ class OrchestrationManager:
                 if agent_security and self.current_code:
                     self._ui_log("Security", "RescanStart", f"Prüfe generierten Code (Iteration {iteration+1})...")
                     set_current_agent("Security", project_id)
+                    # ÄNDERUNG 25.01.2026: Worker-Status auf "working" setzen
+                    self._update_worker_status("security", "working", f"Security-Scan Iteration {iteration+1}", self.model_router.get_model("security") if self.model_router else "")
 
                     # ÄNDERUNG 24.01.2026: Security-Prompt mit Lösungsvorschlägen
                     security_rescan_prompt = f"""Analysiere den generierten Code auf Sicherheitslücken:
@@ -1009,8 +1112,12 @@ Antworte mit 'SECURE' wenn keine kritischen/hohen Issues, oder 'VULNERABILITY: .
                         }, ensure_ascii=False))
 
                         self._ui_log("Security", "RescanResult", f"Code-Scan: {rescan_status} ({len(security_rescan_vulns)} Findings)")
+                        # ÄNDERUNG 25.01.2026: Worker-Status auf "idle" setzen
+                        self._update_worker_status("security", "idle")
                     except Exception as sec_err:
                         self._ui_log("Security", "Error", f"Security-Rescan fehlgeschlagen: {sec_err}")
+                        # ÄNDERUNG 25.01.2026: Worker-Status auf "idle" setzen (auch bei Fehler)
+                        self._update_worker_status("security", "idle")
                         security_passed = True  # Bei Fehler nicht blockieren
 
                 # ÄNDERUNG 24.01.2026: Nach max_security_retries nur noch warnen, nicht blockieren
@@ -1022,8 +1129,21 @@ Antworte mit 'SECURE' wenn keine kritischen/hohen Issues, oder 'VULNERABILITY: .
                             f"Fahre mit Warnung fort (keine Blockade).")
                         security_passed = True  # Erlaube Fortfahren mit Warnung
 
+                # ÄNDERUNG 25.01.2026: Debug-Logging für Break-Entscheidung
+                review_says_ok = review_output.strip().upper().startswith("OK") or review_output.strip().upper() == "OK"
+                self._ui_log("Debug", "LoopDecision", json.dumps({
+                    "iteration": iteration + 1,
+                    "review_output_preview": review_output[:200] if review_output else "",
+                    "review_says_ok": review_says_ok,
+                    "sandbox_failed": sandbox_failed,
+                    "security_passed": security_passed,
+                    "security_retry_count": security_retry_count,
+                    "will_break": review_says_ok and not sandbox_failed and security_passed
+                }, ensure_ascii=False))
+
                 # STRIKTER CHECK: Reviewer OK + Sandbox OK + Security SECURE
-                if "OK" in review_output.upper() and not sandbox_failed and security_passed:
+                # ÄNDERUNG 25.01.2026: Verbesserte OK-Erkennung - nur wenn Review mit "OK" STARTET
+                if review_says_ok and not sandbox_failed and security_passed:
                     success = True
                     self._ui_log("Security", "SecurityGate", "✅ Security-Gate bestanden - Code ist sicher.")
                     self._ui_log("Reviewer", "Status", "Code OK.")
@@ -1037,7 +1157,7 @@ Antworte mit 'SECURE' wenn keine kritischen/hohen Issues, oder 'VULNERABILITY: .
                     break
                 else:
                     feedback = review_output
-                    if sandbox_failed and "OK" in review_output.upper():
+                    if sandbox_failed and review_says_ok:
                         feedback = f"KRITISCHER FEHLER: Die Sandbox oder der Tester hat Fehler (❌) gemeldet, aber du hast OK gesagt. Bitte analysiere die Fehlermeldungen erneut:\n{sandbox_result}\n{test_summary}"
 
                     # ÄNDERUNG 24.01.2026: Security-Issues MIT Lösungsvorschlägen als Feedback an Coder

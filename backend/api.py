@@ -46,6 +46,9 @@ app.add_middleware(
 
 manager = OrchestrationManager()
 
+# ÄNDERUNG 25.01.2026: Konstante für Default max_retries
+DEFAULT_MAX_RETRIES = 5
+
 # Speicher für aktive WebSocket-Verbindungen
 class ConnectionManager:
     def __init__(self):
@@ -140,7 +143,7 @@ def get_config():
     return {
         "mode": manager.config.get("mode", "test"),
         "project_type": manager.config.get("project_type", "webapp"),
-        "max_retries": manager.config.get("max_retries", 5),
+        "max_retries": manager.config.get("max_retries", DEFAULT_MAX_RETRIES),
         "research_timeout_minutes": manager.config.get("research_timeout_minutes", 5),
         "include_designer": manager.config.get("include_designer", True),
         "models": manager.config.get("models", {}),
@@ -178,7 +181,7 @@ def set_research_timeout(request: ResearchTimeoutRequest):
 @app.put("/config/max-model-attempts")
 def set_max_model_attempts(request: MaxModelAttemptsRequest):
     """Setzt nach wie vielen Fehlversuchen das Modell gewechselt wird (1 bis max_retries-1)."""
-    max_retries = manager.config.get("max_retries", 15)
+    max_retries = manager.config.get("max_retries", DEFAULT_MAX_RETRIES)
     # Validierung: min 1, max max_retries - 1
     if not 1 <= request.max_model_attempts <= max_retries - 1:
         raise HTTPException(
@@ -361,6 +364,8 @@ def _save_config():
                 existing_data["models"] = manager.config["models"]
             if "max_retries" in manager.config:
                 existing_data["max_retries"] = manager.config["max_retries"]
+            if "max_model_attempts" in manager.config:
+                existing_data["max_model_attempts"] = manager.config["max_model_attempts"]
             if "research_timeout_minutes" in manager.config:
                 existing_data["research_timeout_minutes"] = manager.config["research_timeout_minutes"]
             if "include_designer" in manager.config:

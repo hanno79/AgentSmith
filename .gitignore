@@ -38,6 +38,16 @@ Thumbs.db
 *.tmp
 *.bak
 
+# Windows reserved device names (NUL, CON, PRN, AUX, COM1-9, LPT1-9, etc.)
+# Prevent accidental commits of error output files
+# Case-insensitive patterns to match Windows case-insensitive file system behavior
+[Nn][Uu][Ll]
+[Cc][Oo][Nn]
+[Pp][Rr][Nn]
+[Aa][Uu][Xx]
+[Cc][Oo][Mm][1-9]
+[Ll][Pp][Tt][1-9]
+
 # Node (Frontend)
 frontend/node_modules/
 frontend/dist/

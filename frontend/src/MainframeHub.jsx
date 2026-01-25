@@ -46,7 +46,7 @@ const MainframeHub = ({
   const [selectedAgent, setSelectedAgent] = useState(null);
   const [showModelSelector, setShowModelSelector] = useState(false);
   const [serverTime, setServerTime] = useState(new Date());
-  const [maxRetries, setMaxRetries] = useState(15);
+  const [maxRetries, setMaxRetries] = useState(5);
   const [researchTimeout, setResearchTimeout] = useState(5);
   // ÄNDERUNG 25.01.2026: Lokaler State für Modellwechsel
   const [maxModelAttempts, setMaxModelAttempts] = useState(3);
@@ -161,7 +161,9 @@ const MainframeHub = ({
   // ÄNDERUNG 25.01.2026: Handler für Modellwechsel (Dual-Slider)
   const updateModelAttempts = async (value) => {
     // Validierung: max = effectiveMaxRetries - 1
-    const validValue = Math.max(1, Math.min(value, effectiveMaxRetries - 1));
+    // ÄNDERUNG 25.01.2026: Edge Case Handling für effectiveMaxRetries <= 1
+    const upperBound = effectiveMaxRetries - 1;
+    const validValue = upperBound < 1 ? 0 : Math.max(1, Math.min(value, upperBound));
     if (onMaxModelAttemptsChange) {
       onMaxModelAttemptsChange(validValue);
     } else {
@@ -468,27 +470,46 @@ const MainframeHub = ({
                     <div className="absolute left-2 right-2 h-2 bg-[#28392e] rounded-full" />
 
                     {/* Aktiver Bereich zwischen den Punkten */}
-                    <div
-                      className="absolute h-2 bg-gradient-to-r from-amber-500/60 to-primary/60 rounded-full"
-                      style={{
-                        left: `calc(${(effectiveModelAttempts / 100) * 100}% + 8px)`,
-                        right: `calc(${100 - (effectiveMaxRetries / 100) * 100}% + 8px)`
-                      }}
-                    />
+                    {/* ÄNDERUNG 25.01.2026: Edge Case Handling für effectiveMaxRetries <= 1 */}
+                    {(() => {
+                      const upperBound = effectiveMaxRetries - 1;
+                      const safeModelAttempts = effectiveModelAttempts < 1 ? 0 : effectiveModelAttempts;
+                      const safeUpperBound = Math.max(1, upperBound);
+                      const leftPercent = upperBound < 1 ? 0 : ((safeModelAttempts - 1) / safeUpperBound) * 100;
+                      return (
+                        <div
+                          className="absolute h-2 bg-gradient-to-r from-amber-500/60 to-primary/60 rounded-full"
+                          style={{
+                            left: `calc(${leftPercent}% + 8px)`,
+                            right: `calc(${(100 - leftPercent)}% + 8px)`
+                          }}
+                        />
+                      );
+                    })()}
 
                     {/* Modellwechsel Slider (links, amber) */}
-                    <input
-                      type="range"
-                      min="1"
-                      max={Math.max(1, effectiveMaxRetries - 1)}
-                      value={effectiveModelAttempts}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value);
-                        updateModelAttempts(Math.min(val, effectiveMaxRetries - 1));
-                      }}
-                      className="absolute inset-x-2 w-[calc(100%-16px)] dual-slider-left"
-                      style={{ zIndex: effectiveModelAttempts > effectiveMaxRetries - 10 ? 3 : 1 }}
-                    />
+                    {/* ÄNDERUNG 25.01.2026: Edge Case Handling für effectiveMaxRetries <= 1 */}
+                    {(() => {
+                      const upperBound = effectiveMaxRetries - 1;
+                      const sliderMax = Math.max(1, upperBound);
+                      const sliderValue = effectiveModelAttempts < 1 ? 1 : Math.max(1, Math.min(effectiveModelAttempts, sliderMax));
+                      const isDisabled = upperBound < 1;
+                      return (
+                        <input
+                          type="range"
+                          min="1"
+                          max={sliderMax}
+                          value={sliderValue}
+                          disabled={isDisabled}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value);
+                            updateModelAttempts(Math.min(val, upperBound));
+                          }}
+                          className="absolute inset-x-2 w-[calc(100%-16px)] dual-slider-left"
+                          style={{ zIndex: effectiveModelAttempts > effectiveMaxRetries - 10 ? 3 : 1, opacity: isDisabled ? 0.5 : 1 }}
+                        />
+                      );
+                    })()}
 
                     {/* Iterationen Slider (rechts, primary) */}
                     <input
@@ -499,9 +520,14 @@ const MainframeHub = ({
                       onChange={(e) => {
                         const newVal = Math.max(2, parseInt(e.target.value));
                         updateMaxRetries(newVal);
-                        // Wenn Iterationen unter Modellwechsel fällt, anpassen
-                        if (effectiveModelAttempts >= newVal) {
-                          updateModelAttempts(newVal - 1);
+                        // ÄNDERUNG 25.01.2026: Edge Case Handling - Wenn Iterationen unter Modellwechsel fällt, anpassen
+                        const newUpperBound = newVal - 1;
+                        if (effectiveModelAttempts > 0 && effectiveModelAttempts >= newVal) {
+                          // Setze auf neuen upperBound, oder 0 wenn upperBound < 1
+                          updateModelAttempts(newUpperBound < 1 ? 0 : newUpperBound);
+                        } else if (effectiveModelAttempts === 0 && newUpperBound >= 1) {
+                          // Wenn Modellwechsel deaktiviert war aber jetzt wieder möglich, auf 1 setzen
+                          updateModelAttempts(1);
                         }
                       }}
                       className="absolute inset-x-2 w-[calc(100%-16px)] dual-slider-right"

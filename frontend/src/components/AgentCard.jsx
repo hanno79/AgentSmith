@@ -1,14 +1,16 @@
 /**
  * Author: rahn
- * Datum: 24.01.2026
- * Version: 1.0
+ * Datum: 25.01.2026
+ * Version: 1.3
  * Beschreibung: AgentCard Komponente - Zeigt Status und Logs eines einzelnen Agenten.
  *               Mit farbigem Glow-Effekt bei aktiven Agenten.
+ *               ÄNDERUNG 25.01.2026: Bug Fix - Glow nur bei explizit aktiven Status (nicht bei *Output).
+ *               ÄNDERUNG 25.01.2026: Worker-Anzeige für parallele Verarbeitung (Badge mit aktiv/total).
  */
 
 import React from 'react';
 import { motion } from 'framer-motion';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, Users } from 'lucide-react';
 
 // Farbkonfiguration für verschiedene Agenten
 const colors = {
@@ -49,8 +51,20 @@ const borderColors = {
   indigo: '#4f46e5',
 };
 
-// Status-Werte die als "fertig" gelten
-const finishedStates = ['Idle', 'Success', 'Failure', 'Error', 'Result', 'Files', 'OK'];
+// ÄNDERUNG 25.01.2026: Aktive Status-Werte (Agent arbeitet gerade)
+// Nur diese Status lösen den Glow-Effekt aus
+const activeStates = [
+  'Status',           // Generischer "arbeitet" Status
+  'Iteration',        // Coder arbeitet an Iteration
+  'searching',        // Researcher sucht
+  'RescanStart',      // Security scannt Code
+  'Analysis',         // Orchestrator analysiert
+  'generating',       // Agent generiert etwas
+  'processing',       // Agent verarbeitet
+  'testing',          // Tester testet
+  'reviewing',        // Reviewer prüft
+  'designing',        // Designer arbeitet
+];
 
 /**
  * AgentCard Komponente - Zeigt einen einzelnen Agenten mit Status und Logs.
@@ -61,9 +75,14 @@ const finishedStates = ['Idle', 'Success', 'Failure', 'Error', 'Result', 'Files'
  * @param {string} status - Aktueller Status
  * @param {Array} logs - Log-Einträge
  * @param {Function} onOpenOffice - Callback zum Öffnen des Agent Office
+ * @param {Array} workers - Worker-Daten für dieses Office (optional)
  */
-const AgentCard = ({ name, icon, color, status, logs, onOpenOffice }) => {
-  const isActive = status && !finishedStates.includes(status);
+const AgentCard = ({ name, icon, color, status, logs, onOpenOffice, workers = [] }) => {
+  // ÄNDERUNG 25.01.2026: Worker-Statistiken berechnen
+  const activeWorkers = workers.filter(w => w.status === 'working').length;
+  const totalWorkers = workers.length;
+  // ÄNDERUNG 25.01.2026: Prüfe ob Status in activeStates ODER mit "Status" beginnt
+  const isActive = status && (activeStates.includes(status) || status === 'Status');
 
   return (
     <motion.div
@@ -92,6 +111,15 @@ const AgentCard = ({ name, icon, color, status, logs, onOpenOffice }) => {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {/* ÄNDERUNG 25.01.2026: Worker-Anzeige wenn mehrere Worker vorhanden */}
+          {totalWorkers > 1 && (
+            <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full border text-[9px] font-medium ${
+              activeWorkers > 0 ? colors[color] : 'bg-[#283039] border-border-dark text-slate-500'
+            }`}>
+              <Users size={10} />
+              <span>{activeWorkers}/{totalWorkers}</span>
+            </div>
+          )}
           <div className={`px-2 py-0.5 rounded-full border text-[9px] font-bold uppercase transition-all ${status !== 'Idle' ? colors[color] : 'bg-[#283039] border-border-dark text-slate-500'
             }`}>
             {status}

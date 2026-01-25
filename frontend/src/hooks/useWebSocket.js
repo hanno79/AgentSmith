@@ -1,13 +1,14 @@
 /**
  * Author: rahn
  * Datum: 25.01.2026
- * Version: 1.4
+ * Version: 1.5
  * Beschreibung: Custom Hook für WebSocket-Verbindung zum Backend.
  *               Verarbeitet Echtzeit-Nachrichten von den Agenten.
  *               ÄNDERUNG 24.01.2026: DBDesignerOutput Event Handler hinzugefügt.
  *               ÄNDERUNG 24.01.2026: SecurityOutput Event Handler hinzugefügt.
  *               ÄNDERUNG 24.01.2026: SecurityRescanOutput Event Handler für Code-Scan hinzugefügt.
  *               ÄNDERUNG 25.01.2026: TokenMetrics Event Handler für Live-Metriken.
+ *               ÄNDERUNG 25.01.2026: WorkerStatus Event Handler für parallele Worker-Anzeige.
  */
 
 import { useEffect, useRef } from 'react';
@@ -288,6 +289,42 @@ const useWebSocket = (setLogs, activeAgents, setActiveAgents, setAgentData, setS
           }));
         } catch (e) {
           console.warn('TokenMetrics parsen fehlgeschlagen:', e);
+        }
+      }
+
+      // ÄNDERUNG 25.01.2026: WorkerStatus Event für parallele Worker-Anzeige
+      if (data.event === 'WorkerStatus') {
+        try {
+          const payload = JSON.parse(data.message);
+          const office = payload.office;
+
+          // Mapping von Office-Namen zu agentData Keys
+          const officeKeyMap = {
+            'coder': 'coder',
+            'tester': 'tester',
+            'designer': 'designer',
+            'db_designer': 'dbdesigner',
+            'security': 'security',
+            'researcher': 'researcher',
+            'reviewer': 'reviewer',
+            'techstack_architect': 'techstack'
+          };
+
+          const agentKey = officeKeyMap[office];
+          if (agentKey) {
+            setAgentData(prev => ({
+              ...prev,
+              [agentKey]: {
+                ...prev[agentKey],
+                workers: payload.pool_status?.workers || [],
+                activeWorkers: payload.pool_status?.active_workers || 0,
+                totalWorkers: payload.pool_status?.total_workers || 0,
+                queueSize: payload.pool_status?.queue_size || 0
+              }
+            }));
+          }
+        } catch (e) {
+          console.warn('WorkerStatus parsen fehlgeschlagen:', e);
         }
       }
 

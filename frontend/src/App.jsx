@@ -1,10 +1,11 @@
 /**
  * Author: rahn
  * Datum: 25.01.2026
- * Version: 1.4
+ * Version: 1.5
  * Beschreibung: App Hauptkomponente - Zentrale UI mit WebSocket-Verbindung und Agenten-Steuerung.
  *               Refaktoriert: WebSocket, Config, AgentCard und NavigationHeader extrahiert.
  *               ÄNDERUNG 25.01.2026: Token-Metriken Props für CoderOffice hinzugefügt.
+ *               ÄNDERUNG 25.01.2026: Worker-Daten werden an AgentCard Komponenten weitergegeben.
  */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -218,6 +219,7 @@ const App = () => {
         modelsUsed={agentData.coder.modelsUsed} currentModel={agentData.coder.currentModel}
         previousModel={agentData.coder.previousModel} failedAttempts={agentData.coder.failedAttempts}
         totalTokens={agentData.coder.totalTokens || 0} totalCost={agentData.coder.totalCost || 0}
+        workers={agentData.coder.workers || []}
       />
     );
   }
@@ -235,6 +237,7 @@ const App = () => {
         risk={agentData.tester.risk}
         screenshot={agentData.tester.screenshot}
         model={agentData.tester.model}
+        workers={agentData.tester.workers || []}
       />
     );
   }
@@ -406,16 +409,16 @@ const App = () => {
               </div>
             </motion.div>
 
-            {/* Agent Grid */}
+            {/* Agent Grid - ÄNDERUNG 25.01.2026: Worker-Daten hinzugefügt */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <AgentCard name="Researcher" icon={<Search size={24} />} color="cyan" status={activeAgents.researcher.status} logs={logs.filter(l => l.agent === 'Researcher')} onOpenOffice={() => setCurrentRoom('agent-researcher')} />
-              <AgentCard name="Coder" icon={<Code2 size={24} />} color="blue" status={activeAgents.coder.status} logs={logs.filter(l => l.agent === 'Coder')} onOpenOffice={() => setCurrentRoom('agent-coder')} />
-              <AgentCard name="Designer" icon={<Palette size={24} />} color="pink" status={activeAgents.designer.status} logs={logs.filter(l => l.agent === 'Designer')} onOpenOffice={() => setCurrentRoom('agent-designer')} />
-              <AgentCard name="Reviewer" icon={<ShieldCheck size={24} />} color="yellow" status={activeAgents.reviewer.status} logs={logs.filter(l => l.agent === 'Reviewer')} onOpenOffice={() => setCurrentRoom('agent-reviewer')} />
-              <AgentCard name="Tester" icon={<Bug size={24} />} color="orange" status={activeAgents.tester.status} logs={logs.filter(l => l.agent === 'Tester')} onOpenOffice={() => setCurrentRoom('agent-tester')} />
-              <AgentCard name="Tech Architect" icon={<Cpu size={24} />} color="purple" status={activeAgents.techarchitect.status} logs={logs.filter(l => l.agent === 'TechArchitect')} onOpenOffice={() => setCurrentRoom('agent-techstack')} />
-              <AgentCard name="DB Designer" icon={<Database size={24} />} color="green" status={activeAgents.dbdesigner.status} logs={logs.filter(l => l.agent === 'DBDesigner')} onOpenOffice={() => setCurrentRoom('agent-dbdesigner')} />
-              <AgentCard name="Security" icon={<Lock size={24} />} color="red" status={activeAgents.security.status} logs={logs.filter(l => l.agent === 'Security')} onOpenOffice={() => setCurrentRoom('agent-security')} />
+              <AgentCard name="Researcher" icon={<Search size={24} />} color="cyan" status={activeAgents.researcher.status} logs={logs.filter(l => l.agent === 'Researcher')} onOpenOffice={() => setCurrentRoom('agent-researcher')} workers={agentData.researcher.workers || []} />
+              <AgentCard name="Coder" icon={<Code2 size={24} />} color="blue" status={activeAgents.coder.status} logs={logs.filter(l => l.agent === 'Coder')} onOpenOffice={() => setCurrentRoom('agent-coder')} workers={agentData.coder.workers || []} />
+              <AgentCard name="Designer" icon={<Palette size={24} />} color="pink" status={activeAgents.designer.status} logs={logs.filter(l => l.agent === 'Designer')} onOpenOffice={() => setCurrentRoom('agent-designer')} workers={agentData.designer.workers || []} />
+              <AgentCard name="Reviewer" icon={<ShieldCheck size={24} />} color="yellow" status={activeAgents.reviewer.status} logs={logs.filter(l => l.agent === 'Reviewer')} onOpenOffice={() => setCurrentRoom('agent-reviewer')} workers={agentData.reviewer.workers || []} />
+              <AgentCard name="Tester" icon={<Bug size={24} />} color="orange" status={activeAgents.tester.status} logs={logs.filter(l => l.agent === 'Tester')} onOpenOffice={() => setCurrentRoom('agent-tester')} workers={agentData.tester.workers || []} />
+              <AgentCard name="Tech Architect" icon={<Cpu size={24} />} color="purple" status={activeAgents.techarchitect.status} logs={logs.filter(l => l.agent === 'TechArchitect')} onOpenOffice={() => setCurrentRoom('agent-techstack')} workers={agentData.techstack.workers || []} />
+              <AgentCard name="DB Designer" icon={<Database size={24} />} color="green" status={activeAgents.dbdesigner.status} logs={logs.filter(l => l.agent === 'DBDesigner')} onOpenOffice={() => setCurrentRoom('agent-dbdesigner')} workers={agentData.dbdesigner.workers || []} />
+              <AgentCard name="Security" icon={<Lock size={24} />} color="red" status={activeAgents.security.status} logs={logs.filter(l => l.agent === 'Security')} onOpenOffice={() => setCurrentRoom('agent-security')} workers={agentData.security.workers || []} />
             </div>
           </div>
 

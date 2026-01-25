@@ -1,17 +1,19 @@
 /**
  * Author: rahn
  * Datum: 25.01.2026
- * Version: 1.4
+ * Version: 1.5
  * Beschreibung: Coder Office - Detailansicht für den Coder-Agenten mit Code-Ausgabe.
  *               ÄNDERUNG 25.01.2026: Security-Tasks in Sidebar anzeigen mit FIX-Vorschlägen.
  *               ÄNDERUNG 25.01.2026: Task-Kategorien Toggle (Security/Iteration).
  *               ÄNDERUNG 25.01.2026: Modellwechsel-Zähler neben Iteration Progress.
  *               ÄNDERUNG 25.01.2026: Echte Token/Kosten-Metriken statt hardcodierter Werte.
+ *               ÄNDERUNG 25.01.2026: WorkerPanel für parallele Worker-Anzeige.
  */
 
 import React, { useRef, useEffect, useState } from 'react';
 import { useOfficeCommon } from './hooks/useOfficeCommon';
 import { motion } from 'framer-motion';
+import WorkerPanel from './components/WorkerPanel';
 import {
   ArrowLeft,
   Terminal,
@@ -54,7 +56,9 @@ const CoderOffice = ({
   failedAttempts = 0,
   // ÄNDERUNG 25.01.2026: Token-Metriken Props
   totalTokens = 0,
-  totalCost = 0
+  totalCost = 0,
+  // ÄNDERUNG 25.01.2026: Worker-Pool Props
+  workers = []
 }) => {
   const { logRef, getStatusBadge, formatTime } = useOfficeCommon(logs);
   const codeOutputRef = useRef(null);
@@ -488,6 +492,11 @@ const CoderOffice = ({
                 </div>
               </div>
             </div>
+
+            {/* ÄNDERUNG 25.01.2026: Worker-Panel für parallele Verarbeitung */}
+            {workers && workers.length > 1 && (
+              <WorkerPanel workers={workers} color="blue" />
+            )}
 
             {/* Compute Load Chart */}
             <div className="bg-[#1e293b] rounded-lg p-4 border border-[#334155] h-32 flex flex-col justify-between">
