@@ -705,6 +705,13 @@ class OrchestrationManager:
             security_retry_count = 0
             max_security_retries = self.config.get("max_security_retries", 3)  # Nach 3 Versuchen: Warnung statt Blockade
 
+            # ÄNDERUNG 25.01.2026: Modellwechsel-Tracking ("Kollegen fragen")
+            model_attempt = 0
+            max_model_attempts = self.config.get("max_model_attempts", 3)
+            current_coder_model = self.model_router.get_model("coder")
+            models_used = [current_coder_model]
+            failed_attempts_history = []  # Speichert was jedes Modell versucht hat
+
             while iteration < max_retries:
                 self._ui_log("Coder", "Iteration", f"{iteration+1} / {max_retries}")
 
@@ -1039,6 +1046,59 @@ Antworte mit 'SECURE' wenn keine kritischen/hohen Issues, oder 'VULNERABILITY: .
                         update_memory(memory_path, self.current_code, review_output, sandbox_result)
                     except Exception as mem_err:
                         self._ui_log("Memory", "Error", f"Memory-Operation fehlgeschlagen: {mem_err}")
+
+                    # ÄNDERUNG 25.01.2026: Modellwechsel-Logik ("Kollegen fragen")
+                    model_attempt += 1
+
+                    # Speichere was dieses Modell versucht hat (für das nächste Modell)
+                    failed_attempts_history.append({
+                        "model": current_coder_model,
+                        "attempt": model_attempt,
+                        "iteration": iteration + 1,
+                        "feedback": feedback[:500] if feedback else "",
+                        "sandbox_error": sandbox_result[:300] if sandbox_failed else ""
+                    })
+
+                    # Prüfe ob Modellwechsel nötig
+                    if model_attempt >= max_model_attempts:
+                        old_model = current_coder_model
+
+                        # Markiere aktuelles Modell als "erschöpft" für dieses Problem
+                        self.model_router.mark_rate_limited_sync(current_coder_model)
+
+                        # Hole neues Modell aus Fallback-Kette
+                        current_coder_model = self.model_router.get_model("coder")
+
+                        if current_coder_model != old_model:
+                            models_used.append(current_coder_model)
+                            model_attempt = 0  # Reset Zähler für neues Modell
+
+                            # Neuen Agent mit neuem Modell erstellen
+                            agent_coder = create_coder(self.config, project_rules, router=self.model_router)
+
+                            # UI-Event für Modellwechsel
+                            self._ui_log("Coder", "ModelSwitch", json.dumps({
+                                "old_model": old_model,
+                                "new_model": current_coder_model,
+                                "reason": "max_attempts_reached",
+                                "attempt": max_model_attempts,
+                                "models_used": models_used,
+                                "failed_attempts": len(failed_attempts_history)
+                            }, ensure_ascii=False))
+
+                            # KRITISCH: Gib dem neuen Modell die Historie der Fehlversuche
+                            history_summary = "\n".join([
+                                f"- Modell '{a['model']}' (Iteration {a['iteration']}): {a['feedback'][:200]}"
+                                for a in failed_attempts_history[-3:]  # Letzte 3 Versuche
+                            ])
+                            feedback += f"\n\n🔄 MODELLWECHSEL: Das vorherige Modell ({old_model}) konnte dieses Problem nicht lösen.\n"
+                            feedback += f"BISHERIGE VERSUCHE (diese Ansätze haben NICHT funktioniert):\n{history_summary}\n"
+                            feedback += f"\nWICHTIG: Versuche einen VÖLLIG ANDEREN Ansatz! Was bisher versucht wurde, funktioniert nicht!\n"
+
+                            self._ui_log("Coder", "Status", f"🔄 Modellwechsel: {old_model} → {current_coder_model} (Versuch {len(models_used)})")
+                        else:
+                            self._ui_log("Coder", "Warning", f"⚠️ Kein weiteres Modell verfügbar - fahre mit {current_coder_model} fort")
+
                     iteration += 1  # WICHTIG: Immer inkrementieren, auch bei Memory-Fehler!
 
             self.is_first_run = False

@@ -25,7 +25,9 @@ import {
   StopCircle,
   MessageSquarePlus,
   Shield,
-  AlertTriangle
+  AlertTriangle,
+  Users,           // NEU: Für Modell-Team
+  RefreshCw        // NEU: Für Modellwechsel
 } from 'lucide-react';
 
 const CoderOffice = ({
@@ -42,7 +44,12 @@ const CoderOffice = ({
   model = '',
   // ÄNDERUNG 25.01.2026: Security-Tasks Props
   tasks = [],
-  taskCount = 0
+  taskCount = 0,
+  // ÄNDERUNG 25.01.2026: Modellwechsel-Tracking ("Kollegen fragen")
+  modelsUsed = [],
+  currentModel = '',
+  previousModel = '',
+  failedAttempts = 0
 }) => {
   const { logRef, getStatusBadge, formatTime } = useOfficeCommon(logs);
   const codeOutputRef = useRef(null);
@@ -239,6 +246,41 @@ const CoderOffice = ({
               </div>
             ))}
           </div>
+
+          {/* ÄNDERUNG 25.01.2026: Modell-Historie ("Kollegen fragen") */}
+          {modelsUsed.length > 1 && (
+            <div className="p-3 border-t border-[#334155] bg-amber-950/20">
+              <div className="flex items-center gap-2 mb-2">
+                <Users size={14} className="text-amber-400" />
+                <span className="text-xs font-bold text-amber-300">
+                  {modelsUsed.length} Modelle im Team
+                </span>
+              </div>
+              <div className="space-y-1">
+                {modelsUsed.map((modelName, idx) => {
+                  // Extrahiere kurzen Modellnamen (z.B. "llama-3.3-70b" aus "openrouter/meta-llama/llama-3.3-70b-instruct:free")
+                  const shortName = modelName.split('/').pop()?.replace(':free', '').replace('-instruct', '') || modelName;
+                  const isActive = idx === modelsUsed.length - 1;
+                  return (
+                    <div key={idx} className={`flex items-center gap-2 text-[11px] ${isActive ? 'text-green-400' : 'text-slate-400 line-through'}`}>
+                      {isActive ? (
+                        <RefreshCw size={12} className="text-green-400 animate-spin" style={{ animationDuration: '3s' }} />
+                      ) : (
+                        <span className="text-red-400 text-xs">✗</span>
+                      )}
+                      <span className="truncate">{shortName}</span>
+                      {isActive && <span className="text-[9px] bg-green-500/20 px-1 rounded">AKTIV</span>}
+                    </div>
+                  );
+                })}
+              </div>
+              {previousModel && (
+                <p className="text-[10px] text-amber-500/70 mt-2 italic">
+                  Vorheriges Modell hat {failedAttempts} Versuche nicht geschafft
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Progress Bar */}
           <div className="p-3 border-t border-[#334155] bg-[#0f172a]">

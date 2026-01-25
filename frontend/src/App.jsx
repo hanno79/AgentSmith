@@ -65,8 +65,13 @@ const App = () => {
 
   // Strukturierte Agent-Daten für Live-Anzeige in Agent Offices
   const [agentData, setAgentData] = useState({
-    // ÄNDERUNG 25.01.2026: Erweitert mit tasks und taskCount für Security-Tasks
-    coder: { code: '', files: [], iteration: 0, maxIterations: 3, model: '', tasks: [], taskCount: 0 },
+    // ÄNDERUNG 25.01.2026: Erweitert mit tasks, taskCount und Modellwechsel-Daten
+    coder: {
+      code: '', files: [], iteration: 0, maxIterations: 3, model: '',
+      tasks: [], taskCount: 0,
+      // Modellwechsel-Tracking ("Kollegen fragen")
+      modelsUsed: [], currentModel: '', previousModel: '', failedAttempts: 0
+    },
     // ÄNDERUNG 24.01.2026: Reviewer Echtzeit-Daten
     reviewer: {
       verdict: '',           // "OK" oder "FEEDBACK"
@@ -207,6 +212,8 @@ const App = () => {
         color="blue" code={agentData.coder.code} files={agentData.coder.files}
         iteration={agentData.coder.iteration} maxIterations={agentData.coder.maxIterations} model={agentData.coder.model}
         tasks={agentData.coder.tasks} taskCount={agentData.coder.taskCount}
+        modelsUsed={agentData.coder.modelsUsed} currentModel={agentData.coder.currentModel}
+        previousModel={agentData.coder.previousModel} failedAttempts={agentData.coder.failedAttempts}
       />
     );
   }

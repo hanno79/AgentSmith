@@ -80,6 +80,26 @@ const useWebSocket = (setLogs, activeAgents, setActiveAgents, setAgentData, setS
         }
       }
 
+      // ÄNDERUNG 25.01.2026: ModelSwitch Event für Modellwechsel ("Kollegen fragen")
+      if (data.event === 'ModelSwitch' && data.agent === 'Coder') {
+        try {
+          const payload = JSON.parse(data.message);
+          setAgentData(prev => ({
+            ...prev,
+            coder: {
+              ...prev.coder,
+              currentModel: payload.new_model,
+              previousModel: payload.old_model,
+              modelsUsed: payload.models_used || [],
+              modelSwitchReason: payload.reason,
+              failedAttempts: payload.failed_attempts || 0
+            }
+          }));
+        } catch (e) {
+          console.warn('ModelSwitch parsen fehlgeschlagen:', e);
+        }
+      }
+
       // ResearchOutput Event für Researcher Office
       if (data.event === 'ResearchOutput' && data.agent === 'Researcher') {
         try {

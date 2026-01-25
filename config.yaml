@@ -4,6 +4,8 @@ mode: test
 project_type: webapp
 include_designer: true
 max_retries: 15
+# ÄNDERUNG 25.01.2026: Modellwechsel nach X fehlgeschlagenen Versuchen
+max_model_attempts: 3
 research_timeout_minutes: 5
 security_max_retries: 10
 models:
