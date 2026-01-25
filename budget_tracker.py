@@ -263,6 +263,32 @@ class BudgetTracker:
             print(f"Fehler beim Abrufen der OpenRouter Usage: {e}")
             return None
 
+    # ÄNDERUNG 25.01.2026: Einfache Methode für Live-Token-Metriken
+    def get_today_totals(self) -> Dict[str, Any]:
+        """
+        Gibt Token- und Kosten-Totals für heute zurück.
+        Für Live-Anzeige im Frontend (CoderOffice).
+
+        Returns:
+            Dictionary mit total_tokens und total_cost für heute
+        """
+        now = datetime.now()
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+        today_records = [
+            r for r in self.usage_history
+            if datetime.fromisoformat(r.timestamp) > today_start
+        ]
+
+        total_tokens = sum(r.total_tokens for r in today_records)
+        total_cost = sum(r.cost_usd for r in today_records)
+
+        return {
+            "total_tokens": total_tokens,
+            "total_cost": round(total_cost, 6),
+            "records_count": len(today_records)
+        }
+
     def get_stats(self, period_days: int = 30) -> Dict[str, Any]:
         """
         Berechnet aktuelle Budget-Statistiken.

@@ -1,9 +1,10 @@
 /**
  * Author: rahn
- * Datum: 24.01.2026
- * Version: 1.2
+ * Datum: 25.01.2026
+ * Version: 1.4
  * Beschreibung: App Hauptkomponente - Zentrale UI mit WebSocket-Verbindung und Agenten-Steuerung.
  *               Refaktoriert: WebSocket, Config, AgentCard und NavigationHeader extrahiert.
+ *               ÄNDERUNG 25.01.2026: Token-Metriken Props für CoderOffice hinzugefügt.
  */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -216,6 +217,7 @@ const App = () => {
         tasks={agentData.coder.tasks} taskCount={agentData.coder.taskCount}
         modelsUsed={agentData.coder.modelsUsed} currentModel={agentData.coder.currentModel}
         previousModel={agentData.coder.previousModel} failedAttempts={agentData.coder.failedAttempts}
+        totalTokens={agentData.coder.totalTokens || 0} totalCost={agentData.coder.totalCost || 0}
       />
     );
   }

@@ -1,12 +1,13 @@
 /**
  * Author: rahn
- * Datum: 24.01.2026
- * Version: 1.3
+ * Datum: 25.01.2026
+ * Version: 1.4
  * Beschreibung: Custom Hook für WebSocket-Verbindung zum Backend.
  *               Verarbeitet Echtzeit-Nachrichten von den Agenten.
  *               ÄNDERUNG 24.01.2026: DBDesignerOutput Event Handler hinzugefügt.
  *               ÄNDERUNG 24.01.2026: SecurityOutput Event Handler hinzugefügt.
  *               ÄNDERUNG 24.01.2026: SecurityRescanOutput Event Handler für Code-Scan hinzugefügt.
+ *               ÄNDERUNG 25.01.2026: TokenMetrics Event Handler für Live-Metriken.
  */
 
 import { useEffect, useRef } from 'react';
@@ -270,6 +271,23 @@ const useWebSocket = (setLogs, activeAgents, setActiveAgents, setAgentData, setS
           }));
         } catch (e) {
           console.warn('DesignerOutput parsen fehlgeschlagen:', e);
+        }
+      }
+
+      // ÄNDERUNG 25.01.2026: TokenMetrics Event für Live-Metriken im CoderOffice
+      if (data.event === 'TokenMetrics') {
+        try {
+          const payload = JSON.parse(data.message);
+          setAgentData(prev => ({
+            ...prev,
+            coder: {
+              ...prev.coder,
+              totalTokens: payload.total_tokens || 0,
+              totalCost: payload.total_cost || 0
+            }
+          }));
+        } catch (e) {
+          console.warn('TokenMetrics parsen fehlgeschlagen:', e);
         }
       }
 

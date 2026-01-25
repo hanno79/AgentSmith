@@ -1,12 +1,15 @@
 /**
  * Author: rahn
  * Datum: 25.01.2026
- * Version: 1.1
+ * Version: 1.4
  * Beschreibung: Coder Office - Detailansicht für den Coder-Agenten mit Code-Ausgabe.
  *               ÄNDERUNG 25.01.2026: Security-Tasks in Sidebar anzeigen mit FIX-Vorschlägen.
+ *               ÄNDERUNG 25.01.2026: Task-Kategorien Toggle (Security/Iteration).
+ *               ÄNDERUNG 25.01.2026: Modellwechsel-Zähler neben Iteration Progress.
+ *               ÄNDERUNG 25.01.2026: Echte Token/Kosten-Metriken statt hardcodierter Werte.
  */
 
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { useOfficeCommon } from './hooks/useOfficeCommon';
 import { motion } from 'framer-motion';
 import {
@@ -19,7 +22,6 @@ import {
   Code,
   Cpu,
   TrendingUp,
-  TrendingDown,
   History,
   Settings,
   StopCircle,
@@ -49,10 +51,16 @@ const CoderOffice = ({
   modelsUsed = [],
   currentModel = '',
   previousModel = '',
-  failedAttempts = 0
+  failedAttempts = 0,
+  // ÄNDERUNG 25.01.2026: Token-Metriken Props
+  totalTokens = 0,
+  totalCost = 0
 }) => {
   const { logRef, getStatusBadge, formatTime } = useOfficeCommon(logs);
   const codeOutputRef = useRef(null);
+
+  // ÄNDERUNG 25.01.2026: State für Task-Kategorie Toggle
+  const [taskCategory, setTaskCategory] = useState('security'); // 'security' | 'iteration'
 
   // Auto-Scroll zur Code-Ausgabe bei Änderungen
   useEffect(() => {
@@ -61,30 +69,35 @@ const CoderOffice = ({
     }
   }, [code]);
 
-  // ÄNDERUNG 25.01.2026: Security-Tasks haben Priorität, sonst Iteration-Tasks
-  const displayTasks = tasks.length > 0
-    ? tasks.map((task, i) => ({
+  // ÄNDERUNG 25.01.2026: Security-Tasks für Security-Tab
+  const securityTasks = tasks.length > 0
+    ? tasks.map((task, idx) => ({
         id: task.id,
         title: task.description,
-        status: i === 0 ? 'current' : 'queued',
+        status: idx === 0 ? 'current' : 'queued',
         severity: task.severity,
         fix: task.fix,
         type: task.type
       }))
-    : iteration > 0 ? [
-        {
-          id: `T-${iteration}`,
-          title: `Code Generation - Iteration ${iteration}/${maxIterations}`,
-          status: 'current',
-          steps: [
-            { text: 'Analyze requirements', done: true },
-            { text: 'Generate code', done: status === 'Files' || status === 'CodeOutput' || status === 'Success' },
-            { text: 'Create files', done: files.length > 0, current: status === 'Files' },
-            { text: 'Await review', done: status === 'Success', current: status !== 'Success' && files.length > 0 },
-          ]
-        }
+    : [{ id: 'SEC-0', title: 'Keine Security-Tasks', status: 'queued' }];
+
+  // ÄNDERUNG 25.01.2026: Iteration-Tasks für Iteration-Tab
+  const iterationTasks = iteration > 0 ? [
+    {
+      id: `T-${iteration}`,
+      title: `Code Generation - Iteration ${iteration}/${maxIterations}`,
+      status: 'current',
+      steps: [
+        { text: 'Analyze requirements', done: true },
+        { text: 'Generate code', done: status === 'Files' || status === 'CodeOutput' || status === 'Success' },
+        { text: 'Create files', done: files.length > 0, current: status === 'Files' },
+        { text: 'Await review', done: status === 'Success', current: status !== 'Success' && files.length > 0 },
       ]
-    : [{ id: 'T-0', title: 'Warte auf Aufgaben...', status: 'queued' }];
+    }
+  ] : [{ id: 'T-0', title: 'Warte auf Aufgaben...', status: 'queued' }];
+
+  // ÄNDERUNG 25.01.2026: Tasks basierend auf Toggle anzeigen
+  const displayTasks = taskCategory === 'security' ? securityTasks : iterationTasks;
 
   // Prüfe ob Security-Tasks vorhanden sind
   const hasSecurityTasks = tasks.length > 0;
@@ -156,22 +169,38 @@ const CoderOffice = ({
 
         {/* Left Sidebar - Task Queue / Security Tasks */}
         <aside className="w-[300px] border-r border-[#334155] bg-[#0f172a]/50 flex flex-col z-10 backdrop-blur-sm">
+          {/* ÄNDERUNG 25.01.2026: Toggle zwischen Security und Iteration Tasks */}
           <div className="p-4 border-b border-[#334155] flex justify-between items-center">
-            <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
-              {hasSecurityTasks ? (
-                <>
-                  <Shield size={16} className="text-red-400" />
-                  Security Tasks
-                </>
-              ) : (
-                <>
-                  <CheckCircle size={16} className="text-blue-400" />
-                  Task Queue
-                </>
-              )}
-            </h3>
-            <span className={`text-[10px] px-1.5 py-0.5 rounded ${hasSecurityTasks ? 'bg-red-800/50 text-red-300 border border-red-500/30' : 'bg-slate-800 text-slate-400'}`}>
-              {hasSecurityTasks ? `${taskCount} Fixes` : `${displayTasks.length} Tasks`}
+            <div className="flex gap-1 bg-slate-800 p-1 rounded-lg">
+              <button
+                onClick={() => setTaskCategory('security')}
+                className={`px-2 py-1 text-[10px] font-bold rounded flex items-center gap-1 transition-colors ${
+                  taskCategory === 'security'
+                    ? 'bg-red-500/20 text-red-300'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Shield size={12} />
+                Security
+              </button>
+              <button
+                onClick={() => setTaskCategory('iteration')}
+                className={`px-2 py-1 text-[10px] font-bold rounded flex items-center gap-1 transition-colors ${
+                  taskCategory === 'iteration'
+                    ? 'bg-blue-500/20 text-blue-300'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Code size={12} />
+                Iteration
+              </button>
+            </div>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+              taskCategory === 'security' && hasSecurityTasks
+                ? 'bg-red-800/50 text-red-300 border border-red-500/30'
+                : 'bg-slate-800 text-slate-400'
+            }`}>
+              {taskCategory === 'security' ? `${taskCount} Fixes` : `${iteration}/${maxIterations}`}
             </span>
           </div>
 
@@ -282,7 +311,7 @@ const CoderOffice = ({
             </div>
           )}
 
-          {/* Progress Bar */}
+          {/* ÄNDERUNG 25.01.2026: Progress Bar + Modellwechsel-Zähler */}
           <div className="p-3 border-t border-[#334155] bg-[#0f172a]">
             <div className="flex items-center gap-2 text-xs text-slate-400">
               <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
@@ -293,7 +322,16 @@ const CoderOffice = ({
               </div>
               <span>{iteration}/{maxIterations}</span>
             </div>
-            <p className="text-[10px] text-slate-500 mt-1 text-center">Iteration Progress</p>
+            {/* ÄNDERUNG 25.01.2026: Zwei Zeilen - Iteration + Modellwechsel */}
+            <div className="flex justify-between mt-2">
+              <p className="text-[10px] text-slate-500">Iteration Progress</p>
+              {modelsUsed.length > 0 && (
+                <p className="text-[10px] text-amber-400 flex items-center gap-1">
+                  <RefreshCw size={10} />
+                  {modelsUsed.length > 1 ? `${modelsUsed.length - 1} Modellwechsel` : '0 Modellwechsel'}
+                </p>
+              )}
+            </div>
           </div>
         </aside>
 
@@ -389,37 +427,42 @@ const CoderOffice = ({
             </h3>
           </div>
           <div className="flex-1 overflow-y-auto office-scrollbar p-5 space-y-6">
-            {/* Processing Speed */}
+            {/* ÄNDERUNG 25.01.2026: Token Verbrauch (ersetzt hardcodierte tok/s) */}
             <div className="bg-[#1e293b] rounded-xl p-4 border border-[#334155] relative overflow-hidden group">
               <div className="absolute top-0 right-0 p-2 opacity-10">
                 <Cpu size={60} />
               </div>
-              <p className="text-xs text-slate-400 uppercase font-semibold mb-1">Processing Speed</p>
+              <p className="text-xs text-slate-400 uppercase font-semibold mb-1">Token Verbrauch</p>
               <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-black text-white">48.2</span>
-                <span className="text-sm text-slate-400 font-medium">tok/s</span>
+                <span className="text-3xl font-black text-white">
+                  {totalTokens > 1000 ? `${(totalTokens / 1000).toFixed(1)}k` : totalTokens}
+                </span>
+                <span className="text-sm text-slate-400 font-medium">tokens</span>
               </div>
               <div className="mt-3 h-1.5 w-full bg-[#0f172a] rounded-full overflow-hidden">
-                <div className="h-full w-[70%] bg-gradient-to-r from-blue-500 to-green-400 rounded-full"></div>
+                <div
+                  className="h-full bg-gradient-to-r from-blue-500 to-green-400 rounded-full transition-all duration-500"
+                  style={{ width: `${Math.min((totalTokens / 10000) * 100, 100)}%` }}
+                ></div>
               </div>
             </div>
 
-            {/* Memory & Success Rate */}
+            {/* ÄNDERUNG 25.01.2026: Kosten & Modellwechsel (ersetzt hardcodierte Memory/Success) */}
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-[#1e293b] rounded-lg p-3 border border-[#334155]">
-                <p className="text-[10px] text-slate-400 uppercase font-semibold mb-1">Memory Usage</p>
-                <div className="text-lg font-bold text-white mb-1">1.2 GB</div>
-                <div className="text-[10px] text-green-400 flex items-center gap-1">
-                  <TrendingDown size={12} />
-                  stable
+                <p className="text-[10px] text-slate-400 uppercase font-semibold mb-1">Kosten</p>
+                <div className="text-lg font-bold text-white mb-1">${totalCost.toFixed(4)}</div>
+                <div className="text-[10px] text-slate-400 flex items-center gap-1">
+                  <TrendingUp size={12} className="text-slate-500" />
+                  USD
                 </div>
               </div>
               <div className="bg-[#1e293b] rounded-lg p-3 border border-[#334155]">
-                <p className="text-[10px] text-slate-400 uppercase font-semibold mb-1">Success Rate</p>
-                <div className="text-lg font-bold text-white mb-1">98.5%</div>
-                <div className="text-[10px] text-green-400 flex items-center gap-1">
-                  <TrendingUp size={12} />
-                  +2.1%
+                <p className="text-[10px] text-slate-400 uppercase font-semibold mb-1">Modellwechsel</p>
+                <div className="text-lg font-bold text-white mb-1">{modelsUsed.length > 1 ? modelsUsed.length - 1 : 0}x</div>
+                <div className="text-[10px] text-amber-400 flex items-center gap-1">
+                  <Users size={12} />
+                  {modelsUsed.length || 1} Modelle
                 </div>
               </div>
             </div>

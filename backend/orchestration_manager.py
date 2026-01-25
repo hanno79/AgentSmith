@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 """
 Author: rahn
-Datum: 24.01.2026
-Version: 1.0
+Datum: 25.01.2026
+Version: 1.4
 Beschreibung: Orchestration Manager - Backend-Koordination mit LiteLLM Callbacks und Agent-Steuerung.
+              ÄNDERUNG 25.01.2026: TokenMetrics WebSocket Event für Live-Metriken im CoderOffice.
 """
 
 import os
@@ -803,6 +804,18 @@ class OrchestrationManager:
                     "max_iterations": max_retries,
                     "model": current_model
                 }, ensure_ascii=False))
+
+                # ÄNDERUNG 25.01.2026: TokenMetrics Event für Live-Metriken im CoderOffice
+                try:
+                    tracker = get_budget_tracker()
+                    today_totals = tracker.get_today_totals()
+                    self._ui_log("Coder", "TokenMetrics", json.dumps({
+                        "total_tokens": today_totals.get("total_tokens", 0),
+                        "total_cost": today_totals.get("total_cost", 0.0)
+                    }, ensure_ascii=False))
+                except Exception as metric_err:
+                    # Nicht blockieren bei Metrik-Fehlern
+                    pass
 
                 # Sandbox
                 sandbox_result = run_sandbox(self.current_code)
