@@ -127,6 +127,10 @@ class ModelRequest(BaseModel):
 class MaxRetriesRequest(BaseModel):
     max_retries: int
 
+# ÄNDERUNG 25.01.2026: Request-Model für Modellwechsel-Einstellung
+class MaxModelAttemptsRequest(BaseModel):
+    max_model_attempts: int
+
 class ResearchTimeoutRequest(BaseModel):
     research_timeout_minutes: int
 
@@ -169,6 +173,21 @@ def set_research_timeout(request: ResearchTimeoutRequest):
     manager.config["research_timeout_minutes"] = request.research_timeout_minutes
     _save_config()
     return {"status": "ok", "research_timeout_minutes": request.research_timeout_minutes}
+
+# ÄNDERUNG 25.01.2026: Endpoint für Modellwechsel-Einstellung (Dual-Slider)
+@app.put("/config/max-model-attempts")
+def set_max_model_attempts(request: MaxModelAttemptsRequest):
+    """Setzt nach wie vielen Fehlversuchen das Modell gewechselt wird (1 bis max_retries-1)."""
+    max_retries = manager.config.get("max_retries", 15)
+    # Validierung: min 1, max max_retries - 1
+    if not 1 <= request.max_model_attempts <= max_retries - 1:
+        raise HTTPException(
+            status_code=400,
+            detail=f"max_model_attempts must be between 1 and {max_retries - 1}"
+        )
+    manager.config["max_model_attempts"] = request.max_model_attempts
+    _save_config()
+    return {"status": "ok", "max_model_attempts": request.max_model_attempts}
 
 def _is_valid_model(model_name: str) -> bool:
     """Validiert ob ein Modellname gültig ist."""

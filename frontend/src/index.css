@@ -320,6 +320,78 @@ body {
     border-radius: 9999px;
 }
 
+/* ÄNDERUNG 25.01.2026: Dual-Slider für Iterationen & Modellwechsel */
+.dual-slider-left,
+.dual-slider-right {
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    pointer-events: none;
+    height: 20px;
+}
+
+.dual-slider-left::-webkit-slider-thumb,
+.dual-slider-right::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    pointer-events: auto;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+/* Modellwechsel Slider - amber/orange */
+.dual-slider-left::-webkit-slider-thumb {
+    background: #f59e0b;
+    border: 3px solid #0d120f;
+    box-shadow: 0 0 10px rgba(245, 158, 11, 0.5), 0 0 20px rgba(245, 158, 11, 0.3);
+}
+
+.dual-slider-left::-webkit-slider-thumb:hover {
+    transform: scale(1.15);
+    box-shadow: 0 0 15px rgba(245, 158, 11, 0.7), 0 0 30px rgba(245, 158, 11, 0.4);
+}
+
+/* Iterationen Slider - primary/green */
+.dual-slider-right::-webkit-slider-thumb {
+    background: #0df259;
+    border: 3px solid #0d120f;
+    box-shadow: 0 0 10px rgba(13, 242, 89, 0.5), 0 0 20px rgba(13, 242, 89, 0.3);
+}
+
+.dual-slider-right::-webkit-slider-thumb:hover {
+    transform: scale(1.15);
+    box-shadow: 0 0 15px rgba(13, 242, 89, 0.7), 0 0 30px rgba(13, 242, 89, 0.4);
+}
+
+/* Firefox Dual-Slider Support */
+.dual-slider-left::-moz-range-thumb,
+.dual-slider-right::-moz-range-thumb {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 3px solid #0d120f;
+}
+
+.dual-slider-left::-moz-range-thumb {
+    background: #f59e0b;
+    box-shadow: 0 0 10px rgba(245, 158, 11, 0.5);
+}
+
+.dual-slider-right::-moz-range-thumb {
+    background: #0df259;
+    box-shadow: 0 0 10px rgba(13, 242, 89, 0.5);
+}
+
+.dual-slider-left::-moz-range-track,
+.dual-slider-right::-moz-range-track {
+    background: transparent;
+    height: 8px;
+}
+
 /* Researcher Office Slider - cyan theme */
 .researcher-slider {
     -webkit-appearance: none;

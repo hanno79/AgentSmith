@@ -32,7 +32,10 @@ const MainframeHub = ({
   maxRetries: propMaxRetries,
   onMaxRetriesChange,
   researchTimeout: propResearchTimeout,
-  onResearchTimeoutChange
+  onResearchTimeoutChange,
+  // ÄNDERUNG 25.01.2026: Props für Modellwechsel (Dual-Slider)
+  maxModelAttempts: propMaxModelAttempts,
+  onMaxModelAttemptsChange
 }) => {
   const [config, setConfig] = useState(null);
   const [agents, setAgents] = useState([]);
@@ -43,12 +46,16 @@ const MainframeHub = ({
   const [selectedAgent, setSelectedAgent] = useState(null);
   const [showModelSelector, setShowModelSelector] = useState(false);
   const [serverTime, setServerTime] = useState(new Date());
-  const [maxRetries, setMaxRetries] = useState(5);
+  const [maxRetries, setMaxRetries] = useState(15);
   const [researchTimeout, setResearchTimeout] = useState(5);
+  // ÄNDERUNG 25.01.2026: Lokaler State für Modellwechsel
+  const [maxModelAttempts, setMaxModelAttempts] = useState(3);
 
   // Verwende Props wenn vorhanden, sonst lokalen State (für Abwärtskompatibilität)
   const effectiveMaxRetries = propMaxRetries !== undefined ? propMaxRetries : maxRetries;
   const effectiveResearchTimeout = propResearchTimeout !== undefined ? propResearchTimeout : researchTimeout;
+  // ÄNDERUNG 25.01.2026: Effektiver Wert für Modellwechsel
+  const effectiveModelAttempts = propMaxModelAttempts !== undefined ? propMaxModelAttempts : maxModelAttempts;
 
   // Alle Daten beim Laden abrufen
   useEffect(() => {
@@ -147,6 +154,22 @@ const MainframeHub = ({
         await axios.put(`${API_BASE}/config/research-timeout`, { research_timeout_minutes: value });
       } catch (err) {
         console.error('Failed to update research timeout:', err);
+      }
+    }
+  };
+
+  // ÄNDERUNG 25.01.2026: Handler für Modellwechsel (Dual-Slider)
+  const updateModelAttempts = async (value) => {
+    // Validierung: max = effectiveMaxRetries - 1
+    const validValue = Math.max(1, Math.min(value, effectiveMaxRetries - 1));
+    if (onMaxModelAttemptsChange) {
+      onMaxModelAttemptsChange(validValue);
+    } else {
+      setMaxModelAttempts(validValue);
+      try {
+        await axios.put(`${API_BASE}/config/max-model-attempts`, { max_model_attempts: validValue });
+      } catch (err) {
+        console.error('Failed to update model attempts:', err);
       }
     }
   };
@@ -417,32 +440,90 @@ const MainframeHub = ({
                 </div>
               </div>
 
-              {/* System Settings - Max Retries */}
+              {/* ÄNDERUNG 25.01.2026: Dual-Slider für Iterationen & Modellwechsel */}
               <div className="w-full bg-[#0d120f] border-t border-[#28392e] p-4">
                 <div className="flex justify-between items-center mb-3">
                   <h4 className="text-[#9cbaa6] text-xs font-bold uppercase tracking-widest flex items-center gap-2">
                     <RefreshCw size={14} className="text-primary" />
-                    Retry Configuration
+                    Coder Konfiguration
                   </h4>
-                  <span className="text-primary font-mono font-bold text-lg">{effectiveMaxRetries}</span>
+                </div>
+
+                {/* Werte-Anzeige */}
+                <div className="flex justify-between mb-3">
+                  <div className="text-center">
+                    <span className="text-amber-400 font-mono font-bold text-xl">{effectiveModelAttempts}</span>
+                    <p className="text-[9px] text-amber-400/70 uppercase">Modellwechsel</p>
+                  </div>
+                  <div className="text-center">
+                    <span className="text-primary font-mono font-bold text-xl">{effectiveMaxRetries}</span>
+                    <p className="text-[9px] text-primary/70 uppercase">Iterationen</p>
+                  </div>
                 </div>
 
                 <div className="bg-[#1b271f] p-3 rounded-lg border border-[#28392e]">
-                  <div className="flex items-center gap-4">
-                    <span className="text-[10px] text-[#9cbaa6] font-mono w-6">1</span>
+                  {/* Dual Range Slider */}
+                  <div className="relative h-10 flex items-center px-2">
+                    {/* Track Hintergrund */}
+                    <div className="absolute left-2 right-2 h-2 bg-[#28392e] rounded-full" />
+
+                    {/* Aktiver Bereich zwischen den Punkten */}
+                    <div
+                      className="absolute h-2 bg-gradient-to-r from-amber-500/60 to-primary/60 rounded-full"
+                      style={{
+                        left: `calc(${(effectiveModelAttempts / 100) * 100}% + 8px)`,
+                        right: `calc(${100 - (effectiveMaxRetries / 100) * 100}% + 8px)`
+                      }}
+                    />
+
+                    {/* Modellwechsel Slider (links, amber) */}
                     <input
                       type="range"
                       min="1"
+                      max={Math.max(1, effectiveMaxRetries - 1)}
+                      value={effectiveModelAttempts}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value);
+                        updateModelAttempts(Math.min(val, effectiveMaxRetries - 1));
+                      }}
+                      className="absolute inset-x-2 w-[calc(100%-16px)] dual-slider-left"
+                      style={{ zIndex: effectiveModelAttempts > effectiveMaxRetries - 10 ? 3 : 1 }}
+                    />
+
+                    {/* Iterationen Slider (rechts, primary) */}
+                    <input
+                      type="range"
+                      min="2"
                       max="100"
                       value={effectiveMaxRetries}
-                      onChange={(e) => updateMaxRetries(parseInt(e.target.value))}
-                      className="flex-1 mainframe-slider"
+                      onChange={(e) => {
+                        const newVal = Math.max(2, parseInt(e.target.value));
+                        updateMaxRetries(newVal);
+                        // Wenn Iterationen unter Modellwechsel fällt, anpassen
+                        if (effectiveModelAttempts >= newVal) {
+                          updateModelAttempts(newVal - 1);
+                        }
+                      }}
+                      className="absolute inset-x-2 w-[calc(100%-16px)] dual-slider-right"
+                      style={{ zIndex: effectiveModelAttempts > effectiveMaxRetries - 10 ? 1 : 3 }}
                     />
-                    <span className="text-[10px] text-[#9cbaa6] font-mono w-8">100</span>
                   </div>
-                  <p className="text-[10px] text-[#5c856b] mt-2 text-center">
-                    Maximum retry attempts for agent operations
-                  </p>
+
+                  {/* Skala */}
+                  <div className="flex justify-between mt-1 px-2">
+                    <span className="text-[10px] text-[#9cbaa6] font-mono">1</span>
+                    <span className="text-[10px] text-[#9cbaa6] font-mono">100</span>
+                  </div>
+
+                  {/* Erklärung */}
+                  <div className="mt-3 p-2 bg-[#0d120f] rounded border border-[#28392e] space-y-1">
+                    <p className="text-[10px] text-[#5c856b]">
+                      <span className="text-amber-400 font-bold">Modellwechsel:</span> Nach X Fehlversuchen wird ein anderes KI-Modell verwendet ("Kollegen fragen").
+                    </p>
+                    <p className="text-[10px] text-[#5c856b]">
+                      <span className="text-primary font-bold">Iterationen:</span> Maximale Gesamtversuche für den Coder-Agenten.
+                    </p>
+                  </div>
                 </div>
               </div>
 

@@ -19,6 +19,8 @@ import { API_BASE } from '../constants/config';
 const useConfig = (setAgentData) => {
   const [researchTimeoutMinutes, setResearchTimeoutMinutes] = useState(5);
   const [maxRetriesConfig, setMaxRetriesConfig] = useState(15);
+  // ÄNDERUNG 25.01.2026: State für Modellwechsel (Dual-Slider)
+  const [maxModelAttempts, setMaxModelAttempts] = useState(3);
 
   // Konfiguration beim Start laden
   useEffect(() => {
@@ -30,6 +32,11 @@ const useConfig = (setAgentData) => {
         // Max Retries initial setzen
         const maxRetries = response.data.max_retries || 15;
         setMaxRetriesConfig(maxRetries);
+
+        // ÄNDERUNG 25.01.2026: Max Model Attempts laden
+        const modelAttempts = response.data.max_model_attempts || 3;
+        setMaxModelAttempts(modelAttempts);
+
         setAgentData(prev => ({
           ...prev,
           coder: {
@@ -78,11 +85,28 @@ const useConfig = (setAgentData) => {
     }
   };
 
+  /**
+   * ÄNDERUNG 25.01.2026: Handler für Max Model Attempts Änderungen.
+   * Für Dual-Slider: Modellwechsel nach X Fehlversuchen.
+   */
+  const handleMaxModelAttemptsChange = async (value) => {
+    // Validierung: max = maxRetries - 1
+    const validValue = Math.min(value, maxRetriesConfig - 1);
+    setMaxModelAttempts(validValue);
+    try {
+      await axios.put(`${API_BASE}/config/max-model-attempts`, { max_model_attempts: validValue });
+    } catch (err) {
+      console.error('Max Model Attempts Update fehlgeschlagen:', err);
+    }
+  };
+
   return {
     researchTimeoutMinutes,
     maxRetriesConfig,
+    maxModelAttempts,
     handleResearchTimeoutChange,
-    handleMaxRetriesChange
+    handleMaxRetriesChange,
+    handleMaxModelAttemptsChange
   };
 };
 
