@@ -611,6 +611,8 @@ class OrchestrationManager:
             agent_coder = create_coder(self.config, project_rules, router=self.model_router)
             agent_reviewer = create_reviewer(self.config, project_rules, router=self.model_router)
             agent_tester = create_tester(self.config, project_rules)
+            # ÄNDERUNG 25.01.2026: Security-Agent immer erstellen (für Re-Scan im DEV LOOP)
+            agent_security = create_security_agent(self.config, project_rules, router=self.model_router)
             
             # Design & DB (Nur beim ersten Mal)
             if self.is_first_run:
@@ -661,7 +663,7 @@ class OrchestrationManager:
                 # Security immer ausführen - kritisch für alle Projekte
                 self._ui_log("Security", "Status", "Starte Sicherheitsanalyse...")
                 set_current_agent("Security", project_id)  # Budget-Tracking
-                agent_security = create_security_agent(self.config, project_rules, router=self.model_router)
+                # agent_security bereits oben erstellt (Zeile 615)
                 if agent_security:
                     security_prompt = f"Analysiere die Anforderungen auf potenzielle Sicherheitsrisiken: {user_goal}"
                     task_security = Task(
