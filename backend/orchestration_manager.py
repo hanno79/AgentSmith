@@ -27,6 +27,18 @@ from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
+# ÄNDERUNG 28.01.2026: Mapping von Anzeige-Namen zu Session-Keys
+AGENT_TO_SESSION_KEY = {
+    "Coder": "coder",
+    "Reviewer": "reviewer",
+    "Tester": "tester",
+    "Designer": "designer",
+    "Security": "security",
+    "Researcher": "researcher",
+    "TechArchitect": "techstack",
+    "DBDesigner": "dbdesigner"
+}
+
 # Lade .env aus dem Projektverzeichnis (nicht CWD!)
 # Dies stellt sicher, dass die .env gefunden wird, auch wenn der Server
 # aus einem anderen Verzeichnis gestartet wird
@@ -58,6 +70,7 @@ from budget_tracker import get_budget_tracker
 from model_router import get_model_router
 from .worker_pool import OfficeManager, WorkerStatus
 from .library_manager import get_library_manager
+from .session_manager import get_session_manager
 
 from crewai import Task
 
@@ -222,6 +235,21 @@ class OrchestrationManager:
                 )
         except Exception:
             pass  # Fehler beim Protokollieren sollten nicht den Workflow stoppen
+
+        # ÄNDERUNG 28.01.2026: Session Manager fuer Frontend State-Sync
+        try:
+            session_mgr = get_session_manager()
+            session_mgr.add_log(agent, event, message)
+
+            # Agent-Status aktualisieren wenn relevant
+            if event in ("Status", "Working", "Result", "Complete", "Error"):
+                agent_lower = agent.lower().replace("-", "").replace(" ", "")
+                # ÄNDERUNG 28.01.2026: Session-Key ueber Mapping aufloesen
+                session_key = AGENT_TO_SESSION_KEY.get(agent, agent_lower)
+                is_active = event in ("Status", "Working")
+                session_mgr.set_agent_active(session_key, is_active)
+        except Exception:
+            pass  # Session-Updates sollten nicht den Workflow stoppen
 
     # ÄNDERUNG 25.01.2026: Worker-Status-Callback für WebSocket-Events
     async def _handle_worker_status_change(self, data: Dict[str, Any]):
@@ -642,13 +670,23 @@ class OrchestrationManager:
             self._ui_log("System", "Task Start", f"Goal: {user_goal}")
 
             # ÄNDERUNG 28.01.2026: Projekt in Library starten für Protokollierung
+            project_id = None
             try:
                 library = get_library_manager()
                 project_name = user_goal[:50] if len(user_goal) > 50 else user_goal
                 library.start_project(name=project_name, goal=user_goal)
-                self._ui_log("Library", "ProjectStart", f"Protokollierung gestartet: {library.current_project['project_id']}")
+                project_id = library.current_project.get('project_id')
+                self._ui_log("Library", "ProjectStart", f"Protokollierung gestartet: {project_id}")
             except Exception as lib_err:
                 self._ui_log("Library", "Warning", f"Library-Start fehlgeschlagen: {lib_err}")
+
+            # ÄNDERUNG 28.01.2026: Session für Frontend State-Sync starten
+            try:
+                session_mgr = get_session_manager()
+                session_mgr.start_session(goal=user_goal, project_id=project_id)
+                session_mgr.update_status("Working")
+            except Exception as sess_err:
+                self._ui_log("System", "Warning", f"Session-Start fehlgeschlagen: {sess_err}")
 
             # Extrahiere Projekt-ID für Budget-Tracking
             project_id = None
@@ -1607,6 +1645,12 @@ Wenn KEINE kritischen Probleme gefunden: Antworte nur mit "SECURE"
                     self._ui_log("Library", "ProjectComplete", "Protokoll archiviert (success)")
                 except Exception:
                     pass
+                # ÄNDERUNG 28.01.2026: Session beenden
+                try:
+                    session_mgr = get_session_manager()
+                    session_mgr.end_session(status="Success")
+                except Exception:
+                    pass
             else:
                 self._ui_log("System", "Failure", "Maximale Retries erreicht.")
                 # ÄNDERUNG 28.01.2026: Projekt in Library als fehlgeschlagen abschließen
@@ -1614,6 +1658,12 @@ Wenn KEINE kritischen Probleme gefunden: Antworte nur mit "SECURE"
                     library = get_library_manager()
                     library.complete_project(status="failed")
                     self._ui_log("Library", "ProjectComplete", "Protokoll archiviert (failed)")
+                except Exception:
+                    pass
+                # ÄNDERUNG 28.01.2026: Session beenden
+                try:
+                    session_mgr = get_session_manager()
+                    session_mgr.end_session(status="Error")
                 except Exception:
                     pass
                 # Memory: Lerne aus ungelösten Fehlern (geschützt)
@@ -1636,6 +1686,12 @@ Wenn KEINE kritischen Probleme gefunden: Antworte nur mit "SECURE"
                 library = get_library_manager()
                 library.complete_project(status="error")
                 self._ui_log("Library", "ProjectComplete", "Protokoll archiviert (error)")
+            except Exception:
+                pass
+            # ÄNDERUNG 28.01.2026: Session beenden
+            try:
+                session_mgr = get_session_manager()
+                session_mgr.end_session(status="Error")
             except Exception:
                 pass
             raise e

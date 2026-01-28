@@ -392,6 +392,16 @@ class DependencyAgent:
             "health_score": 0
         }
 
+        # ÄNDERUNG 28.01.2026: npm-Status konsistent fuer Health-Score halten
+        npm_error = inventory.get("npm", {}).get("error")
+        npm_version = inventory.get("npm", {}).get("version")
+        system_tools = inventory.get("system", {})
+        if "npm" not in system_tools:
+            system_tools["npm"] = None
+        if npm_error or npm_version == "not installed":
+            system_tools["npm"] = None
+        inventory["system"] = system_tools
+
         # Health-Score berechnen
         inventory["health_score"] = self._calculate_health_score(inventory)
 
@@ -505,9 +515,15 @@ class DependencyAgent:
             if tool not in inventory.get("system", {}):
                 score -= 20
 
-        # Bonus fuer npm
-        if inventory.get("npm", {}).get("version") and inventory["npm"]["version"] != "not installed":
-            score = min(100, score + 5)
+        # ÄNDERUNG 28.01.2026: npm-Fehler beeinflusst Health-Score
+        npm_error = inventory.get("npm", {}).get("error")
+        system_npm = inventory.get("system", {}).get("npm")
+        if npm_error or system_npm is None:
+            score -= 15
+        else:
+            # Bonus fuer npm nur bei sauberem Status
+            if inventory.get("npm", {}).get("version") and inventory["npm"]["version"] != "not installed":
+                score = min(100, score + 5)
 
         # Abzug wenn wenig Pakete (koennte auf Problem hindeuten)
         python_packages = len(inventory.get("python", {}).get("packages", []))

@@ -20,6 +20,7 @@ projects/
 memory/
 *.jsonl
 crew_log.jsonl
+library/current_project.json
 
 # Budget tracking (local usage data)
 budget_data/usage_history.json

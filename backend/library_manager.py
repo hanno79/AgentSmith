@@ -10,9 +10,12 @@ Beschreibung: Library Manager - Zentrale Protokoll- und Archivverwaltung.
 import os
 import json
 import uuid
+import logging
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 class LibraryManager:
@@ -56,8 +59,20 @@ class LibraryManager:
     def _save_current_project(self):
         """Speichert das aktuelle Projekt in die Datei."""
         if self.current_project:
-            with open(self.current_project_file, 'w', encoding='utf-8') as f:
-                json.dump(self.current_project, f, ensure_ascii=False, indent=2)
+            try:
+                # ÄNDERUNG 28.01.2026: Vorherige Save-Fehler zuruecksetzen bei Erfolg
+                if "save_error" in self.current_project:
+                    self.current_project["save_error"] = None
+                if "save_error_timestamp" in self.current_project:
+                    self.current_project["save_error_timestamp"] = None
+                with open(self.current_project_file, 'w', encoding='utf-8') as f:
+                    json.dump(self.current_project, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                logger.error(f"Fehler beim Speichern des aktuellen Projekts: {e}")
+                # ÄNDERUNG 28.01.2026: Fehler sichtbar machen und weiterreichen
+                self.current_project["save_error"] = str(e)
+                self.current_project["save_error_timestamp"] = datetime.now().isoformat()
+                raise
 
     def start_project(self, name: str, goal: str) -> str:
         """
@@ -191,13 +206,21 @@ class LibraryManager:
             f"{self.current_project['project_id']}.json"
         )
 
-        with open(archive_file, 'w', encoding='utf-8') as f:
-            json.dump(self.current_project, f, ensure_ascii=False, indent=2)
+        try:
+            with open(archive_file, 'w', encoding='utf-8') as f:
+                json.dump(self.current_project, f, ensure_ascii=False, indent=2)
+
+            if os.path.exists(self.current_project_file):
+                os.remove(self.current_project_file)
+        except Exception as e:
+            logger.error(f"Fehler beim Archivieren des Projekts: {e}")
+            # ÄNDERUNG 28.01.2026: Fehler sichtbar machen und weiterreichen
+            self.current_project["save_error"] = str(e)
+            self.current_project["save_error_timestamp"] = datetime.now().isoformat()
+            raise
 
         # Current project zurücksetzen
         self.current_project = None
-        if os.path.exists(self.current_project_file):
-            os.remove(self.current_project_file)
 
     def get_current_project(self) -> Optional[Dict[str, Any]]:
         """Gibt das aktuelle Projekt zurück."""
