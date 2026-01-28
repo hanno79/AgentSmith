@@ -82,9 +82,10 @@ def _run_pytest(project_path: str) -> Dict[str, Any]:
             }
 
     try:
-        # pytest mit kurzem Traceback ausfuehren
+        # ÄNDERUNG 28.01.2026: python -m pytest statt direktem pytest-Aufruf
+        # Damit funktioniert es auch wenn pytest nicht im PATH ist
         result = subprocess.run(
-            ["pytest", project_path, "--tb=short", "-q", "--no-header"],
+            ["python", "-m", "pytest", project_path, "--tb=short", "-q", "--no-header"],
             cwd=project_path,
             capture_output=True,
             timeout=120,
@@ -135,7 +136,7 @@ def _run_pytest(project_path: str) -> Dict[str, Any]:
     except FileNotFoundError:
         return {
             "status": "SKIP",
-            "summary": "pytest nicht installiert - uebersprungen",
+            "summary": "Python oder pytest nicht gefunden - uebersprungen",
             "details": "Installiere mit: pip install pytest",
             "test_count": 0
         }

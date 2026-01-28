@@ -51,3 +51,10 @@ Thumbs.db
 # Node (Frontend)
 frontend/node_modules/
 frontend/dist/
+
+# Claude lokale Einstellungen
+.claude/settings.local.json
+.claude/permissions_documentation.md
+
+# Test-Screenshots
+tests/screenshots/
