@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 """
 Author: rahn
-Datum: 24.01.2026
-Version: 1.0
+Datum: 25.01.2026
+Version: 1.1
 Beschreibung: Security Utilities - Sichere Pfad- und Befehlsoperationen.
               Features: Path Traversal Prevention, Command Injection Prevention, Dateinamen-Sanitization.
+              ÄNDERUNG 25.01.2026: Bug-Fix für Duplikat-Dateinamen durch LLM-Fehler.
 """
 
 import os
@@ -172,6 +173,20 @@ def sanitize_filename(filename: str) -> str:
     for prefix in prefixes:
         if filename.upper().startswith(prefix.upper()):
             filename = filename[len(prefix):].strip()
+
+    # ÄNDERUNG 25.01.2026: Bug-Fix für Duplikat-Dateinamen durch LLM-Fehler
+    # Erkennung von Mustern wie "file.ext\file.ext" oder "file.ext_\file.ext"
+    # Dies passiert wenn der LLM fälschlicherweise den Dateinamen wiederholt
+    if '\\' in filename or '/' in filename:
+        parts = [p for p in re.split(r'[/\\]', filename) if p]
+        if len(parts) >= 2:
+            # Normalisiere für Vergleich (ohne trailing _ und lowercase)
+            first_base = parts[0].rstrip('_').lower()
+            last_base = parts[-1].rstrip('_').lower()
+            # Wenn erster und letzter Teil gleich sind → Duplikat-Fehler
+            if first_base == last_base or first_base.startswith(last_base) or last_base.startswith(first_base):
+                # Behalte den saubereren Teil (ohne trailing _)
+                filename = parts[-1] if not parts[-1].endswith('_') else parts[0].rstrip('_')
 
     # Entferne führende Slashes und Backslashes
     filename = filename.lstrip("/\\")

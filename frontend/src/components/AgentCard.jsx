@@ -10,7 +10,7 @@
  *               ÄNDERUNG 25.01.2026: BUG FIX - Glow-Effekt auch bei aktiven Workern (activeWorkers > 0).
  */
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { ExternalLink, Users } from 'lucide-react';
 
@@ -128,6 +128,8 @@ const AgentCard = ({ name, icon, color, status, logs, onOpenOffice, workers = []
   // ÄNDERUNG 25.01.2026: Prüfe ob Status in activeStates ODER mit "Status" beginnt
   // ÄNDERUNG 25.01.2026: BUG FIX - Glow auch wenn Worker aktiv sind!
   const isActive = (status && (activeStates.includes(status) || status === 'Status')) || activeWorkers > 0;
+  // ÄNDERUNG 25.01.2026: Gefilterte Logs einmal berechnen statt zweimal
+  const filteredLogs = useMemo(() => filterLogs(logs), [logs]);
 
   return (
     <motion.div
@@ -190,13 +192,13 @@ const AgentCard = ({ name, icon, color, status, logs, onOpenOffice, workers = []
 
       {/* Log-Ausgabe - ÄNDERUNG 25.01.2026: Gefilterte Logs (keine JSON/technischen Events) */}
       <div className="bg-black/50 rounded-lg p-2.5 h-20 overflow-y-auto terminal-scroll font-mono text-[9px] border border-white/5 relative z-10">
-        {filterLogs(logs).slice(-4).map((l, i) => (
+        {filteredLogs.slice(-4).map((l, i) => (
           <div key={i} className="mb-0.5 leading-tight">
             <span className="opacity-40 mr-1.5">&gt;</span>
             <span className="text-slate-300 break-words">{l.message?.substring(0, 80)}{l.message?.length > 80 ? '...' : ''}</span>
           </div>
         ))}
-        {filterLogs(logs).length === 0 && <div className="text-slate-600 italic mt-4 text-center text-[9px]">Warte auf Aufgabe...</div>}
+        {filteredLogs.length === 0 && <div className="text-slate-600 italic mt-4 text-center text-[9px]">Warte auf Aufgabe...</div>}
       </div>
     </motion.div>
   );

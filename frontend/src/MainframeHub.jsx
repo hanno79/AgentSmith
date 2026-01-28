@@ -50,6 +50,12 @@ const MainframeHub = ({
   const [researchTimeout, setResearchTimeout] = useState(5);
   // ÄNDERUNG 25.01.2026: Lokaler State für Modellwechsel
   const [maxModelAttempts, setMaxModelAttempts] = useState(3);
+  // ÄNDERUNG 25.01.2026: Filter für Modell-Listen
+  const [modelFilter, setModelFilter] = useState('');
+  const [providerFilter, setProviderFilter] = useState('all');
+  // ÄNDERUNG 25.01.2026: Separate Filter für Modal
+  const [modalModelFilter, setModalModelFilter] = useState('');
+  const [modalProviderFilter, setModalProviderFilter] = useState('all');
 
   // Verwende Props wenn vorhanden, sonst lokalen State (für Abwärtskompatibilität)
   const effectiveMaxRetries = propMaxRetries !== undefined ? propMaxRetries : maxRetries;
@@ -259,9 +265,9 @@ const MainframeHub = ({
         </div>
       </header>
 
-      {/* Main Content */}
+      {/* Main Content - ÄNDERUNG 25.01.2026: Feste Höhe für besseres Layout */}
       <main className="flex-1 overflow-hidden p-4 md:p-6 lg:p-8">
-        <div className="h-full grid grid-cols-1 xl:grid-cols-12 gap-6">
+        <div className="h-[calc(100vh-140px)] grid grid-cols-1 xl:grid-cols-12 gap-6">
 
           {/* Left Panel: LLM Gateway */}
           <div className="xl:col-span-4 flex flex-col gap-4">
@@ -293,12 +299,17 @@ const MainframeHub = ({
                     onClick={() => {
                       setSelectedAgent(agent);
                       setShowModelSelector(true);
+                      // Modal-Filter zurücksetzen
+                      setModalModelFilter('');
+                      setModalProviderFilter('all');
                     }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
                         setSelectedAgent(agent);
                         setShowModelSelector(true);
+                        setModalModelFilter('');
+                        setModalProviderFilter('all');
                       }
                     }}
                     role="button"
@@ -584,20 +595,54 @@ const MainframeHub = ({
             </div>
           </div>
 
-          {/* Right Panel: Available Models */}
-          <div className="xl:col-span-4 flex flex-col gap-4">
-            <div className="bg-[#111813] rounded-xl border border-[#28392e] overflow-hidden flex-1 flex flex-col shadow-2xl">
+          {/* Right Panel: Available Models - ÄNDERUNG 25.01.2026: Mit Filter und begrenzter Höhe */}
+          <div className="xl:col-span-4 flex flex-col gap-4 max-h-full">
+            <div className="bg-[#111813] rounded-xl border border-[#28392e] overflow-hidden flex flex-col shadow-2xl max-h-full">
               <div className="px-5 py-4 border-b border-[#28392e] bg-[#16211a] flex justify-between items-center">
                 <h3 className="text-white font-bold tracking-wider uppercase flex items-center gap-2">
                   <Database size={16} className="text-primary" />
                   Model Registry
                 </h3>
                 <div className="px-2 py-0.5 bg-primary/20 text-primary text-[10px] font-mono rounded border border-primary/30">
-                  {availableModels.free_models.length + availableModels.paid_models.length} MODELS
+                  {availableModels.free_models.filter(m => {
+                    const matchesSearch = m.name.toLowerCase().includes(modelFilter.toLowerCase());
+                    const matchesProvider = providerFilter === 'all' || m.id.toLowerCase().includes(providerFilter);
+                    return matchesSearch && matchesProvider;
+                  }).length + availableModels.paid_models.filter(m => {
+                    const matchesSearch = m.name.toLowerCase().includes(modelFilter.toLowerCase());
+                    const matchesProvider = providerFilter === 'all' || m.id.toLowerCase().includes(providerFilter);
+                    return matchesSearch && matchesProvider;
+                  }).length} / {availableModels.free_models.length + availableModels.paid_models.length}
                 </div>
               </div>
 
-              <div className="flex-1 p-4 overflow-y-auto custom-scrollbar">
+              {/* Filter - ÄNDERUNG 25.01.2026 */}
+              <div className="p-3 border-b border-[#28392e] space-y-2 bg-[#0d120f]">
+                <input
+                  type="text"
+                  placeholder="Search models..."
+                  value={modelFilter}
+                  onChange={(e) => setModelFilter(e.target.value)}
+                  className="w-full bg-[#1b271f] border border-[#28392e] rounded-lg px-3 py-2 text-sm text-white placeholder-[#6b8f71] focus:outline-none focus:border-primary"
+                />
+                <select
+                  value={providerFilter}
+                  onChange={(e) => setProviderFilter(e.target.value)}
+                  className="w-full bg-[#1b271f] border border-[#28392e] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary"
+                >
+                  <option value="all">All Providers</option>
+                  <option value="anthropic">Anthropic</option>
+                  <option value="openai">OpenAI</option>
+                  <option value="google">Google</option>
+                  <option value="meta-llama">Meta</option>
+                  <option value="mistralai">Mistral</option>
+                  <option value="qwen">Qwen</option>
+                  <option value="nvidia">NVIDIA</option>
+                  <option value="deepseek">DeepSeek</option>
+                </select>
+              </div>
+
+              <div className="p-4 overflow-y-auto custom-scrollbar" style={{maxHeight: 'calc(100vh - 380px)'}}>
                 {/* Free Models */}
                 <div className="mb-4">
                   <div className="text-[10px] text-primary uppercase tracking-widest font-bold mb-2 flex items-center gap-2">
@@ -605,16 +650,23 @@ const MainframeHub = ({
                     Free Tier
                   </div>
                   <div className="space-y-2">
-                    {availableModels.free_models.map((model) => (
+                    {availableModels.free_models
+                      .filter(m => {
+                        const matchesSearch = m.name.toLowerCase().includes(modelFilter.toLowerCase());
+                        const matchesProvider = providerFilter === 'all' || m.id.toLowerCase().includes(providerFilter);
+                        return matchesSearch && matchesProvider;
+                      })
+                      .slice(0, 50)
+                      .map((model) => (
                       <div
                         key={model.id}
                         className="bg-[#1b271f] border border-[#28392e] rounded-lg p-3 hover:border-primary/30 transition-colors"
                       >
                         <div className="flex justify-between items-start mb-1">
                           <span className="text-white font-bold text-sm">{model.name}</span>
-                          <span className="text-[10px] text-primary bg-primary/10 px-2 py-0.5 rounded">{model.strength}</span>
+                          <span className="text-[10px] text-primary bg-primary/10 px-2 py-0.5 rounded">{model.provider}</span>
                         </div>
-                        <div className="text-[10px] text-[#9cbaa6]">{model.provider}</div>
+                        <div className="text-[10px] text-[#9cbaa6] truncate">{model.id}</div>
                       </div>
                     ))}
                   </div>
@@ -627,16 +679,23 @@ const MainframeHub = ({
                     Premium Tier
                   </div>
                   <div className="space-y-2">
-                    {availableModels.paid_models.map((model) => (
+                    {availableModels.paid_models
+                      .filter(m => {
+                        const matchesSearch = m.name.toLowerCase().includes(modelFilter.toLowerCase());
+                        const matchesProvider = providerFilter === 'all' || m.id.toLowerCase().includes(providerFilter);
+                        return matchesSearch && matchesProvider;
+                      })
+                      .slice(0, 50)
+                      .map((model) => (
                       <div
                         key={model.id}
                         className="bg-[#1b271f] border border-[#28392e] rounded-lg p-3 hover:border-yellow-500/30 transition-colors"
                       >
                         <div className="flex justify-between items-start mb-1">
                           <span className="text-white font-bold text-sm">{model.name}</span>
-                          <span className="text-[10px] text-yellow-400 bg-yellow-400/10 px-2 py-0.5 rounded">{model.strength}</span>
+                          <span className="text-[10px] text-yellow-400 bg-yellow-400/10 px-2 py-0.5 rounded">{model.provider}</span>
                         </div>
-                        <div className="text-[10px] text-[#9cbaa6]">{model.provider}</div>
+                        <div className="text-[10px] text-[#9cbaa6] truncate">{model.id}</div>
                       </div>
                     ))}
                   </div>
@@ -678,11 +737,44 @@ const MainframeHub = ({
                 <p className="text-[#9cbaa6] text-sm mt-1">{selectedAgent.description}</p>
               </div>
 
-              {/* Model Options */}
+              {/* ÄNDERUNG 25.01.2026: Modal Filter */}
+              <div className="p-4 border-b border-[#28392e] space-y-2 bg-[#0d120f]">
+                <input
+                  type="text"
+                  placeholder="Search models..."
+                  value={modalModelFilter}
+                  onChange={(e) => setModalModelFilter(e.target.value)}
+                  className="w-full bg-[#1b271f] border border-[#28392e] rounded-lg px-3 py-2 text-sm text-white placeholder-[#6b8f71] focus:outline-none focus:border-primary"
+                />
+                <select
+                  value={modalProviderFilter}
+                  onChange={(e) => setModalProviderFilter(e.target.value)}
+                  className="w-full bg-[#1b271f] border border-[#28392e] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary"
+                >
+                  <option value="all">All Providers</option>
+                  <option value="anthropic">Anthropic</option>
+                  <option value="openai">OpenAI</option>
+                  <option value="google">Google</option>
+                  <option value="meta-llama">Meta</option>
+                  <option value="mistralai">Mistral</option>
+                  <option value="qwen">Qwen</option>
+                  <option value="nvidia">NVIDIA</option>
+                  <option value="deepseek">DeepSeek</option>
+                </select>
+              </div>
+
+              {/* Model Options - ÄNDERUNG 25.01.2026: Mit Filter-Logik */}
               <div className="p-4 max-h-96 overflow-y-auto custom-scrollbar">
                 <div className="text-[10px] text-primary uppercase tracking-widest font-bold mb-2">Free Models</div>
                 <div className="space-y-2 mb-4">
-                  {availableModels.free_models.map((model) => (
+                  {availableModels.free_models
+                    .filter(m => {
+                      const matchesSearch = m.name.toLowerCase().includes(modalModelFilter.toLowerCase());
+                      const matchesProvider = modalProviderFilter === 'all' || m.id.toLowerCase().includes(modalProviderFilter);
+                      return matchesSearch && matchesProvider;
+                    })
+                    .slice(0, 50)
+                    .map((model) => (
                     <button
                       key={model.id}
                       onClick={() => updateAgentModel(selectedAgent.role, model.id)}
@@ -709,7 +801,14 @@ const MainframeHub = ({
                   <>
                     <div className="text-[10px] text-yellow-400 uppercase tracking-widest font-bold mb-2">Premium Models</div>
                     <div className="space-y-2">
-                      {availableModels.paid_models.map((model) => (
+                      {availableModels.paid_models
+                        .filter(m => {
+                          const matchesSearch = m.name.toLowerCase().includes(modalModelFilter.toLowerCase());
+                          const matchesProvider = modalProviderFilter === 'all' || m.id.toLowerCase().includes(modalProviderFilter);
+                          return matchesSearch && matchesProvider;
+                        })
+                        .slice(0, 50)
+                        .map((model) => (
                         <button
                           key={model.id}
                           onClick={() => updateAgentModel(selectedAgent.role, model.id)}

@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 """
 Author: rahn
-Datum: 24.01.2026
-Version: 1.2
+Datum: 28.01.2026
+Version: 1.4
 Beschreibung: Tester Agent - Führt UI-Tests mit Playwright durch und erkennt visuelle Unterschiede.
+              ÄNDERUNG 28.01.2026: Content-Validierung gegen leere Seiten und Tech-Stack-Checks.
+              ÄNDERUNG 28.01.2026: Router-Parameter und project_rules Integration (Phase 0.12).
 
 # ÄNDERUNG 24.01.2026: Robustere Playwright-Implementierung
 # - Retry-Logik mit Exponential Backoff hinzugefügt
@@ -26,6 +28,7 @@ import os
 import time
 import logging
 from crewai import Agent
+from agents.agent_utils import combine_project_rules
 
 # Server-Runner Import für automatisches Server-Management
 try:
@@ -52,27 +55,40 @@ class UITestResult(TypedDict):
     screenshot: Optional[str]
 
 
-def create_tester(config: Dict[str, Any], project_rules: Dict[str, List[str]]) -> Agent:
+def create_tester(config: Dict[str, Any], project_rules: Dict[str, List[str]], router=None) -> Agent:
     """
     Erstellt den Tester-Agenten, der UI-Tests durchführt.
+
+    ÄNDERUNG 28.01.2026: Router-Parameter und project_rules Integration (Phase 0.12).
 
     Args:
         config: Anwendungskonfiguration mit mode und models
         project_rules: Dictionary mit globalen und rollenspezifischen Regeln
+        router: Optionaler ModelRouter für automatisches Fallback bei Rate-Limits
 
     Returns:
         Konfigurierte CrewAI Agent-Instanz
     """
-    mode = config["mode"]
-    # Fallback to reviewer model if tester model not specified
-    model = config["models"][mode].get("tester", config["models"][mode]["reviewer"])
+    # ÄNDERUNG 28.01.2026: Router-Parameter wie bei anderen Agenten
+    if router:
+        model = router.get_model("tester")
+    else:
+        mode = config["mode"]
+        # Fallback to reviewer model if tester model not specified
+        model = config["models"][mode].get("tester", config["models"][mode]["reviewer"])
+
+    # ÄNDERUNG 28.01.2026: project_rules integrieren wie bei anderen Agenten
+    combined_rules = combine_project_rules(project_rules, "tester") if project_rules else ""
 
     return Agent(
         role="Tester",
         goal="Überprüfe die Benutzeroberfläche auf visuelle Fehler und Funktionalität.",
         backstory=(
             "Du bist ein detailgenauer Tester. Du nutzt Tools wie Playwright, "
-            "um Screenshots zu vergleichen und die Funktionalität von Webseiten zu prüfen."
+            "um Screenshots zu vergleichen und die Funktionalität von Webseiten zu prüfen. "
+            "Du analysierst UI-Elemente, prüfst auf JavaScript-Fehler und erkennst leere Seiten. "
+            "Bei fehlgeschlagenen Tests gibst du strukturiertes Feedback mit konkreten Hinweisen. "
+            f"\n\n{combined_rules}"
         ),
         llm=model,
         verbose=True
@@ -147,6 +163,17 @@ def test_web_ui(file_path: str, config: Optional[Dict[str, Any]] = None) -> UITe
                 # Screenshot erstellen
                 page.screenshot(path=str(screenshot_path), full_page=True)
 
+                # ÄNDERUNG 28.01.2026: Content-Validierung gegen leere Seiten
+                try:
+                    from content_validator import validate_page_content
+                    content_result = validate_page_content(page, None)
+                    if content_result.issues:
+                        result["issues"].extend(content_result.issues)
+                    if not content_result.has_visible_content:
+                        result["issues"].append("Leere Seite erkannt - kein sichtbarer Inhalt gerendert")
+                except Exception as cv_err:
+                    logger.warning(f"Content-Validierung fehlgeschlagen: {cv_err}")
+
             # Browser wird automatisch geschlossen durch Context Manager, aber sicherheitshalber:
             browser = None
 
@@ -173,8 +200,10 @@ def test_web_ui(file_path: str, config: Optional[Dict[str, Any]] = None) -> UITe
                 result["issues"].append("Neue Baseline gespeichert.")
                 result["status"] = "BASELINE"
 
-            # Status basierend auf kritischen Issues setzen
-            if any("Kein Screenshot" in issue or "JavaScript-Fehler" in issue for issue in result["issues"]):
+            # ÄNDERUNG 28.01.2026: Erweiterte Fehler-Erkennung (auch leere Seiten)
+            _FAIL_KEYWORDS = ["Kein Screenshot", "JavaScript-Fehler", "Leere Seite",
+                              "komplett leer", "nicht gerendert", "Fehler-Pattern"]
+            if any(any(kw.lower() in issue.lower() for kw in _FAIL_KEYWORDS) for issue in result["issues"]):
                 result["status"] = "FAIL"
 
             return result
@@ -354,16 +383,18 @@ def _test_with_server(project_path: str, tech_blueprint: Dict[str, Any],
 
         logger.info(f"Server läuft auf {server.url} - starte Playwright-Tests")
 
-        # Playwright-Test gegen URL
-        return _test_url(server.url, project_path, config)
+        # ÄNDERUNG 28.01.2026: tech_blueprint an _test_url weiterreichen
+        return _test_url(server.url, project_path, config, tech_blueprint)
 
 
 def _test_url(url: str, project_path: str,
-              config: Optional[Dict[str, Any]] = None) -> UITestResult:
+              config: Optional[Dict[str, Any]] = None,
+              tech_blueprint: Optional[Dict[str, Any]] = None) -> UITestResult:
     """
     Interne Funktion: Testet eine URL mit Playwright.
 
     Ähnlich wie test_web_ui, aber für URLs statt Datei-Pfade.
+    ÄNDERUNG 28.01.2026: tech_blueprint Parameter für Tech-Stack-spezifische Checks.
     """
     playwright_config = config.get("playwright", {}) if config else {}
     global_timeout = playwright_config.get("global_timeout", DEFAULT_GLOBAL_TIMEOUT)
@@ -407,6 +438,17 @@ def _test_url(url: str, project_path: str,
                 # Screenshot
                 page.screenshot(path=str(screenshot_path), full_page=True)
 
+                # ÄNDERUNG 28.01.2026: Content-Validierung mit Tech-Blueprint
+                try:
+                    from content_validator import validate_page_content
+                    content_result = validate_page_content(page, tech_blueprint)
+                    if content_result.issues:
+                        result["issues"].extend(content_result.issues)
+                    if not content_result.has_visible_content:
+                        result["issues"].append("Leere Seite erkannt - kein sichtbarer Inhalt gerendert")
+                except Exception as cv_err:
+                    logger.warning(f"Content-Validierung fehlgeschlagen: {cv_err}")
+
             browser = None
 
             # Checks
@@ -429,7 +471,10 @@ def _test_url(url: str, project_path: str,
                 result["issues"].append("Neue Baseline gespeichert.")
                 result["status"] = "BASELINE"
 
-            if any("Kein Screenshot" in i or "JavaScript-Fehler" in i for i in result["issues"]):
+            # ÄNDERUNG 28.01.2026: Erweiterte Fehler-Erkennung (auch leere Seiten)
+            _FAIL_KEYWORDS = ["Kein Screenshot", "JavaScript-Fehler", "Leere Seite",
+                              "komplett leer", "nicht gerendert", "Fehler-Pattern"]
+            if any(any(kw.lower() in i.lower() for kw in _FAIL_KEYWORDS) for i in result["issues"]):
                 result["status"] = "FAIL"
 
             return result

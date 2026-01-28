@@ -10,7 +10,8 @@ import asyncio
 import os
 import yaml
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
+import requests
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, BackgroundTasks, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -29,6 +30,7 @@ sys.path.insert(0, _project_root)
 
 from model_router import get_model_router, ModelRouter
 from budget_tracker import get_budget_tracker
+from .library_manager import get_library_manager
 
 app = FastAPI(
     title="Agent Smith API",
@@ -240,23 +242,97 @@ def get_agent_model(agent_role: str):
 
     return {"agent": agent_role, "model": models[agent_role], "mode": mode}
 
+# ÄNDERUNG 25.01.2026: Dynamische OpenRouter Modell-API mit Caching
+_models_cache = {"data": None, "timestamp": None}
+MODELS_CACHE_DURATION = timedelta(hours=1)
+
+def fetch_openrouter_models():
+    """
+    Holt Modelle von OpenRouter API mit Caching.
+    Cache-Dauer: 1 Stunde.
+    """
+    now = datetime.now()
+
+    # Cache prüfen
+    if _models_cache["data"] and _models_cache["timestamp"]:
+        if now - _models_cache["timestamp"] < MODELS_CACHE_DURATION:
+            return _models_cache["data"]
+
+    try:
+        api_key = os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("Kein API-Key gefunden")
+
+        response = requests.get(
+            "https://openrouter.ai/api/v1/models",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=10
+        )
+        response.raise_for_status()
+        models = response.json().get("data", [])
+
+        # Filtern und formatieren
+        free_models = []
+        paid_models = []
+
+        for m in models:
+            # Provider aus ID extrahieren (z.B. "Anthropic" aus "anthropic/claude-3")
+            provider = m["id"].split("/")[0].title()
+
+            model_data = {
+                "id": f"openrouter/{m['id']}",
+                "name": m.get("name", m["id"]),
+                "provider": provider,
+                "context_length": m.get("context_length", 0),
+                "pricing": m.get("pricing", {})
+            }
+
+            # Free wenn prompt UND completion = 0
+            pricing = m.get("pricing", {})
+            is_free = (
+                str(pricing.get("prompt", "1")) == "0" and
+                str(pricing.get("completion", "1")) == "0"
+            )
+
+            if is_free:
+                free_models.append(model_data)
+            else:
+                paid_models.append(model_data)
+
+        # Nach Name sortieren
+        free_models.sort(key=lambda x: x["name"])
+        paid_models.sort(key=lambda x: x["name"])
+
+        result = {"free_models": free_models, "paid_models": paid_models}
+
+        # Cache aktualisieren
+        _models_cache["data"] = result
+        _models_cache["timestamp"] = now
+
+        print(f"OpenRouter API: {len(free_models)} Free + {len(paid_models)} Paid Modelle geladen")
+        return result
+
+    except Exception as e:
+        print(f"OpenRouter API Fehler: {e}")
+        # Fallback auf Cache oder Fallback-Liste
+        if _models_cache["data"]:
+            return _models_cache["data"]
+        # Fallback auf statische Liste wenn API nicht erreichbar
+        return {
+            "free_models": [
+                {"id": "openrouter/meta-llama/llama-3.3-70b-instruct:free", "name": "Llama 3.3 70B", "provider": "Meta"},
+                {"id": "openrouter/google/gemma-3-27b-it:free", "name": "Gemma 3 27B", "provider": "Google"}
+            ],
+            "paid_models": [
+                {"id": "openrouter/anthropic/claude-haiku-4.5", "name": "Claude Haiku 4.5", "provider": "Anthropic"},
+                {"id": "openrouter/openai/gpt-5-mini", "name": "GPT-5 Mini", "provider": "OpenAI"}
+            ]
+        }
+
 @app.get("/models/available")
 def get_available_models():
-    """Listet verfügbare OpenRouter Modelle auf."""
-    return {
-        "free_models": [
-            {"id": "openrouter/meta-llama/llama-3.3-70b-instruct:free", "name": "Llama 3.3 70B", "provider": "Meta", "strength": "General"},
-            {"id": "openrouter/qwen/qwen3-coder:free", "name": "Qwen3 Coder", "provider": "Alibaba", "strength": "Coding"},
-            {"id": "openrouter/google/gemma-3-27b-it:free", "name": "Gemma 3 27B", "provider": "Google", "strength": "Creative"},
-            {"id": "openrouter/mistralai/mixtral-8x7b-instruct:free", "name": "Mixtral 8x7B", "provider": "Mistral", "strength": "Reasoning"},
-            {"id": "openrouter/nvidia/nemotron-3-nano-30b-a3b:free", "name": "Nemotron 30B", "provider": "NVIDIA", "strength": "Fast"}
-        ],
-        "paid_models": [
-            {"id": "openrouter/anthropic/claude-sonnet-4", "name": "Claude Sonnet 4", "provider": "Anthropic", "strength": "Premium"},
-            {"id": "openrouter/openai/gpt-4-turbo", "name": "GPT-4 Turbo", "provider": "OpenAI", "strength": "Premium"},
-            {"id": "openrouter/anthropic/claude-haiku-4", "name": "Claude Haiku 4", "provider": "Anthropic", "strength": "Fast Premium"}
-        ]
-    }
+    """Listet verfügbare OpenRouter Modelle auf (dynamisch von API)."""
+    return fetch_openrouter_models()
 
 @app.get("/models/router-status")
 def get_router_status():
@@ -305,6 +381,47 @@ def get_security_status():
             "count": len(manager.security_vulnerabilities) if hasattr(manager, 'security_vulnerabilities') else 0
         }
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ÄNDERUNG 25.01.2026: Reset-Endpunkt für Projekt-Neustart
+@app.post("/reset")
+async def reset_project():
+    """
+    Setzt das aktuelle Projekt komplett zurück.
+    Ermöglicht einen Neustart ohne Server-Neustart.
+    """
+    try:
+        # OrchestrationManager Felder zurücksetzen
+        manager.project_path = None
+        manager.output_path = None
+        manager.tech_blueprint = {}
+        manager.database_schema = "Kein Datenbank-Schema."
+        manager.design_concept = "Kein Design-Konzept."
+        manager.current_code = ""
+        manager.is_first_run = True
+        manager.security_vulnerabilities = []
+        manager.force_security_fix = False
+
+        # Worker-Pool zurücksetzen (falls vorhanden)
+        if hasattr(manager, 'office_manager') and manager.office_manager:
+            try:
+                manager.office_manager.reset_all_workers()
+            except Exception as e:
+                log_event("API", "Warning", f"Worker-Reset fehlgeschlagen: {e}")
+
+        # Broadcast Reset-Event an alle Clients
+        await ws_manager.broadcast(json.dumps({
+            "type": "system",
+            "event": "Reset",
+            "agent": "System",
+            "message": "Projekt wurde zurückgesetzt. Bereit für neuen Task."
+        }))
+
+        log_event("API", "Reset", "Projekt wurde vollständig zurückgesetzt")
+        return {"status": "success", "message": "Projekt zurückgesetzt"}
+
+    except Exception as e:
+        log_event("API", "Error", f"Reset fehlgeschlagen: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/agents")
@@ -593,3 +710,220 @@ def get_project(project_id: str):
         "remaining": round(project.total_budget - project_costs, 2),
         "percentage_used": round((project_costs / project.total_budget) * 100, 1) if project.total_budget > 0 else 0
     }
+
+
+# =====================================================================
+# LIBRARY / ARCHIV ENDPOINTS
+# ÄNDERUNG 28.01.2026: Protokoll- und Archiv-System
+# =====================================================================
+
+@app.get("/library/current")
+def get_current_project_protocol():
+    """Gibt das aktuelle Projekt-Protokoll zurück."""
+    library = get_library_manager()
+    project = library.get_current_project()
+    if not project:
+        return {"status": "no_project", "project": None}
+    return {"status": "ok", "project": project}
+
+
+@app.get("/library/entries")
+def get_protocol_entries(agent: Optional[str] = None, limit: int = 100):
+    """
+    Gibt Protokoll-Einträge des aktuellen Projekts zurück.
+
+    Args:
+        agent: Optional - nur Einträge von diesem Agent
+        limit: Maximale Anzahl Einträge
+    """
+    library = get_library_manager()
+    entries = library.get_entries(agent_filter=agent, limit=limit)
+    return {"status": "ok", "entries": entries, "count": len(entries)}
+
+
+@app.get("/library/archive")
+def get_archived_projects():
+    """Gibt alle archivierten Projekte zurück (ohne Einträge)."""
+    library = get_library_manager()
+    projects = library.get_archived_projects()
+    return {"status": "ok", "projects": projects, "count": len(projects)}
+
+
+@app.get("/library/archive/{project_id}")
+def get_archived_project(project_id: str):
+    """Lädt ein archiviertes Projekt vollständig."""
+    library = get_library_manager()
+    project = library.get_archived_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Projekt '{project_id}' nicht gefunden")
+    return {"status": "ok", "project": project}
+
+
+@app.get("/library/search")
+def search_archives(q: str, limit: int = 20):
+    """
+    Durchsucht alle Archive nach einem Begriff.
+
+    Args:
+        q: Suchbegriff
+        limit: Maximale Ergebnisse
+    """
+    library = get_library_manager()
+    results = library.search_archives(q, limit=limit)
+    return {"status": "ok", "results": results, "count": len(results)}
+
+
+# =====================================================================
+# EXTERNAL BUREAU ENDPOINTS
+# AENDERUNG 28.01.2026: Externe Specialists (CodeRabbit, EXA Search, etc.)
+# =====================================================================
+
+# Lazy-load External Bureau Manager
+_external_bureau_manager = None
+
+def get_external_bureau_manager():
+    """Lazy-load des External Bureau Managers."""
+    global _external_bureau_manager
+    if _external_bureau_manager is None:
+        try:
+            from agents.external_bureau_manager import ExternalBureauManager
+            _external_bureau_manager = ExternalBureauManager(manager.config)
+        except Exception as e:
+            log_event("API", "Error", f"External Bureau Manager konnte nicht geladen werden: {e}")
+            return None
+    return _external_bureau_manager
+
+
+@app.get("/external-bureau/status")
+def get_external_bureau_status():
+    """Gibt den Status des External Bureau zurueck."""
+    bureau = get_external_bureau_manager()
+    if not bureau:
+        return {
+            "enabled": False,
+            "error": "External Bureau Manager nicht verfuegbar",
+            "specialists": []
+        }
+    return bureau.get_status()
+
+
+@app.get("/external-bureau/specialists")
+def get_all_specialists(category: Optional[str] = None):
+    """
+    Listet alle externen Specialists auf.
+
+    Args:
+        category: Optional - "all", "combat", "intelligence", "creative"
+    """
+    bureau = get_external_bureau_manager()
+    if not bureau:
+        return {"specialists": [], "error": "External Bureau nicht verfuegbar"}
+
+    if category:
+        specialists = bureau.get_specialists_by_category(category)
+    else:
+        specialists = bureau.get_all_specialists()
+
+    return {"specialists": specialists, "count": len(specialists)}
+
+
+@app.post("/external-bureau/specialists/{specialist_id}/activate")
+def activate_specialist(specialist_id: str):
+    """Aktiviert einen Specialist."""
+    bureau = get_external_bureau_manager()
+    if not bureau:
+        raise HTTPException(status_code=503, detail="External Bureau nicht verfuegbar")
+
+    result = bureau.activate_specialist(specialist_id)
+    if result["success"]:
+        return result
+    raise HTTPException(status_code=400, detail=result["message"])
+
+
+@app.post("/external-bureau/specialists/{specialist_id}/deactivate")
+def deactivate_specialist(specialist_id: str):
+    """Deaktiviert einen Specialist."""
+    bureau = get_external_bureau_manager()
+    if not bureau:
+        raise HTTPException(status_code=503, detail="External Bureau nicht verfuegbar")
+
+    result = bureau.deactivate_specialist(specialist_id)
+    if result["success"]:
+        return result
+    raise HTTPException(status_code=400, detail=result["message"])
+
+
+@app.get("/external-bureau/findings")
+def get_external_findings():
+    """Gibt alle gesammelten Findings aller Specialists zurueck."""
+    bureau = get_external_bureau_manager()
+    if not bureau:
+        return {"findings": [], "error": "External Bureau nicht verfuegbar"}
+
+    findings = bureau.get_combined_findings()
+    return {"findings": findings, "count": len(findings)}
+
+
+class SearchRequest(BaseModel):
+    query: str
+    num_results: int = 10
+
+
+@app.post("/external-bureau/search")
+async def run_external_search(request: SearchRequest):
+    """Fuehrt eine EXA Search durch."""
+    bureau = get_external_bureau_manager()
+    if not bureau:
+        raise HTTPException(status_code=503, detail="External Bureau nicht verfuegbar")
+
+    result = await bureau.run_search(request.query)
+    if not result:
+        raise HTTPException(status_code=400, detail="EXA Search nicht verfuegbar oder nicht aktiviert")
+
+    return {
+        "success": result.success,
+        "findings": [f.__dict__ if hasattr(f, '__dict__') else f for f in result.findings],
+        "summary": result.summary,
+        "duration_ms": result.duration_ms,
+        "error": result.error
+    }
+
+
+class ReviewRequest(BaseModel):
+    project_path: Optional[str] = None
+    files: Optional[list] = None
+
+
+@app.post("/external-bureau/review")
+async def run_external_review(request: ReviewRequest):
+    """Fuehrt ein Review mit allen aktiven COMBAT-Specialists durch."""
+    bureau = get_external_bureau_manager()
+    if not bureau:
+        raise HTTPException(status_code=503, detail="External Bureau nicht verfuegbar")
+
+    context = {
+        "project_path": request.project_path or manager.project_path or ".",
+        "files": request.files or []
+    }
+
+    results = await bureau.run_review_specialists(context)
+
+    return {
+        "results": [
+            {
+                "success": r.success,
+                "findings_count": len(r.findings),
+                "summary": r.summary,
+                "duration_ms": r.duration_ms,
+                "error": r.error
+            }
+            for r in results
+        ],
+        "total_findings": sum(len(r.findings) for r in results)
+    }
+
+
+# Hilfsfunktion fuer Logging
+def log_event(agent: str, event: str, message: str):
+    """Logged ein Event in die Konsole und optional ins UI."""
+    print(f"[{agent}] {event}: {message}")

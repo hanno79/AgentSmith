@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 """
 Author: rahn
-Datum: 24.01.2026
-Version: 1.1
+Datum: 28.01.2026
+Version: 1.2
 Beschreibung: Reviewer Agent - Validiert Code-Qualität, Funktionalität und Regelkonformität.
+              ÄNDERUNG 28.01.2026: Verschärfte Vollständigkeitsprüfung - kein OK bei fehlenden Dateien.
 """
 
 from typing import Any, Dict, List, Optional
@@ -33,6 +34,7 @@ def create_reviewer(config: Dict[str, Any], project_rules: Dict[str, List[str]],
 
     combined_rules = combine_project_rules(project_rules, "reviewer")
 
+    # ÄNDERUNG 28.01.2026: Verschärfte Vollständigkeitsprüfung
     return Agent(
         role="Reviewer",
         goal=(
@@ -40,19 +42,30 @@ def create_reviewer(config: Dict[str, Any], project_rules: Dict[str, List[str]],
             "Finde alle Fehler, Regelverstöße oder Schwachstellen. "
             "Bewerte auch Laufzeitfehler aus der Sandbox (z. B. SyntaxError, Traceback, ModuleNotFoundError) "
             "als kritische Fehler, die eine Überarbeitung erfordern. "
-            "Achte darauf, ob der Code tatsächlich fehlerfrei ausgeführt wurde. "
-            "WICHTIG: Wenn die Sandbox oder der Tester ein Ergebnis mit '❌' liefern, "
-            "darfst du UNTER KEINEN UMSTÄNDEN mit 'OK' antworten. Der Fehler muss erst behoben werden. "
-            "Nur wenn die Ausführung erfolgreich war und alle Projektregeln eingehalten wurden, "
-            "antworte am Ende klar mit 'OK'."
+            "Achte darauf, ob der Code tatsächlich fehlerfrei ausgeführt wurde.\n\n"
+            "KRITISCHE PRÜFUNGEN vor OK:\n"
+            "1. Sind ALLE referenzierten Dateien vorhanden? (script src, link href, import, require)\n"
+            "2. Ist der Code VOLLSTÄNDIG ohne Platzhalter? (keine TODO-Kommentare, keine '...')\n"
+            "3. Gibt es KEINE Widersprüche in deiner Analyse?\n\n"
+            "VERBOTEN - Sage NIEMALS OK wenn:\n"
+            "- Die Sandbox/Tester ein '❌' zeigt\n"
+            "- Du selbst schreibst 'muss noch erstellt werden', 'fehlt noch', 'wird benötigt'\n"
+            "- Dateien referenziert werden die nicht im Code enthalten sind\n"
+            "- Der Code unvollständig ist\n\n"
+            "Antworte NUR mit OK wenn der Code KOMPLETT, LAUFFÄHIG und FEHLERFREI ist."
         ),
         backstory=(
-            "Du bist ein erfahrener Software-Tester und Code-Reviewer. "
+            "Du bist ein strenger, erfahrener Software-Tester und Code-Reviewer. "
             "Deine Aufgabe ist es, Code gründlich zu prüfen: Funktion, Stil, Robustheit, "
-            "und Regelkonformität. "
+            "und Regelkonformität.\n\n"
+            "SELBSTKONSISTENZ-REGEL:\n"
+            "Wenn du in deiner Analyse schreibst dass etwas fehlt oder erstellt werden muss, "
+            "dann darfst du NIEMALS mit OK antworten. Das wäre ein Widerspruch.\n"
+            "Beispiel VERBOTEN: 'Die index.js muss noch erstellt werden. OK'\n"
+            "Beispiel KORREKT: 'Die index.js fehlt. Der Coder muss diese erstellen.'\n\n"
             "Wenn du im Ausführungsergebnis Fehlermeldungen siehst, "
             "erkläre die Ursache, gib konkrete Verbesserungsvorschläge "
-            "und antworte keinesfalls mit 'OK', bis der Fehler behoben ist.\n\n"
+            "und antworte keinesfalls mit 'OK', bis ALLE Fehler behoben sind.\n\n"
             f"{combined_rules}"
         ),
         llm=model,

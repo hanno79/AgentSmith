@@ -78,6 +78,8 @@ class BudgetTracker:
         "openrouter/anthropic/claude-haiku-4": {"input": 0.25, "output": 1.25},
         "openrouter/openai/gpt-4-turbo": {"input": 10.0, "output": 30.0},
         "openrouter/openai/gpt-4o": {"input": 2.5, "output": 10.0},
+        # ÄNDERUNG 25.01.2026: gpt-4o-mini hinzugefügt für günstigere Production-Modelle
+        "openrouter/openai/gpt-4o-mini": {"input": 0.15, "output": 0.60},
     }
 
     def __init__(self, data_dir: str = None):

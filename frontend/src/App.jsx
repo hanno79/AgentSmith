@@ -1,11 +1,14 @@
 /**
  * Author: rahn
- * Datum: 25.01.2026
- * Version: 1.5
+ * Datum: 28.01.2026
+ * Version: 1.8
  * Beschreibung: App Hauptkomponente - Zentrale UI mit WebSocket-Verbindung und Agenten-Steuerung.
  *               Refaktoriert: WebSocket, Config, AgentCard und NavigationHeader extrahiert.
  *               ÄNDERUNG 25.01.2026: Token-Metriken Props für CoderOffice hinzugefügt.
  *               ÄNDERUNG 25.01.2026: Worker-Daten werden an AgentCard Komponenten weitergegeben.
+ *               ÄNDERUNG 25.01.2026: Toggle USER/DEBUG im Global Output Loop mit formatierter Ausgabe.
+ *               ÄNDERUNG 25.01.2026: Einheitliche Lucide-Icons mit Farbcodierung im Global Output Loop.
+ *               ÄNDERUNG 28.01.2026: LibraryOffice für Protokoll und Archiv hinzugefügt.
  */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -24,7 +27,8 @@ import {
   RefreshCw,
   Search,
   Cpu,
-  Lock
+  Lock,
+  RotateCcw
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -39,11 +43,39 @@ import ResearcherOffice from './ResearcherOffice';
 import SecurityOffice from './SecurityOffice';
 import TechStackOffice from './TechStackOffice';
 import DBDesignerOffice from './DBDesignerOffice';
+import LibraryOffice from './LibraryOffice';
+import ExternalBureauOffice from './ExternalBureauOffice';
 import AgentCard from './components/AgentCard';
 import NavigationHeader from './components/NavigationHeader';
 import useWebSocket from './hooks/useWebSocket';
 import useConfig from './hooks/useConfig';
 import { API_BASE } from './constants/config';
+// ÄNDERUNG 25.01.2026: Log-Formatierung für benutzerfreundliche Ansicht
+import { formatLogForUser, HIDDEN_USER_EVENTS } from './utils/LogFormatter';
+
+// ÄNDERUNG 25.01.2026: Icon- und Farb-Mapping für Global Output Loop (passend zu AgentCards)
+const agentIconMap = {
+  'Researcher': { icon: Search, color: 'text-cyan-400' },
+  'Coder': { icon: Code2, color: 'text-blue-400' },
+  'Designer': { icon: Palette, color: 'text-pink-400' },
+  'Reviewer': { icon: ShieldCheck, color: 'text-yellow-400' },
+  'Tester': { icon: Bug, color: 'text-orange-400' },
+  'TechArchitect': { icon: Cpu, color: 'text-purple-400' },
+  'DBDesigner': { icon: Database, color: 'text-green-400' },
+  'Security': { icon: Lock, color: 'text-red-400' },
+  'Orchestrator': { icon: Cpu, color: 'text-slate-400' },
+  'System': { icon: RefreshCw, color: 'text-slate-500' }
+};
+
+// Helper-Funktion für Agent-Icon mit Farbe
+const getAgentIcon = (agentName) => {
+  const mapping = agentIconMap[agentName];
+  if (mapping) {
+    const IconComponent = mapping.icon;
+    return <IconComponent size={14} className={mapping.color} />;
+  }
+  return <Code2 size={14} className="text-slate-400" />;
+};
 
 const App = () => {
   // Navigation State
@@ -53,6 +85,8 @@ const App = () => {
   const [goal, setGoal] = useState('');
   const [logs, setLogs] = useState([]);
   const [status, setStatus] = useState('Idle');
+  // ÄNDERUNG 25.01.2026: Toggle für Global Output Loop Ansicht
+  const [outputMode, setOutputMode] = useState('user'); // 'user' | 'debug'
   const [activeAgents, setActiveAgents] = useState({
     orchestrator: { status: 'Idle', lastUpdate: '' },
     coder: { status: 'Idle', lastUpdate: '' },
@@ -207,6 +241,49 @@ const App = () => {
     }
   };
 
+  // ÄNDERUNG 25.01.2026: Reset-Funktion für Projekt-Neustart
+  const handleReset = async () => {
+    try {
+      // Backend zurücksetzen
+      await axios.post(`${API_BASE}/reset`);
+
+      // Frontend States zurücksetzen
+      setGoal('');
+      setLogs([]);
+      setStatus('Idle');
+      setOutputMode('user');
+
+      // Alle Agenten auf Idle setzen
+      setActiveAgents({
+        orchestrator: { status: 'Idle', lastUpdate: '' },
+        coder: { status: 'Idle', lastUpdate: '' },
+        reviewer: { status: 'Idle', lastUpdate: '' },
+        tester: { status: 'Idle', lastUpdate: '' },
+        designer: { status: 'Idle', lastUpdate: '' },
+        security: { status: 'Idle', lastUpdate: '' },
+        researcher: { status: 'Idle', lastUpdate: '' },
+        techarchitect: { status: 'Idle', lastUpdate: '' },
+        dbdesigner: { status: 'Idle', lastUpdate: '' },
+      });
+
+      // AgentData zurücksetzen
+      setAgentData({
+        coder: { code: '', files: [], iteration: 0, maxIterations: 3, model: '', tasks: [], taskCount: 0, modelsUsed: [], currentModel: '', previousModel: '', failedAttempts: 0, totalTokens: 0, totalCost: 0, workers: [] },
+        reviewer: { verdict: '', feedback: '', model: '', iteration: 0, maxIterations: 3, sandboxStatus: '', sandboxResult: '', testSummary: '', reviewOutput: '' },
+        tester: { results: [], metrics: {}, defects: [], coverage: [], stability: null, risk: null, screenshot: null, model: '' },
+        designer: { colorPalette: [], typography: [], atomicAssets: [], qualityScore: null, iterationInfo: null, viewport: null, previewUrl: '', concept: '', model: '', timestamp: '' },
+        security: { vulnerabilities: [], overallStatus: '', scanResult: '', model: '', scannedFiles: 0, scanType: 'requirement_scan', iteration: 0, blocking: false, timestamp: '' },
+        researcher: { query: '', result: '', status: '', model: '', error: '', workers: [] },
+        techstack: { blueprint: {}, model: '', decisions: [], dependencies: [], reasoning: '', timestamp: null, workers: [] },
+        dbdesigner: { schema: '', model: '', status: '', tables: [], timestamp: '', workers: [] },
+      });
+
+    } catch (error) {
+      console.error('Reset failed:', error);
+      setLogs(prev => [...prev, { agent: 'System', event: 'Error', message: 'Reset fehlgeschlagen.' }]);
+    }
+  };
+
   // Render Agent Offices
   if (currentRoom === 'agent-coder') {
     return (
@@ -350,6 +427,25 @@ const App = () => {
     );
   }
 
+  // ÄNDERUNG 28.01.2026: Library Office für Protokoll und Archiv
+  if (currentRoom === 'library') {
+    return (
+      <LibraryOffice
+        onBack={() => setCurrentRoom('mission-control')}
+        logs={logs}
+      />
+    );
+  }
+
+  // ÄNDERUNG 28.01.2026: External Bureau für externe Specialists
+  if (currentRoom === 'external-bureau') {
+    return (
+      <ExternalBureauOffice
+        onBack={() => setCurrentRoom('mission-control')}
+      />
+    );
+  }
+
   // Render Mainframe Hub oder Budget Dashboard
   if (currentRoom === 'mainframe' || currentRoom === 'budget-dashboard') {
     return (
@@ -389,19 +485,56 @@ const App = () => {
               </div>
             </div>
 
-            {/* Orchestrator Center */}
-            <motion.div layout className="w-full rounded-xl border border-border-dark bg-[#1c2127] p-6 shadow-2xl relative overflow-hidden group">
+            {/* ÄNDERUNG 25.01.2026: Command Input - Prominent über dem Orchestrator */}
+            <div className="w-full flex items-center gap-3 p-4 rounded-xl bg-[#1c2127] border border-border-dark shadow-2xl">
+              <PlusCircle className="text-slate-400 cursor-pointer hover:text-white flex-shrink-0" />
+              <input
+                value={goal}
+                onChange={(e) => setGoal(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleDeploy()}
+                placeholder="What should the team build today?"
+                className="flex-1 bg-transparent border-none text-white focus:ring-0 text-base py-2"
+                disabled={status === 'Working'}
+              />
+              <Mic size={20} className="text-slate-400 cursor-pointer hover:text-white flex-shrink-0" />
+
+              {/* ÄNDERUNG 25.01.2026: Reset Button - Nur sichtbar wenn nicht Idle */}
+              {status !== 'Idle' && (
+                <button
+                  onClick={handleReset}
+                  className="flex items-center gap-2 px-4 py-3 rounded-lg font-bold text-sm transition-all bg-red-600 hover:bg-red-700 text-white shadow-lg border-2 border-red-800 active:scale-95"
+                  title="Projekt zurücksetzen"
+                >
+                  <RotateCcw size={16} />
+                  <span>Reset</span>
+                </button>
+              )}
+
+              <button
+                onClick={handleDeploy}
+                disabled={status === 'Working' || !goal}
+                className={`flex items-center gap-2 px-6 py-3 rounded-lg font-bold text-sm transition-all ${
+                  status === 'Working' ? 'bg-slate-700 text-slate-400' : 'bg-primary hover:bg-blue-600 text-white shadow-lg'
+                }`}
+              >
+                <span>Deploy</span>
+                <Send size={16} />
+              </button>
+            </div>
+
+            {/* Orchestrator Center - ÄNDERUNG 25.01.2026: Höhe angepasst (wie AgentCards) */}
+            <motion.div layout className="w-full rounded-xl border border-border-dark bg-[#1c2127] p-4 shadow-2xl relative overflow-hidden group">
               <div className="absolute top-0 left-0 w-1 h-full bg-primary" />
-              <div className="flex items-center gap-4 mb-4">
-                <div className="p-3 rounded-lg bg-primary/10 border border-primary/30">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="p-2 rounded-lg bg-primary/10 border border-primary/30">
                   <Scaling size={24} className="text-primary" />
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold">Orchestrator Desk</h3>
-                  <p className="text-primary text-sm animate-pulse">{activeAgents.orchestrator.status !== 'Idle' ? 'Active: Routing Tasks...' : 'Ready for Instructions'}</p>
+                  <h3 className="text-lg font-bold">Orchestrator Desk</h3>
+                  <p className="text-primary text-xs animate-pulse">{activeAgents.orchestrator.status !== 'Idle' ? 'Active: Routing Tasks...' : 'Ready for Instructions'}</p>
                 </div>
               </div>
-              <div className="bg-black/40 rounded-lg p-4 font-mono text-xs text-slate-300 h-24 overflow-y-auto terminal-scroll border border-white/5">
+              <div className="bg-black/40 rounded-lg p-2.5 font-mono text-xs text-slate-300 h-20 overflow-y-auto terminal-scroll border border-white/5">
                 {logs.filter(l => l.agent === 'Orchestrator').slice(-3).map((l, i) => (
                   <div key={i} className="mb-1"><span className="text-slate-500 mr-2">[{l.event}]</span><span>{l.message}</span></div>
                 ))}
@@ -420,18 +553,6 @@ const App = () => {
               <AgentCard name="DB Designer" icon={<Database size={24} />} color="green" status={activeAgents.dbdesigner.status} logs={logs.filter(l => l.agent === 'DBDesigner')} onOpenOffice={() => setCurrentRoom('agent-dbdesigner')} workers={agentData.dbdesigner.workers || []} />
               <AgentCard name="Security" icon={<Lock size={24} />} color="red" status={activeAgents.security.status} logs={logs.filter(l => l.agent === 'Security')} onOpenOffice={() => setCurrentRoom('agent-security')} workers={agentData.security.workers || []} />
             </div>
-          </div>
-
-          {/* Floating Command Bar */}
-          <div className="fixed bottom-8 w-[90%] max-w-[800px] flex items-center gap-2 p-2 rounded-xl bg-[#1c2127]/90 backdrop-blur-md border border-border-dark shadow-2xl ring-1 ring-white/5 z-50">
-            <PlusCircle className="ml-2 text-slate-400 cursor-pointer hover:text-white" />
-            <input value={goal} onChange={(e) => setGoal(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleDeploy()}
-              placeholder="What should the team build today?" className="flex-1 bg-transparent border-none text-white focus:ring-0 text-sm" disabled={status === 'Working'} />
-            <Mic size={20} className="text-slate-400 cursor-pointer hover:text-white" />
-            <button onClick={handleDeploy} disabled={status === 'Working' || !goal}
-              className={`flex items-center gap-2 px-6 py-2 rounded-lg font-bold text-sm transition-all ${status === 'Working' ? 'bg-slate-700 text-slate-400' : 'bg-primary hover:bg-blue-600 text-white shadow-lg'}`}>
-              <span>Deploy</span><Send size={16} />
-            </button>
           </div>
         </main>
 
@@ -504,20 +625,79 @@ const App = () => {
             className="flex flex-col overflow-hidden"
             style={{ height: `${100 - previewHeight}%` }}
           >
+            {/* ÄNDERUNG 25.01.2026: Header mit USER/DEBUG Toggle */}
             <div className="px-4 py-2 border-b border-border-dark flex justify-between items-center bg-[#111418] shrink-0">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Global Output Loop</span>
+              <div className="flex items-center gap-3">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Global Output Loop</span>
+                {/* Toggle Buttons */}
+                <div className="flex gap-0.5 bg-slate-800/50 p-0.5 rounded">
+                  <button
+                    onClick={() => setOutputMode('user')}
+                    className={`px-2 py-0.5 text-[9px] font-bold rounded transition-colors ${
+                      outputMode === 'user'
+                        ? 'bg-blue-500/30 text-blue-300'
+                        : 'text-slate-500 hover:text-slate-300'
+                    }`}
+                  >
+                    USER
+                  </button>
+                  <button
+                    onClick={() => setOutputMode('debug')}
+                    className={`px-2 py-0.5 text-[9px] font-bold rounded transition-colors ${
+                      outputMode === 'debug'
+                        ? 'bg-purple-500/30 text-purple-300'
+                        : 'text-slate-500 hover:text-slate-300'
+                    }`}
+                  >
+                    DEBUG
+                  </button>
+                </div>
+              </div>
               <div className="flex items-center gap-1.5">
                 <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
                 <span className="text-[10px] text-green-500 font-mono">CONNECTED</span>
               </div>
             </div>
-            <div className="flex-1 p-3 overflow-y-auto terminal-scroll font-mono text-[10px] text-slate-400 flex flex-col gap-1">
-              {logs.map((l, i) => (
-                <div key={i} className="flex gap-2">
-                  <span className="text-slate-600 shrink-0">[{l.agent}]</span>
-                  <span className={l.event === 'Error' ? 'text-red-400' : 'text-slate-300'}>{l.message}</span>
-                </div>
-              ))}
+            {/* ÄNDERUNG 25.01.2026: Log-Ausgabe mit USER/DEBUG Formatierung */}
+            <div className="flex-1 p-3 overflow-y-auto terminal-scroll text-[10px] flex flex-col gap-1">
+              {logs
+                .filter(l => {
+                  // Debug: Alles anzeigen
+                  if (outputMode === 'debug') return true;
+                  // User: Technische Events ausblenden
+                  return !HIDDEN_USER_EVENTS.includes(l.event);
+                })
+                .map((l, i) => {
+                  if (outputMode === 'debug') {
+                    // Debug-Ansicht (rohe Daten mit Event-Typ)
+                    return (
+                      <div key={i} className="flex gap-2 font-mono">
+                        <span className="text-purple-500/60 shrink-0">[{l.event}]</span>
+                        <span className="text-slate-600 shrink-0">[{l.agent}]</span>
+                        <span className={l.event === 'Error' ? 'text-red-400' : 'text-slate-300'}>{l.message}</span>
+                      </div>
+                    );
+                  }
+
+                  // User-Ansicht (formatiert)
+                  const formatted = formatLogForUser(l);
+                  if (!formatted) return null;
+
+                  return (
+                    <div key={i} className="py-1.5 border-b border-slate-800/30 last:border-0">
+                      <div className="flex items-start gap-2">
+                        <span className="shrink-0 mt-0.5">{getAgentIcon(l.agent)}</span>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-slate-200 font-medium text-[11px]">{formatted.title}</span>
+                          <p className="text-slate-400 text-[10px] break-words leading-relaxed">{formatted.summary}</p>
+                          {formatted.detail && (
+                            <p className="text-slate-500 text-[9px] mt-0.5 italic leading-relaxed">{formatted.detail}</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               <div ref={logEndRef} />
             </div>
           </div>

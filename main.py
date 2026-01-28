@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 """
 Author: rahn
-Datum: 24.01.2026
-Version: 3.1
+Datum: 25.01.2026
+Version: 3.2
 Beschreibung: Multi-Agenten Proof-of-Concept - Haupteinstiegspunkt.
               Orchestriert alle Agenten mit iterativem Feedback-Loop, Logging und Regelüberwachung.
+              ÄNDERUNG 25.01.2026: Bug-Fix für Dateinamen-Parsing bei LLM-Formatierungsfehlern.
 """
 
 import os
@@ -92,6 +93,13 @@ def save_multi_file_output(project_path: str, code_output: str, default_filename
             break
         raw_filename = parts[i].strip()
         content = parts[i+1].strip()
+
+        # ÄNDERUNG 25.01.2026: Bug-Fix - Bereinige häufige LLM-Formatierungsfehler
+        # Entferne trailing Doppelpunkte die der LLM manchmal hinzufügt
+        raw_filename = raw_filename.rstrip(':')
+        # Entferne Leerzeichen - wenn vorhanden, nimm nur den ersten Teil
+        if ' ' in raw_filename:
+            raw_filename = raw_filename.split()[0]
 
         # SECURITY FIX: Nutze sichere Sanitization (entfernt Präfixe, .., illegale Zeichen)
         filename = sanitize_filename(raw_filename)

@@ -1,13 +1,15 @@
 # -*- coding: utf-8 -*-
 """
 Author: rahn
-Datum: 25.01.2026
-Version: 1.7
+Datum: 28.01.2026
+Version: 2.0
 Beschreibung: Orchestration Manager - Backend-Koordination mit LiteLLM Callbacks und Agent-Steuerung.
-              ÄNDERUNG 25.01.2026: TokenMetrics WebSocket Event für Live-Metriken im CoderOffice.
-              ÄNDERUNG 25.01.2026: Verbesserte OK-Erkennung und Debug-Logging für DEV LOOP.
-              ÄNDERUNG 25.01.2026: Initial-Security-Scan ENTFERNT - Security nur noch im DEV LOOP nach Code.
-              ÄNDERUNG 25.01.2026: OfficeManager für Worker-Pool-Tracking integriert.
+              ÄNDERUNG 28.01.2026: Library-Manager Integration für Protokollierung aller Agent-Aktionen
+              ÄNDERUNG 28.01.2026: Informationsfluss-Reparatur zwischen Agenten:
+                                   - Fix 1: Regex-Pattern für VULNERABILITY|FIX|SEVERITY korrigiert
+                                   - Fix 3: Feedback-Logik ohne widersprüchliche OK+Security-Signale
+                                   - Fix 4: Basis-Security-Hints für Iteration 1 (proaktive Guidance)
+              ÄNDERUNG 25.01.2026: TokenMetrics, OK-Erkennung, OfficeManager, Security-Workflow
 """
 
 import os
@@ -52,6 +54,7 @@ from logger_utils import log_event
 from budget_tracker import get_budget_tracker
 from model_router import get_model_router
 from .worker_pool import OfficeManager, WorkerStatus
+from .library_manager import get_library_manager
 
 from crewai import Task
 
@@ -203,6 +206,20 @@ class OrchestrationManager:
             self.on_log(agent, event, message)
         log_event(agent, event, message)
 
+        # ÄNDERUNG 28.01.2026: Protokollierung in Library Manager
+        try:
+            library = get_library_manager()
+            if library.current_project:
+                library.log_entry(
+                    from_agent=agent,
+                    to_agent="System",
+                    entry_type=event,
+                    content=message,
+                    iteration=getattr(self, '_current_iteration', 0)
+                )
+        except Exception:
+            pass  # Fehler beim Protokollieren sollten nicht den Workflow stoppen
+
     # ÄNDERUNG 25.01.2026: Worker-Status-Callback für WebSocket-Events
     async def _handle_worker_status_change(self, data: Dict[str, Any]):
         """
@@ -282,15 +299,65 @@ class OrchestrationManager:
                 "event": "task_assigned" if worker_status == "working" else "task_completed"
             }, ensure_ascii=False))
 
+    # ÄNDERUNG 28.01.2026: Strukturiertes Test-Feedback für Coder (Phase 0.12)
+    def _format_test_feedback(self, test_result: Dict[str, Any]) -> str:
+        """
+        Formatiert Test-Ergebnisse als strukturiertes Feedback für den Coder.
+
+        Args:
+            test_result: Dictionary mit unit_tests und ui_tests Ergebnissen
+
+        Returns:
+            Formatierter Feedback-Text
+        """
+        lines = []
+
+        # Unit-Tests
+        ut = test_result.get("unit_tests", {})
+        if ut.get("status") == "FAIL":
+            lines.append("🧪 UNIT-TEST FEHLER:")
+            failed_count = ut.get("failed_count", 0)
+            if failed_count:
+                lines.append(f"   {failed_count} Test(s) fehlgeschlagen")
+            summary = ut.get("summary", "")
+            if summary:
+                lines.append(f"   Zusammenfassung: {summary}")
+            details = ut.get("details", "")
+            if details:
+                # Details auf 1500 Zeichen begrenzen für Übersichtlichkeit
+                lines.append(f"   Details:\n{details[:1500]}")
+            lines.append("")
+
+        # UI-Tests
+        ui = test_result.get("ui_tests", {})
+        if ui.get("status") in ["FAIL", "ERROR"]:
+            lines.append("🖥️ UI-TEST FEHLER:")
+            issues = ui.get("issues", [])
+            for issue in issues[:5]:  # Max 5 Issues anzeigen
+                lines.append(f"   - {issue}")
+            if not ui.get("has_visible_content", True):
+                lines.append("   ⚠️ LEERE SEITE ERKANNT - kein sichtbarer Inhalt!")
+            if len(issues) > 5:
+                lines.append(f"   ... und {len(issues) - 5} weitere Probleme")
+            lines.append("")
+
+        # Re-Test Hinweis wenn Fehler vorhanden
+        if lines:
+            lines.append("🔄 RE-TEST ERFORDERLICH:")
+            lines.append("Nach deinen Fixes werden die Tests AUTOMATISCH erneut ausgeführt.")
+            lines.append("Der Loop läuft bis alle Tests grün sind oder max_iterations erreicht.\n")
+
+        return "\n".join(lines) if lines else "✅ Alle Tests bestanden"
+
     def _is_rate_limit_error(self, e: Exception) -> bool:
         """
-        Prüft, ob eine Exception ein Rate-Limit-Fehler ist.
-        
+        Prüft, ob eine Exception ein Rate-Limit-Fehler oder ein API-Fehler ist.
+
         Args:
             e: Die Exception, die geprüft werden soll
-            
+
         Returns:
-            True wenn Status-Code 429/402 oder Rate-Limit im Fehlertext gefunden wird
+            True wenn Status-Code 429/402, Rate-Limit oder OpenRouter-API-Fehler erkannt wird
         """
         # Prüfe auf Status-Code (429 oder 402)
         status_code = None
@@ -298,13 +365,30 @@ class OrchestrationManager:
             status_code = e.response.status_code
         elif hasattr(e, 'status_code'):
             status_code = e.status_code
-        
+
         # Prüfe auf Rate-Limit im Fehlertext mit Regex
         error_str = str(e).lower()
         rate_limit_pattern = r'\brate[_\s-]?limit\b'
-        is_rate_limit = (status_code in [429, 402]) or bool(re.search(rate_limit_pattern, error_str))
 
-        return is_rate_limit
+        # ÄNDERUNG 25.01.2026: Erweiterte Erkennung für OpenRouter/API-Fehler
+        # Diese Fehler treten bei Free-Modellen häufig auf und sollten Fallback auslösen
+        openrouter_error_patterns = [
+            'upstream error',
+            'openrouterexception',
+            'openinference',
+            'model endpoint',
+            'apierror',
+            'api error',
+            'service unavailable',
+            'internal server error',
+            'bad gateway',
+            'gateway timeout'
+        ]
+
+        is_rate_limit = (status_code in [429, 402]) or bool(re.search(rate_limit_pattern, error_str))
+        is_api_error = any(pattern in error_str for pattern in openrouter_error_patterns)
+
+        return is_rate_limit or is_api_error
 
     # ÄNDERUNG 24.01.2026: Erkennung für leere/ungültige API-Antworten
     def _is_empty_or_invalid_response(self, response: str) -> bool:
@@ -422,37 +506,69 @@ class OrchestrationManager:
         if not security_result:
             return vulnerabilities
 
-        # Neues Pattern: "VULNERABILITY: [description] | FIX: [solution]"
-        vuln_pattern = r'VULNERABILITY:\s*(.+?)(?:\s*\|\s*FIX:\s*(.+?))?(?=VULNERABILITY:|$)'
-        matches = re.findall(vuln_pattern, security_result, re.IGNORECASE | re.DOTALL)
+        # ÄNDERUNG 28.01.2026: Verbessertes Pattern für "VULNERABILITY: ... | FIX: ... | SEVERITY: ..."
+        # Pattern 1: Vollständiges Format mit SEVERITY (bevorzugt)
+        full_pattern = r'VULNERABILITY:\s*(.+?)\s*\|\s*FIX:\s*(.+?)\s*\|\s*SEVERITY:\s*(\w+)'
+        full_matches = re.findall(full_pattern, security_result, re.IGNORECASE | re.DOTALL)
 
-        for match in matches:
-            vuln_text = match[0].strip() if match[0] else ""
-            fix_text = match[1].strip() if len(match) > 1 and match[1] else ""
+        for match in full_matches:
+            vuln_text = match[0].strip()
+            fix_text = match[1].strip()
+            severity_text = match[2].strip().lower()
 
-            # Falls kein FIX gefunden, versuche alternative Patterns
-            if not fix_text and "|" in vuln_text:
-                parts = vuln_text.split("|", 1)
-                vuln_text = parts[0].strip()
-                if len(parts) > 1 and "fix" in parts[1].lower():
-                    fix_text = parts[1].replace("FIX:", "").replace("fix:", "").strip()
+            # Severity aus explizitem Feld
+            severity = severity_text if severity_text in ["critical", "high", "medium", "low"] else "medium"
 
-            severity = "medium"
+            # Datei-Pfad extrahieren
+            file_match = re.search(r'(?:in|file|datei|zeile\s+\d+\s+in)\s+["\']?([a-zA-Z0-9_./\\-]+\.[a-z]{2,4})["\']?', vuln_text, re.IGNORECASE)
+            affected_file = file_match.group(1) if file_match else None
 
-            # Severity-Klassifikation basierend auf Schlüsselwörtern
-            if any(word in vuln_text.lower() for word in ["critical", "kritisch", "sql injection", "rce", "remote code"]):
-                severity = "critical"
-            elif any(word in vuln_text.lower() for word in ["high", "hoch", "xss", "csrf", "injection"]):
-                severity = "high"
-            elif any(word in vuln_text.lower() for word in ["low", "niedrig", "info", "informational", "minimal"]):
-                severity = "low"
-
+            # ÄNDERUNG 28.01.2026: Limits erhöht damit Coder vollständige Fix-Anweisungen erhält
             vulnerabilities.append({
                 "severity": severity,
-                "description": vuln_text[:200],
-                "fix": fix_text[:300],  # NEU: Lösungsvorschlag
+                "description": vuln_text[:2000],
+                "fix": fix_text[:5000],
+                "affected_file": affected_file,
                 "type": "SECURITY_ISSUE"
             })
+
+        # Pattern 2: Fallback für altes Format ohne SEVERITY (Abwärtskompatibilität)
+        if not vulnerabilities:
+            old_pattern = r'VULNERABILITY:\s*(.+?)(?:\s*\|\s*FIX:\s*(.+?))?(?=VULNERABILITY:|$)'
+            old_matches = re.findall(old_pattern, security_result, re.IGNORECASE | re.DOTALL)
+
+            for match in old_matches:
+                vuln_text = match[0].strip() if match[0] else ""
+                fix_text = match[1].strip() if len(match) > 1 and match[1] else ""
+
+                # Falls kein FIX gefunden, versuche alternative Patterns
+                if not fix_text and "|" in vuln_text:
+                    parts = vuln_text.split("|", 1)
+                    vuln_text = parts[0].strip()
+                    if len(parts) > 1 and "fix" in parts[1].lower():
+                        fix_text = parts[1].replace("FIX:", "").replace("fix:", "").strip()
+
+                # Severity aus Keywords (wie bisher)
+                severity = "medium"
+                if any(word in vuln_text.lower() for word in ["critical", "kritisch", "sql injection", "rce", "remote code"]):
+                    severity = "critical"
+                elif any(word in vuln_text.lower() for word in ["high", "hoch", "xss", "csrf", "injection"]):
+                    severity = "high"
+                elif any(word in vuln_text.lower() for word in ["low", "niedrig", "info", "informational", "minimal"]):
+                    severity = "low"
+
+                # Datei-Pfad extrahieren
+                file_match = re.search(r'(?:in|file|datei)\s+["\']?([a-zA-Z0-9_./\\-]+\.[a-z]{2,4})["\']?', vuln_text, re.IGNORECASE)
+                affected_file = file_match.group(1) if file_match else None
+
+                # ÄNDERUNG 28.01.2026: Limits erhöht damit Coder vollständige Fix-Anweisungen erhält
+                vulnerabilities.append({
+                    "severity": severity,
+                    "description": vuln_text[:2000],
+                    "fix": fix_text[:5000],
+                    "affected_file": affected_file,
+                    "type": "SECURITY_ISSUE"
+                })
 
         return vulnerabilities[:10]  # Limitiere auf 10 für UI
 
@@ -521,6 +637,15 @@ class OrchestrationManager:
     def run_task(self, user_goal: str):
         try:
             self._ui_log("System", "Task Start", f"Goal: {user_goal}")
+
+            # ÄNDERUNG 28.01.2026: Projekt in Library starten für Protokollierung
+            try:
+                library = get_library_manager()
+                project_name = user_goal[:50] if len(user_goal) > 50 else user_goal
+                library.start_project(name=project_name, goal=user_goal)
+                self._ui_log("Library", "ProjectStart", f"Protokollierung gestartet: {library.current_project['project_id']}")
+            except Exception as lib_err:
+                self._ui_log("Library", "Warning", f"Library-Start fehlgeschlagen: {lib_err}")
 
             # Extrahiere Projekt-ID für Budget-Tracking
             project_id = None
@@ -721,7 +846,8 @@ class OrchestrationManager:
             
             agent_coder = create_coder(self.config, project_rules, router=self.model_router)
             agent_reviewer = create_reviewer(self.config, project_rules, router=self.model_router)
-            agent_tester = create_tester(self.config, project_rules)
+            # ÄNDERUNG 28.01.2026: Tester mit router für konsistente Modell-Konfiguration (Phase 0.12)
+            agent_tester = create_tester(self.config, project_rules, router=self.model_router)
             # ÄNDERUNG 25.01.2026: Security-Agent immer erstellen (für Re-Scan im DEV LOOP)
             agent_security = create_security_agent(self.config, project_rules, router=self.model_router)
             
@@ -757,7 +883,11 @@ class OrchestrationManager:
                     self._update_worker_status("designer", "working", "Erstelle Design-Konzept...", designer_model)
                     agent_des = create_designer(self.config, project_rules, router=self.model_router)
                     if agent_des:
-                        task_des = Task(description=f"Design für {user_goal}", expected_output="Konzept", agent=agent_des)
+                        # AENDERUNG 25.01.2026: Designer erhaelt TechStack-Blueprint
+                        tech_info = f"Tech-Stack: {self.tech_blueprint.get('project_type', 'webapp')}"
+                        if self.tech_blueprint.get('dependencies'):
+                            tech_info += f", Frameworks: {', '.join(self.tech_blueprint.get('dependencies', []))}"
+                        task_des = Task(description=f"Design für: {user_goal}\n{tech_info}", expected_output="Konzept", agent=agent_des)
                         self.design_concept = str(task_des.execute_sync())
                         # ÄNDERUNG 25.01.2026: Worker-Status auf "idle" setzen
                         self._update_worker_status("designer", "idle")
@@ -787,6 +917,7 @@ class OrchestrationManager:
             max_retries = self.config.get("max_retries", 3)
             feedback = ""
             iteration = 0
+            self._current_iteration = 0  # ÄNDERUNG 28.01.2026: Für Library-Protokollierung
             success = False
             # ÄNDERUNG 24.01.2026: Security-Retry-Counter für max_security_retries
             security_retry_count = 0
@@ -808,9 +939,30 @@ class OrchestrationManager:
                 coder_model = self.model_router.get_model("coder") if self.model_router else "unknown"
                 self._update_worker_status("coder", "working", f"Iteration {iteration+1}/{max_retries}", coder_model)
 
-                c_prompt = f"Ziel: {user_goal}\nTech: {self.tech_blueprint}\nDB: {self.database_schema[:200]}\n"
+                # ÄNDERUNG 28.01.2026: Truncation entfernt - Coder braucht vollständiges DB-Schema
+                c_prompt = f"Ziel: {user_goal}\nTech: {self.tech_blueprint}\nDB: {self.database_schema}\n"
                 if not self.is_first_run: c_prompt += f"\nAlt-Code:\n{self.current_code}\n"
                 if feedback: c_prompt += f"\nKorrektur: {feedback}\n"
+
+                # ÄNDERUNG 28.01.2026: Basis-Security-Hints für erste Iteration (proaktive Guidance)
+                if iteration == 0 and not feedback:
+                    c_prompt += "\n\n🛡️ SECURITY BASICS (von Anfang an beachten!):\n"
+                    c_prompt += "- Kein innerHTML/document.write mit User-Input (XSS-Risiko)\n"
+                    c_prompt += "- Keine String-Konkatenation in SQL/DB-Queries (Injection-Risiko)\n"
+                    c_prompt += "- Keine hardcoded API-Keys, Passwörter oder Secrets im Code\n"
+                    c_prompt += "- Bei eval(): Nur mit Button-Input, NIEMALS mit User-Text-Input\n"
+                    c_prompt += "- Nutze textContent statt innerHTML wenn möglich\n\n"
+
+                # ÄNDERUNG 28.01.2026: Gelernte Lektionen aus Memory in Coder-Prompt einbinden
+                try:
+                    memory_path = os.path.join(self.base_dir, "memory", "global_memory.json")
+                    tech_stack = self.tech_blueprint.get("project_type", "") if self.tech_blueprint else ""
+                    lessons = get_lessons_for_prompt(memory_path, tech_stack=tech_stack)
+                    if lessons and lessons.strip():
+                        c_prompt += f"\n\n📚 LESSONS LEARNED (aus früheren Projekten - UNBEDINGT BEACHTEN!):\n{lessons}\n"
+                        self._ui_log("Memory", "LessonsApplied", f"Coder erhält {len(lessons.splitlines())} Lektionen")
+                except Exception as les_err:
+                    logger.debug(f"Lektionen konnten nicht geladen werden: {les_err}")
 
                 # ÄNDERUNG 25.01.2026: Granulare Security-Tasks mit Priorisierung
                 if hasattr(self, 'security_vulnerabilities') and self.security_vulnerabilities:
@@ -830,6 +982,8 @@ class OrchestrationManager:
                         severity = vuln.get("severity", "medium").upper()
                         description = vuln.get("description", "Unbekannte Schwachstelle")
                         fix = vuln.get("fix", "Bitte beheben")
+                        # ÄNDERUNG 25.01.2026: Datei-Pfad für bessere Lokalisierung
+                        affected_file = vuln.get("affected_file", None)
 
                         coder_tasks.append({
                             "id": task_id,
@@ -837,11 +991,14 @@ class OrchestrationManager:
                             "severity": vuln.get("severity", "medium"),
                             "description": description,
                             "fix": fix,
+                            "affected_file": affected_file,
                             "status": "pending"
                         })
 
+                        # ÄNDERUNG 25.01.2026: Datei-Pfad in Prompt für Free-Modelle
+                        file_hint = f"\n   -> DATEI: {affected_file}" if affected_file else ""
                         task_prompt_lines.append(
-                            f"TASK {task_id} [{severity}]: {description}\n"
+                            f"TASK {task_id} [{severity}]: {description}{file_hint}\n"
                             f"   -> LÖSUNG: {fix}"
                         )
 
@@ -857,26 +1014,60 @@ class OrchestrationManager:
                     c_prompt += "\n".join(task_prompt_lines)
                     c_prompt += "\n\nWICHTIG: Bearbeite die Tasks in der angegebenen Reihenfolge! Implementiere die LÖSUNG für jeden Task!\n"
 
-                c_prompt += "Format: ### FILENAME: path/to/file.ext"
+                # ÄNDERUNG 28.01.2026: Unit-Test-Anforderung hinzufügen
+                c_prompt += "\n\n🧪 UNIT-TEST REQUIREMENT:\n"
+                c_prompt += "- Erstelle IMMER Unit-Tests für alle neuen Funktionen/Klassen\n"
+                c_prompt += "- Test-Dateien: tests/test_<modulname>.py oder tests/<modulname>.test.js\n"
+                c_prompt += "- Mindestens 3 Test-Cases pro Funktion (normal, edge-case, error-case)\n"
+                c_prompt += "- Format: ### FILENAME: tests/test_<modulname>.py\n"
+                c_prompt += "- Tests müssen AUSFÜHRBAR sein (pytest bzw. npm test)\n"
+
+                # Für API-Projekte zusätzliche Anforderungen
+                if self.tech_blueprint and self.tech_blueprint.get("requires_server"):
+                    c_prompt += "\n🔌 API-TESTS:\n"
+                    c_prompt += "- Teste JEDEN API-Endpoint mit mindestens 2 Test-Cases\n"
+                    c_prompt += "- Prüfe Erfolgs-Response UND Fehler-Response\n"
+                    c_prompt += "- Python: pytest + Flask test_client oder requests\n"
+                    c_prompt += "- JavaScript: jest + supertest\n"
+
+                c_prompt += "\nFormat: ### FILENAME: path/to/file.ext"
 
                 task_coder = Task(description=c_prompt, expected_output="Code", agent=agent_coder)
 
-                # Error Handling für Rate Limits (429/402)
-                try:
-                    self.current_code = str(task_coder.execute_sync()).strip()
-                except Exception as e:
-                    if self._is_rate_limit_error(e):
-                        # Markiere aktuelles Modell als rate-limited
-                        current_model = self.model_router.get_model("coder")
-                        self.model_router.mark_rate_limited_sync(current_model)
-                        self._ui_log("ModelRouter", "RateLimit", f"Modell {current_model} pausiert, wechsle zu Fallback...")
+                # ÄNDERUNG 25.01.2026: Erweiterte Retry-Logik mit 3 Versuchen (analog zum Reviewer)
+                MAX_CODER_RETRIES = 3
+                coder_success = False
 
-                        # Erstelle Agent mit Fallback-Modell und retry
-                        agent_coder = create_coder(self.config, project_rules, router=self.model_router)
-                        task_coder = Task(description=c_prompt, expected_output="Code", agent=agent_coder)
+                for coder_attempt in range(MAX_CODER_RETRIES):
+                    try:
                         self.current_code = str(task_coder.execute_sync()).strip()
-                    else:
-                        raise e
+                        coder_success = True
+                        break
+
+                    except Exception as e:
+                        current_model = self.model_router.get_model("coder") if self.model_router else "unknown"
+
+                        if self._is_rate_limit_error(e):
+                            # Markiere aktuelles Modell als rate-limited
+                            self.model_router.mark_rate_limited_sync(current_model)
+                            self._ui_log("ModelRouter", "RateLimit",
+                                f"Modell {current_model} pausiert (Versuch {coder_attempt + 1}/{MAX_CODER_RETRIES}), wechsle zu Fallback...")
+
+                            # Erstelle Agent mit Fallback-Modell und retry
+                            agent_coder = create_coder(self.config, project_rules, router=self.model_router)
+                            task_coder = Task(description=c_prompt, expected_output="Code", agent=agent_coder)
+
+                            if coder_attempt == MAX_CODER_RETRIES - 1:
+                                # Letzter Versuch fehlgeschlagen
+                                self._ui_log("Coder", "Error", f"Alle {MAX_CODER_RETRIES} Versuche fehlgeschlagen: {str(e)[:200]}")
+                                raise e
+                        else:
+                            # Unbekannter Fehler - sofort abbrechen
+                            self._ui_log("Coder", "Error", f"Unerwarteter Fehler: {str(e)[:200]}")
+                            raise e
+
+                if not coder_success:
+                    raise Exception(f"Coder konnte nach {MAX_CODER_RETRIES} Versuchen keine Ausgabe generieren")
                 
                 # Speichern
                 from main import save_multi_file_output
@@ -913,6 +1104,32 @@ class OrchestrationManager:
                 self._ui_log("Sandbox", "Result", sandbox_result)
                 sandbox_failed = sandbox_result.startswith("❌")
 
+                # ÄNDERUNG 28.01.2026: Multi-File Referenz-Validierung
+                try:
+                    from sandbox_runner import validate_project_references
+                    ref_result = validate_project_references(self.project_path)
+                    if ref_result.startswith("❌"):
+                        sandbox_result += f"\n{ref_result}"
+                        sandbox_failed = True
+                        self._ui_log("Sandbox", "Referenzen", ref_result)
+                    else:
+                        self._ui_log("Sandbox", "Referenzen", ref_result)
+                except Exception as ref_err:
+                    self._ui_log("Sandbox", "Warning", f"Referenz-Validierung fehlgeschlagen: {ref_err}")
+
+                # ÄNDERUNG 28.01.2026: run.bat Validierung vor Server-Start
+                try:
+                    from content_validator import validate_run_bat
+                    bat_result = validate_run_bat(self.project_path, self.tech_blueprint)
+                    if bat_result.issues:
+                        for issue in bat_result.issues:
+                            self._ui_log("Tester", "RunBatWarning", issue)
+                    if bat_result.warnings:
+                        for warning in bat_result.warnings:
+                            self._ui_log("Tester", "RunBatInfo", warning)
+                except Exception as bat_err:
+                    self._ui_log("Tester", "Warning", f"run.bat-Validierung fehlgeschlagen: {bat_err}")
+
                 # Memory: Lerne aus Sandbox-Fehlern (geschützt, damit Iteration weiterläuft)
                 if sandbox_failed:
                     try:
@@ -923,6 +1140,35 @@ class OrchestrationManager:
                         self._ui_log("Memory", "Learning", f"Sandbox: {learn_result}")
                     except Exception as mem_err:
                         self._ui_log("Memory", "Error", f"Memory-Operation fehlgeschlagen: {mem_err}")
+
+                # ÄNDERUNG 28.01.2026: Unit-Tests vor Playwright-Tests ausführen
+                unit_test_result = {"status": "SKIP", "summary": "Keine Unit-Tests", "test_count": 0}
+                try:
+                    from unit_test_runner import run_unit_tests
+                    self._ui_log("UnitTest", "Status", "Führe Unit-Tests durch...")
+                    self._update_worker_status("tester", "working", "Unit-Tests...", "pytest/jest")
+
+                    unit_test_result = run_unit_tests(self.project_path, self.tech_blueprint)
+
+                    self._ui_log("UnitTest", "Result", json.dumps({
+                        "status": unit_test_result.get("status"),
+                        "summary": unit_test_result.get("summary"),
+                        "test_count": unit_test_result.get("test_count", 0),
+                        "iteration": iteration + 1
+                    }, ensure_ascii=False))
+
+                    # Unit-Test-Fehler blockieren wie Syntax-Fehler
+                    if unit_test_result.get("status") == "FAIL":
+                        sandbox_failed = True
+                        sandbox_result += f"\n\n❌ UNIT-TESTS FEHLGESCHLAGEN:\n{unit_test_result.get('summary', '')}"
+                        if unit_test_result.get("details"):
+                            sandbox_result += f"\n{unit_test_result.get('details', '')[:1000]}"
+
+                except ImportError:
+                    self._ui_log("UnitTest", "Warning", "unit_test_runner.py nicht gefunden - übersprungen")
+                except Exception as ut_err:
+                    logger.warning(f"Unit-Test Runner Fehler: {ut_err}")
+                    self._ui_log("UnitTest", "Error", f"Unit-Test Fehler: {ut_err}")
 
                 # ÄNDERUNG 24.01.2026: Intelligente Test-Logik mit tech_blueprint und Server-Integration
                 # test_project() nutzt tech_blueprint um:
@@ -978,26 +1224,64 @@ class OrchestrationManager:
                     # ÄNDERUNG 25.01.2026: Worker-Status auf "idle" setzen (auch bei Fehler)
                     self._update_worker_status("tester", "idle")
                     sandbox_failed = True
+                    ui_result = {"status": "ERROR", "issues": [str(te)], "screenshot": None}
+
+                # ÄNDERUNG 28.01.2026: Strukturiertes Test-Ergebnis für Coder-Feedback (Phase 0.12)
+                unit_ok = unit_test_result.get("status") in ["OK", "SKIP"]
+                ui_ok = ui_result.get("status") not in ["FAIL", "ERROR"] if 'ui_result' in dir() else True
+                test_result = {
+                    "unit_tests": {
+                        "status": unit_test_result.get("status", "SKIP"),
+                        "passed": unit_test_result.get("test_count", 0),
+                        "failed_count": unit_test_result.get("failed_count", 0),
+                        "summary": unit_test_result.get("summary", ""),
+                        "details": unit_test_result.get("details", "")
+                    },
+                    "ui_tests": {
+                        "status": ui_result.get("status", "SKIP") if 'ui_result' in dir() else "SKIP",
+                        "issues": ui_result.get("issues", []) if 'ui_result' in dir() else [],
+                        "screenshot": ui_result.get("screenshot") if 'ui_result' in dir() else None,
+                        "has_visible_content": True  # Default, wird durch Content-Validator gesetzt
+                    },
+                    "overall_status": "PASS" if (unit_ok and ui_ok) else "FAIL"
+                }
+
+                # ÄNDERUNG 28.01.2026: Test-Zusammenfassung für Bibliothek protokollieren (Phase 0.12)
+                self._ui_log("Tester", "TestSummary", json.dumps({
+                    "overall_status": test_result.get("overall_status"),
+                    "unit_status": test_result["unit_tests"]["status"],
+                    "unit_passed": test_result["unit_tests"]["passed"],
+                    "ui_status": test_result["ui_tests"]["status"],
+                    "ui_issues_count": len(test_result["ui_tests"]["issues"]),
+                    "iteration": iteration + 1
+                }, ensure_ascii=False))
 
                 # Review
                 set_current_agent("Reviewer", project_id)  # Budget-Tracking
-                r_prompt = f"Review Code: {self.current_code[:500]}\nSandbox: {sandbox_result}\nTester: {test_summary}"
+                # ÄNDERUNG 28.01.2026: Truncation entfernt - Reviewer muss vollständigen Code sehen
+                r_prompt = f"Review Code:\n{self.current_code}\nSandbox: {sandbox_result}\nTester: {test_summary}"
                 # ÄNDERUNG 25.01.2026: Worker-Status auf "working" setzen
                 self._update_worker_status("reviewer", "working", "Prüfe Code...", self.model_router.get_model("reviewer") if self.model_router else "")
 
                 # ÄNDERUNG 24.01.2026: Review mit "No Response" Handling und automatischem Modellwechsel
+                # ÄNDERUNG 25.01.2026: Timeout hinzugefügt (wie beim Researcher) für robustere API-Aufrufe
                 MAX_REVIEW_RETRIES = 3
+                REVIEWER_TIMEOUT_SECONDS = 120  # 2 Minuten Timeout
                 review_output = None
 
                 for review_attempt in range(MAX_REVIEW_RETRIES):
                     task_review = Task(description=r_prompt, expected_output="OK/Feedback", agent=agent_reviewer)
+                    current_model = self.model_router.get_model("reviewer")
 
                     try:
-                        review_output = str(task_review.execute_sync())
+                        # ÄNDERUNG 25.01.2026: Mit Timeout wrappen um endloses Blockieren zu verhindern
+                        review_output = run_with_timeout(
+                            lambda: str(task_review.execute_sync()),
+                            timeout_seconds=REVIEWER_TIMEOUT_SECONDS
+                        )
 
                         # Prüfe auf leere/ungültige Antwort
                         if self._is_empty_or_invalid_response(review_output):
-                            current_model = self.model_router.get_model("reviewer")
                             self._ui_log("Reviewer", "NoResponse",
                                 f"Modell {current_model} lieferte keine Antwort (Versuch {review_attempt + 1}/{MAX_REVIEW_RETRIES})")
 
@@ -1008,10 +1292,17 @@ class OrchestrationManager:
 
                         break  # Gültige Antwort erhalten
 
+                    except TimeoutError as te:
+                        # ÄNDERUNG 25.01.2026: Timeout - Modellwechsel wie bei Rate-Limit
+                        self._ui_log("Reviewer", "Timeout",
+                            f"Reviewer-Modell {current_model} timeout nach {REVIEWER_TIMEOUT_SECONDS}s (Versuch {review_attempt + 1}/{MAX_REVIEW_RETRIES}), wechsle zu Fallback...")
+                        self.model_router.mark_rate_limited_sync(current_model)
+                        agent_reviewer = create_reviewer(self.config, project_rules, router=self.model_router)
+                        continue
+
                     except Exception as e:
                         if self._is_rate_limit_error(e):
                             # Markiere aktuelles Modell als rate-limited
-                            current_model = self.model_router.get_model("reviewer")
                             self.model_router.mark_rate_limited_sync(current_model)
                             self._ui_log("ModelRouter", "RateLimit", f"Reviewer-Modell {current_model} pausiert, wechsle zu Fallback...")
 
@@ -1058,28 +1349,29 @@ class OrchestrationManager:
                     # ÄNDERUNG 25.01.2026: Worker-Status auf "working" setzen
                     self._update_worker_status("security", "working", f"Security-Scan Iteration {iteration+1}", self.model_router.get_model("security") if self.model_router else "")
 
-                    # ÄNDERUNG 24.01.2026: Security-Prompt mit Lösungsvorschlägen
-                    security_rescan_prompt = f"""Analysiere den generierten Code auf Sicherheitslücken:
+                    # ÄNDERUNG 25.01.2026: Vereinfachter Security-Prompt für Free-Modelle
+                    security_rescan_prompt = f"""Prüfe diesen Code auf Sicherheitsprobleme:
 
-TECH-STACK: {json.dumps(self.tech_blueprint) if self.tech_blueprint else 'Unbekannt'}
+{self.current_code}
 
-CODE:
-{self.current_code[:8000]}
+ANTWORT-FORMAT (eine Zeile pro Problem):
+VULNERABILITY: [Problem-Beschreibung] | FIX: [Konkrete Lösung mit Code-Beispiel] | SEVERITY: [CRITICAL/HIGH/MEDIUM/LOW]
 
-WICHTIG: Für JEDES gefundene Problem gib einen KONKRETEN LÖSUNGSVORSCHLAG!
+BEISPIEL:
+VULNERABILITY: innerHTML in Zeile 15 ermöglicht XSS-Angriffe | FIX: Ersetze element.innerHTML = userInput mit element.textContent = userInput oder nutze DOMPurify.sanitize(userInput) | SEVERITY: HIGH
 
-Format für jedes Problem:
-VULNERABILITY: [Beschreibung] | FIX: [Konkreter Code-Vorschlag]
+PRÜFE NUR auf die 3 wichtigsten Kategorien:
+1. XSS (innerHTML, document.write, eval mit User-Input)
+2. SQL/NoSQL Injection (String-Konkatenation in Queries)
+3. Hardcoded Secrets (API-Keys, Passwörter im Code)
 
-Beispiele:
-- VULNERABILITY: eval() ermöglicht Code Injection | FIX: Verwende Function() Konstruktor mit Whitelist oder implementiere einen sicheren Parser mit nur erlaubten Operatoren (+,-,*,/)
-- VULNERABILITY: innerHTML ermöglicht XSS | FIX: Verwende textContent statt innerHTML
+WICHTIG:
+- Bei Taschenrechner-Apps: eval() mit Button-Input ist LOW severity (kein User-Text-Input)
+- Bei statischen Webseiten: innerHTML ohne User-Input ist kein Problem
+- Gib für JEDEN Fix KONKRETEN Code der das Problem löst
 
-Prüfe auf: SQL Injection, XSS, CSRF, Hardcoded Secrets, Path Traversal, unsichere Dependencies.
-
-Sei PRAGMATISCH: Wenn ein Sicherheitsrisiko durch die Anwendungsarchitektur bedingt minimal ist (z.B. eval() in einem Taschenrechner der nur Zahlen und Operatoren über Buttons akzeptiert), markiere es als 'low' severity.
-
-Antworte mit 'SECURE' wenn keine kritischen/hohen Issues, oder 'VULNERABILITY: ... | FIX: ...' für jedes Problem."""
+Wenn KEINE kritischen Probleme gefunden: Antworte nur mit "SECURE"
+"""
 
                     task_security_rescan = Task(
                         description=security_rescan_prompt,
@@ -1156,21 +1448,63 @@ Antworte mit 'SECURE' wenn keine kritischen/hohen Issues, oder 'VULNERABILITY: .
                         self._ui_log("Memory", "Error", f"Memory-Operation fehlgeschlagen: {mem_err}")
                     break
                 else:
-                    feedback = review_output
-                    if sandbox_failed and review_says_ok:
-                        feedback = f"KRITISCHER FEHLER: Die Sandbox oder der Tester hat Fehler (❌) gemeldet, aber du hast OK gesagt. Bitte analysiere die Fehlermeldungen erneut:\n{sandbox_result}\n{test_summary}"
-
-                    # ÄNDERUNG 24.01.2026: Security-Issues MIT Lösungsvorschlägen als Feedback an Coder
+                    # ÄNDERUNG 28.01.2026: Feedback-Logik ohne widersprüchliche Signale
+                    # Security-Issues haben PRIORITÄT - nicht mit "OK" kombinieren
                     if not security_passed and security_rescan_vulns:
+                        # Security-Issues MIT Lösungsvorschlägen als Feedback an Coder
+                        # NICHT mit review_output kombinieren um Widersprüche zu vermeiden
                         security_feedback = "\n".join([
                             f"- [{v.get('severity', 'unknown').upper()}] {v.get('description', '')}\n"
                             f"  → LÖSUNG: {v.get('fix', 'Bitte beheben')}"
                             for v in security_rescan_vulns
                         ])
-                        feedback += f"\n\n⚠️ SECURITY VULNERABILITIES MIT LÖSUNGSVORSCHLÄGEN:\n{security_feedback}\n"
-                        feedback += "WICHTIG: Setze die Lösungsvorschläge (→ LÖSUNG) um!\n"
-                        feedback += "Diese Sicherheitslücken MÜSSEN behoben werden bevor das Projekt abgeschlossen werden kann!\n"
+                        feedback = f"⚠️ SECURITY VULNERABILITIES - MÜSSEN ZUERST BEHOBEN WERDEN:\n{security_feedback}\n\n"
+                        feedback += "WICHTIG: Implementiere die Lösungsvorschläge (→ LÖSUNG) für JEDE Vulnerability!\n"
+                        feedback += "Der Code wird erst akzeptiert wenn alle Security-Issues behoben sind.\n"
                         self._ui_log("Security", "BlockingIssues", f"❌ {len(security_rescan_vulns)} Vulnerabilities blockieren Abschluss")
+                    elif sandbox_failed:
+                        # Sandbox/Tester-Fehler
+                        feedback = f"KRITISCHER FEHLER: Die Sandbox oder der Tester hat Fehler gemeldet.\n"
+                        feedback += f"Bitte analysiere die Fehlermeldungen und behebe sie:\n\n"
+                        feedback += f"SANDBOX:\n{sandbox_result}\n\n"
+
+                        # ÄNDERUNG 28.01.2026: Strukturiertes Test-Feedback nutzen (Phase 0.12)
+                        if 'test_result' in dir():
+                            structured_test_feedback = self._format_test_feedback(test_result)
+                            if structured_test_feedback and "✅" not in structured_test_feedback:
+                                feedback += f"\n{structured_test_feedback}\n"
+                            else:
+                                feedback += f"TESTER:\n{test_summary}\n"
+                        else:
+                            feedback += f"TESTER:\n{test_summary}\n"
+
+                        # ÄNDERUNG 28.01.2026: Tech-Stack-spezifische Diagnose-Hinweise
+                        test_lower = test_summary.lower()
+                        if "leere seite" in test_lower or "leer" in test_lower or "kein sichtbar" in test_lower:
+                            feedback += "\nDIAGNOSE - LEERE SEITE ERKANNT:\n"
+                            pt = str(self.tech_blueprint.get("project_type", "")).lower()
+                            lang = str(self.tech_blueprint.get("language", "")).lower()
+                            if any(kw in pt for kw in ["react", "next", "vue"]) or lang == "javascript":
+                                feedback += "- Pruefe ob ReactDOM.createRoot() oder ReactDOM.render() korrekt aufgerufen wird\n"
+                                feedback += "- Pruefe ob die App-Komponente exportiert und importiert wird\n"
+                                feedback += "- Pruefe ob index.html ein <div id='root'></div> enthaelt\n"
+                                feedback += "- Pruefe ob <script> Tags korrekte Pfade haben\n"
+                            elif any(kw in pt for kw in ["flask", "fastapi", "django"]):
+                                feedback += "- Pruefe ob die Route '/' definiert ist und HTML zurueckgibt\n"
+                                feedback += "- Pruefe ob Templates im Ordner 'templates/' liegen\n"
+                                feedback += "- Pruefe ob render_template() den korrekten Dateinamen verwendet\n"
+                            else:
+                                feedback += "- Pruefe ob index.html sichtbare HTML-Elemente im <body> hat\n"
+                                feedback += "- Pruefe ob alle <script src> und <link href> Pfade korrekt sind\n"
+                                feedback += "- Pruefe ob JavaScript-Code korrekt referenzierte Dateien hat\n"
+
+                        if "referenz" in test_lower or "nicht gefunden" in sandbox_result.lower():
+                            feedback += "\nDATEI-REFERENZEN:\n"
+                            feedback += "Es fehlen referenzierte Dateien. Stelle sicher, dass alle\n"
+                            feedback += "in HTML eingebundenen Scripts und Stylesheets auch erstellt werden.\n"
+                    else:
+                        # Reviewer-Feedback (kein Security-Problem, keine Sandbox-Fehler)
+                        feedback = review_output
 
                     self._ui_log("Reviewer", "Feedback", feedback)
                     # Memory: Zeichne fehlgeschlagene Iteration auf (geschützt, damit iteration++ nicht blockiert)
@@ -1233,12 +1567,27 @@ Antworte mit 'SECURE' wenn keine kritischen/hohen Issues, oder 'VULNERABILITY: .
                             self._ui_log("Coder", "Warning", f"⚠️ Kein weiteres Modell verfügbar - fahre mit {current_coder_model} fort")
 
                     iteration += 1  # WICHTIG: Immer inkrementieren, auch bei Memory-Fehler!
+                    self._current_iteration = iteration  # ÄNDERUNG 28.01.2026: Für Library-Protokollierung
 
             self.is_first_run = False
             if success:
                 self._ui_log("System", "Success", "Projekt erfolgreich erstellt/geändert.")
+                # ÄNDERUNG 28.01.2026: Projekt in Library als erfolgreich abschließen
+                try:
+                    library = get_library_manager()
+                    library.complete_project(status="success")
+                    self._ui_log("Library", "ProjectComplete", "Protokoll archiviert (success)")
+                except Exception:
+                    pass
             else:
                 self._ui_log("System", "Failure", "Maximale Retries erreicht.")
+                # ÄNDERUNG 28.01.2026: Projekt in Library als fehlgeschlagen abschließen
+                try:
+                    library = get_library_manager()
+                    library.complete_project(status="failed")
+                    self._ui_log("Library", "ProjectComplete", "Protokoll archiviert (failed)")
+                except Exception:
+                    pass
                 # Memory: Lerne aus ungelösten Fehlern (geschützt)
                 if feedback:
                     try:
@@ -1254,4 +1603,11 @@ Antworte mit 'SECURE' wenn keine kritischen/hohen Issues, oder 'VULNERABILITY: .
         except Exception as e:
             err = f"Fehler: {e}\n{traceback.format_exc()}"
             self._ui_log("System", "Error", err)
+            # ÄNDERUNG 28.01.2026: Projekt in Library als Fehler abschließen
+            try:
+                library = get_library_manager()
+                library.complete_project(status="error")
+                self._ui_log("Library", "ProjectComplete", "Protokoll archiviert (error)")
+            except Exception:
+                pass
             raise e

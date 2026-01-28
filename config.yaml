@@ -4,8 +4,7 @@ mode: test
 project_type: webapp
 include_designer: true
 max_retries: 15
-# ÄNDERUNG 25.01.2026: Modellwechsel nach X fehlgeschlagenen Versuchen
-max_model_attempts: 3
+max_model_attempts: 2
 research_timeout_minutes: 5
 security_max_retries: 10
 models:
@@ -25,7 +24,6 @@ models:
       fallback:
       - openrouter/google/gemma-3-27b-it:free
       - openrouter/mistralai/mistral-7b-instruct:free
-    # ÄNDERUNG 24.01.2026: Stabileres Modell als Primary für Reviewer (gemma liefert oft keine Antwort)
     reviewer:
       primary: openrouter/meta-llama/llama-3.3-70b-instruct:free
       fallback:
@@ -53,15 +51,29 @@ models:
       fallback:
       - openrouter/meta-llama/llama-3.3-70b-instruct:free
   production:
-    meta_orchestrator: openrouter/anthropic/claude-sonnet-4
-    orchestrator: openrouter/anthropic/claude-sonnet-4
-    coder: openrouter/openai/gpt-4-turbo
-    reviewer: openrouter/anthropic/claude-sonnet-4
-    designer: openrouter/anthropic/claude-haiku-4
-    researcher: openrouter/openai/gpt-4-turbo
-    database_designer: openrouter/anthropic/claude-sonnet-4
-    techstack_architect: openrouter/anthropic/claude-sonnet-4
-    security: openrouter/anthropic/claude-sonnet-4
+    meta_orchestrator: openrouter/openai/gpt-5-mini
+    orchestrator: openrouter/openai/gpt-5-mini
+    coder: openrouter/anthropic/claude-haiku-4.5
+    reviewer: openrouter/openai/gpt-5-mini
+    designer: openrouter/google/gemini-3-flash-preview
+    researcher:
+      primary: openrouter/openai/gpt-5-mini
+      fallback:
+      - openrouter/google/gemini-3-flash-preview
+      - openrouter/meta-llama/llama-3.3-70b-instruct:free
+    database_designer:
+      primary: openrouter/anthropic/claude-haiku-4.5
+      fallback:
+      - openrouter/google/gemini-3-flash-preview
+    techstack_architect:
+      primary: openrouter/anthropic/claude-haiku-4.5
+      fallback:
+      - openrouter/google/gemini-3-flash-preview
+    security:
+      primary: openrouter/anthropic/claude-haiku-4.5
+      fallback:
+      - openrouter/google/gemini-3-flash-preview
+      - openrouter/meta-llama/llama-3.3-70b-instruct:free
 templates:
   cli:
     global:
@@ -133,3 +145,27 @@ templates:
     - Prüfe Trainings- und Testcode auf Reproduzierbarkeit.
     orchestrator:
     - Erstelle Dokumentation mit Trainingsparametern und Ergebnissen.
+
+# External Bureau - Externe Fachkraefte (CodeRabbit, EXA Search, etc.)
+# AENDERUNG 28.01.2026: External Bureau Konfiguration hinzugefuegt
+external_specialists:
+  enabled: true
+  timeout_seconds: 120
+
+  # CodeRabbit - KI-gestuetztes Code-Review
+  # Installation: npm install -g coderabbit
+  coderabbit:
+    enabled: true
+    mode: advisory           # "advisory" (Info-only) oder "blocking" (kann Review stoppen)
+    cli_path: coderabbit     # Pfad zur CLI
+    timeout_seconds: 120
+    cooldown_seconds: 300    # Cooldown nach Rate-Limit
+
+  # EXA Search - KI-gestuetzte Websuche
+  # Benoetigt: EXA_API_KEY Umgebungsvariable
+  exa_search:
+    enabled: true
+    api_key: ${EXA_API_KEY}
+    timeout_seconds: 60
+    max_results: 10
+    cooldown_seconds: 60

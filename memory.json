@@ -1,0 +1,10 @@
+[
+  {
+    "goal": "eine einfache webseite auf der fitnessgeräte angeboten werden zum kauf. nutze erstmal dummydaten und keine bilder. halte dich aber an ein schönes und sauberes design und hellem rot und violett tönen die stimmungsvoll zum kaufen animieren. Erstelle eine statische HTML-Webseite ohne Backend oder Serverlogik.Verwende nur HTML, CSS und JavaScript. Nutze Dummy-Daten direkt im Frontend. Achte darauf dass alle Schaltflächen funktioeren. Erstelle auch einen Header Seite mit Navigation-Bar für unterseiten. implementiere auch sinnvolle Unterseiten zb eine detailseite für jedes produkt.",
+    "iteration": 2,
+    "sandbox": "✅ HTML-Struktur syntaktisch korrekt.",
+    "ui": "Testergebnis: OK. Probleme: ⚠️ Visuelle Änderung erkannt – siehe projects/project_20260108_173653/screenshots/diff_20260108_173921.png",
+    "designer_feedback": "OK",
+    "timestamp": "20260108_173653"
+  }
+]

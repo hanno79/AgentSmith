@@ -1,9 +1,10 @@
 /**
  * Author: rahn
- * Datum: 24.01.2026
- * Version: 1.0
+ * Datum: 28.01.2026
+ * Version: 1.1
  * Beschreibung: NavigationHeader Komponente - Gemeinsamer Header für alle Ansichten.
  *               Enthält Logo, Navigation-Tabs und Status-Anzeigen.
+ *               ÄNDERUNG 28.01.2026: Bibliothek-Button für Protokoll und Archiv hinzugefügt.
  */
 
 import React from 'react';
@@ -14,7 +15,9 @@ import {
   LayoutDashboard,
   Server,
   Users,
-  DollarSign
+  DollarSign,
+  BookOpen,
+  Boxes
 } from 'lucide-react';
 
 /**
@@ -73,6 +76,30 @@ const NavigationHeader = ({ currentRoom, setCurrentRoom, showConnectButton = fal
           >
             <DollarSign size={16} />
             <span>Budget</span>
+          </button>
+          {/* ÄNDERUNG 28.01.2026: Library Button für Protokoll und Archiv */}
+          <button
+            onClick={() => setCurrentRoom('library')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+              currentRoom === 'library'
+                ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <BookOpen size={16} />
+            <span>Bibliothek</span>
+          </button>
+          {/* ÄNDERUNG 28.01.2026: External Bureau für externe Specialists */}
+          <button
+            onClick={() => setCurrentRoom('external-bureau')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+              currentRoom === 'external-bureau'
+                ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <Boxes size={16} />
+            <span>External</span>
           </button>
         </nav>
       </div>

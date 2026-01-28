@@ -252,6 +252,24 @@ class WorkerPool:
         """Konvertiert den Pool zu einem Dictionary."""
         return self.get_status()
 
+    def reset(self):
+        """
+        ÄNDERUNG 25.01.2026: Setzt alle Worker auf Idle zurück.
+        Wird beim Projekt-Reset aufgerufen.
+        """
+        # ÄNDERUNG 25.01.2026: Bug-Fix - iteriere über .values() statt über Dict-Keys
+        for worker in self.workers.values():
+            worker.status = WorkerStatus.IDLE
+            worker.current_task = None
+            worker.current_task_description = None
+            worker.model = None
+        # Queue leeren
+        while not self._task_queue.empty():
+            try:
+                self._task_queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+
 
 class OfficeManager:
     """
@@ -369,3 +387,11 @@ class OfficeManager:
     def to_dict(self) -> Dict[str, Any]:
         """Konvertiert den Manager zu einem Dictionary."""
         return self.get_all_status()
+
+    def reset_all_workers(self):
+        """
+        ÄNDERUNG 25.01.2026: Setzt alle Worker in allen Pools zurück.
+        Wird beim Projekt-Reset aufgerufen.
+        """
+        for office, pool in self.pools.items():
+            pool.reset()

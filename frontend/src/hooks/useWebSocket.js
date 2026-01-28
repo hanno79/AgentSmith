@@ -143,17 +143,22 @@ const useWebSocket = (setLogs, activeAgents, setActiveAgents, setAgentData, setS
       }
 
       // TechStackOutput Event für TechStack-Architect Office
+      // ÄNDERUNG 25.01.2026: Bug-Fix - Daten nur aus blueprint extrahieren (kein Duplikat)
       if (data.event === 'TechStackOutput' && data.agent === 'TechArchitect') {
         try {
           const payload = JSON.parse(data.message);
+          const blueprint = payload.blueprint || {};
           setAgentData(prev => ({
             ...prev,
             techstack: {
-              blueprint: payload.blueprint || {},
+              blueprint: blueprint,
               model: payload.model || '',
+              // Decisions separat falls vorhanden, sonst leer
               decisions: payload.decisions || [],
-              dependencies: payload.dependencies || [],
-              reasoning: payload.reasoning || '',
+              // Dependencies aus Blueprint (nicht doppelt)
+              dependencies: blueprint.dependencies || payload.dependencies || [],
+              // Reasoning NUR aus Blueprint (nicht doppelt auf Root-Level)
+              reasoning: blueprint.reasoning || '',
               timestamp: data.timestamp
             }
           }));
