@@ -7,6 +7,13 @@ max_retries: 15
 max_model_attempts: 2
 research_timeout_minutes: 5
 security_max_retries: 10
+
+# ÄNDERUNG 28.01.2026: Dependency-Agent Konfiguration (IT-Abteilung)
+dependency_agent:
+  auto_install: true           # Automatisch installieren wenn fehlend
+  check_vulnerabilities: true  # npm audit / pip-audit ausführen
+  cache_inventory: 300         # Inventar-Cache in Sekunden
+
 models:
   test:
     meta_orchestrator:

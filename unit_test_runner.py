@@ -11,6 +11,9 @@ Beschreibung: Unit Test Runner - Fuehrt pytest (Python) oder npm test (JavaScrip
 import os
 import subprocess
 import logging
+import re
+import shutil
+from pathlib import Path
 from typing import Dict, Any, Optional, List
 
 logger = logging.getLogger(__name__)
@@ -190,16 +193,30 @@ def _run_npm_test(project_path: str, project_type: str) -> Dict[str, Any]:
         logger.warning(f"package.json lesen fehlgeschlagen: {e}")
 
     try:
+        # Validierung und Auflösung von project_path
+        project_path_resolved = Path(project_path).resolve()
+        
+        # Prüfe ob npm verfügbar ist
+        npm_path = shutil.which('npm')
+        if not npm_path:
+            return {
+                "status": "SKIP",
+                "summary": "npm nicht im PATH gefunden",
+                "details": "Node.js und npm müssen installiert sein",
+                "test_count": 0
+            }
+        
         # npm test mit --passWithNoTests (falls jest)
+        # shell=False für Sicherheit - Command-Injection verhindern
         result = subprocess.run(
             ["npm", "test", "--", "--passWithNoTests", "--silent"],
-            cwd=project_path,
+            cwd=str(project_path_resolved),
             capture_output=True,
             timeout=180,
             text=True,
             encoding='utf-8',
             errors='replace',
-            shell=True  # Auf Windows benoetigt
+            shell=False  # SECURITY: Keine Shell-Interpretation
         )
 
         stdout = result.stdout.strip()
@@ -267,9 +284,8 @@ def _find_python_test_files(project_path: str) -> List[str]:
             dirs[:] = [d for d in dirs if d not in skip_dirs]
 
             for filename in files:
-                if filename.endswith('_test.py') or filename.startswith('test_'):
-                    if filename.endswith('.py'):
-                        test_files.append(os.path.join(root, filename))
+                if filename.endswith('.py') and (filename.endswith('_test.py') or filename.startswith('test_')):
+                    test_files.append(os.path.join(root, filename))
 
     except Exception as e:
         logger.warning(f"Fehler beim Suchen nach Test-Dateien: {e}")
@@ -279,8 +295,6 @@ def _find_python_test_files(project_path: str) -> List[str]:
 
 def _extract_pytest_count(output: str) -> int:
     """Extrahiert die Anzahl der Tests aus pytest-Output."""
-    import re
-
     # Suche nach "X passed" oder "X passed, Y failed"
     match = re.search(r'(\d+)\s+passed', output)
     passed = int(match.group(1)) if match else 0
@@ -293,8 +307,6 @@ def _extract_pytest_count(output: str) -> int:
 
 def _extract_pytest_failures(output: str) -> str:
     """Extrahiert Fehler-Info aus pytest-Output."""
-    import re
-
     # Suche nach "X passed, Y failed"
     match = re.search(r'(\d+)\s+failed', output)
     if match:
@@ -311,8 +323,6 @@ def _extract_pytest_failures(output: str) -> str:
 
 def _extract_npm_test_count(output: str) -> int:
     """Extrahiert die Anzahl der Tests aus npm test/jest-Output."""
-    import re
-
     # Jest-Format: "Tests: X passed, Y total"
     match = re.search(r'Tests:\s+(\d+)\s+passed', output)
     if match:
@@ -328,8 +338,6 @@ def _extract_npm_test_count(output: str) -> int:
 
 def _extract_npm_test_failures(output: str) -> str:
     """Extrahiert Fehler-Info aus npm test/jest-Output."""
-    import re
-
     # Jest-Format: "X failed"
     match = re.search(r'(\d+)\s+failed', output)
     if match:

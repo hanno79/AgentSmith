@@ -20,9 +20,12 @@ import traceback
 import contextvars
 import threading
 import base64
+import logging
 from datetime import datetime
 from typing import Callable, Optional, Dict, Any, List
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 # Lade .env aus dem Projektverzeichnis (nicht CWD!)
 # Dies stellt sicher, dass die .env gefunden wird, auch wenn der Server
@@ -840,6 +843,34 @@ class OrchestrationManager:
                     f.write(run_bat_content)
                 self._ui_log("System", "Config", "run.bat created.")
 
+                # ÄNDERUNG 28.01.2026: Dependency-Agent (IT-Abteilung) aufrufen
+                # Installiert Dependencies aus dem Blueprint bevor Coder startet
+                try:
+                    from agents.dependency_agent import get_dependency_agent
+                    dep_agent = get_dependency_agent(self.config.get("dependency_agent", {}))
+                    dep_agent.on_log = self._ui_log  # UI-Callback setzen
+
+                    self._ui_log("DependencyAgent", "Status", "Pruefe und installiere Dependencies...")
+
+                    # Dependencies aus Blueprint vorbereiten
+                    dep_result = dep_agent.prepare_for_task(self.tech_blueprint, self.project_path)
+
+                    if dep_result.get("status") == "OK":
+                        self._ui_log("DependencyAgent", "DependencyStatus", json.dumps({
+                            "status": "ready",
+                            "health_score": dep_result.get("inventory", {}).get("health_score", 0)
+                        }, ensure_ascii=False))
+                    elif dep_result.get("warnings"):
+                        self._ui_log("DependencyAgent", "DependencyStatus", json.dumps({
+                            "status": "warning",
+                            "warnings": dep_result.get("warnings", [])
+                        }, ensure_ascii=False))
+                        for warning in dep_result.get("warnings", []):
+                            self._ui_log("DependencyAgent", "Warning", warning)
+                except Exception as dep_error:
+                    self._ui_log("DependencyAgent", "Error", f"Dependency-Pruefung fehlgeschlagen: {dep_error}")
+                    # Nicht abbrechen - Coder kann trotzdem versuchen zu arbeiten
+
             # 🧩 AGENTEN INITIALISIERUNG
             project_type = self.tech_blueprint.get("project_type", "webapp")
             project_rules = self.config.get("templates", {}).get(project_type, {})
@@ -1228,7 +1259,7 @@ class OrchestrationManager:
 
                 # ÄNDERUNG 28.01.2026: Strukturiertes Test-Ergebnis für Coder-Feedback (Phase 0.12)
                 unit_ok = unit_test_result.get("status") in ["OK", "SKIP"]
-                ui_ok = ui_result.get("status") not in ["FAIL", "ERROR"] if 'ui_result' in dir() else True
+                ui_ok = ui_result.get("status", "SKIP") not in ["FAIL", "ERROR"]
                 test_result = {
                     "unit_tests": {
                         "status": unit_test_result.get("status", "SKIP"),
@@ -1238,9 +1269,9 @@ class OrchestrationManager:
                         "details": unit_test_result.get("details", "")
                     },
                     "ui_tests": {
-                        "status": ui_result.get("status", "SKIP") if 'ui_result' in dir() else "SKIP",
-                        "issues": ui_result.get("issues", []) if 'ui_result' in dir() else [],
-                        "screenshot": ui_result.get("screenshot") if 'ui_result' in dir() else None,
+                        "status": ui_result.get("status", "SKIP"),
+                        "issues": ui_result.get("issues", []),
+                        "screenshot": ui_result.get("screenshot"),
                         "has_visible_content": True  # Default, wird durch Content-Validator gesetzt
                     },
                     "overall_status": "PASS" if (unit_ok and ui_ok) else "FAIL"
@@ -1469,12 +1500,9 @@ Wenn KEINE kritischen Probleme gefunden: Antworte nur mit "SECURE"
                         feedback += f"SANDBOX:\n{sandbox_result}\n\n"
 
                         # ÄNDERUNG 28.01.2026: Strukturiertes Test-Feedback nutzen (Phase 0.12)
-                        if 'test_result' in dir():
-                            structured_test_feedback = self._format_test_feedback(test_result)
-                            if structured_test_feedback and "✅" not in structured_test_feedback:
-                                feedback += f"\n{structured_test_feedback}\n"
-                            else:
-                                feedback += f"TESTER:\n{test_summary}\n"
+                        structured_test_feedback = self._format_test_feedback(test_result)
+                        if structured_test_feedback and "✅" not in structured_test_feedback:
+                            feedback += f"\n{structured_test_feedback}\n"
                         else:
                             feedback += f"TESTER:\n{test_summary}\n"
 

@@ -17,7 +17,8 @@ import {
   Users,
   DollarSign,
   BookOpen,
-  Boxes
+  Boxes,
+  Package
 } from 'lucide-react';
 
 /**
@@ -100,6 +101,18 @@ const NavigationHeader = ({ currentRoom, setCurrentRoom, showConnectButton = fal
           >
             <Boxes size={16} />
             <span>External</span>
+          </button>
+          {/* ÄNDERUNG 28.01.2026: Dependency Office (IT-Abteilung) */}
+          <button
+            onClick={() => setCurrentRoom('dependency')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+              currentRoom === 'dependency'
+                ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <Package size={16} />
+            <span>IT</span>
           </button>
         </nav>
       </div>

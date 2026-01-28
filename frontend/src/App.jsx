@@ -45,6 +45,7 @@ import TechStackOffice from './TechStackOffice';
 import DBDesignerOffice from './DBDesignerOffice';
 import LibraryOffice from './LibraryOffice';
 import ExternalBureauOffice from './ExternalBureauOffice';
+import DependencyOffice from './DependencyOffice';
 import AgentCard from './components/AgentCard';
 import NavigationHeader from './components/NavigationHeader';
 import useWebSocket from './hooks/useWebSocket';
@@ -441,6 +442,15 @@ const App = () => {
   if (currentRoom === 'external-bureau') {
     return (
       <ExternalBureauOffice
+        onBack={() => setCurrentRoom('mission-control')}
+      />
+    );
+  }
+
+  // ÄNDERUNG 28.01.2026: Dependency Office (IT-Abteilung)
+  if (currentRoom === 'dependency') {
+    return (
+      <DependencyOffice
         onBack={() => setCurrentRoom('mission-control')}
       />
     );

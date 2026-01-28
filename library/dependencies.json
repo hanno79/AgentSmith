@@ -1,0 +1,32 @@
+{
+  "last_updated": "2026-01-28T15:00:00",
+  "python": {
+    "version": "3.13.0",
+    "packages": [
+      {"name": "pytest", "version": "8.4.2", "status": "installed"},
+      {"name": "crewai", "version": "0.28.0", "status": "installed"},
+      {"name": "fastapi", "version": "0.109.0", "status": "installed"},
+      {"name": "uvicorn", "version": "0.27.0", "status": "installed"},
+      {"name": "playwright", "version": "1.41.0", "status": "installed"},
+      {"name": "langchain", "version": "0.1.0", "status": "installed"},
+      {"name": "pyyaml", "version": "6.0.1", "status": "installed"},
+      {"name": "websockets", "version": "12.0", "status": "installed"}
+    ]
+  },
+  "npm": {
+    "version": "10.2.0",
+    "packages": [
+      {"name": "react", "version": "18.2.0", "status": "installed"},
+      {"name": "vite", "version": "5.0.0", "status": "installed"},
+      {"name": "tailwindcss", "version": "3.4.0", "status": "installed"}
+    ]
+  },
+  "system": {
+    "python": "3.13.0",
+    "node": "20.10.0",
+    "npm": "10.2.0",
+    "git": "2.43.0"
+  },
+  "health_score": 95,
+  "_note": "Diese Datei wird automatisch vom DependencyAgent aktualisiert"
+}
