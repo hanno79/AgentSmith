@@ -18,7 +18,8 @@ import {
   DollarSign,
   BookOpen,
   Boxes,
-  Package
+  Package,
+  Lightbulb  // ÄNDERUNG 29.01.2026: Discovery Session Icon
 } from 'lucide-react';
 
 /**
@@ -77,6 +78,18 @@ const NavigationHeader = ({ currentRoom, setCurrentRoom, showConnectButton = fal
           >
             <DollarSign size={16} />
             <span>Budget</span>
+          </button>
+          {/* ÄNDERUNG 29.01.2026: Discovery Session Button */}
+          <button
+            onClick={() => setCurrentRoom('discovery')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+              currentRoom === 'discovery'
+                ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <Lightbulb size={16} />
+            <span>Discovery</span>
           </button>
           {/* ÄNDERUNG 28.01.2026: Library Button für Protokoll und Archiv */}
           <button
