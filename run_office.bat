@@ -22,7 +22,8 @@ if exist "stop_office.bat" (
 timeout /t 2 /nobreak >nul
 
 echo [1/2] Starting Backend (FastAPI)...
-start cmd /k ".\venv\Scripts\python.exe -m uvicorn backend.api:app --reload --port 8000"
+REM ÄNDERUNG 29.01.2026: --reload entfernt um Worktree-Pfad-Probleme zu vermeiden
+start cmd /k ".\venv\Scripts\python.exe -m uvicorn backend.api:app --host 0.0.0.0 --port 8000"
 
 echo [2/2] Starting Frontend (React)...
 cd frontend

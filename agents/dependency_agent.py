@@ -16,6 +16,8 @@ import subprocess
 import json
 import logging
 import shutil
+import re
+import shlex
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from pathlib import Path
@@ -339,6 +341,47 @@ class DependencyAgent:
     # INSTALLATION
     # =========================================================================
 
+    def _validate_install_command(self, install_command: str) -> List[str]:
+        """
+        ÄNDERUNG 29.01.2026: Whitelist-Validierung für Installationsbefehle.
+        """
+        if not install_command or not install_command.strip():
+            raise ValueError("install_command darf nicht leer sein")
+
+        if any(token in install_command for token in ["&&", ";", "|", "||", "`"]):
+            raise ValueError("install_command enthält unzulässige Zeichen")
+
+        parts = shlex.split(install_command, posix=(os.name != "nt"))
+        if not parts:
+            raise ValueError("install_command ist ungültig")
+
+        base = parts[0].lower()
+        package_pattern = re.compile(r"^[A-Za-z0-9@/_.\-]+(==[A-Za-z0-9_.\-]+)?$")
+
+        def _validate_packages(args: List[str]):
+            for arg in args:
+                if arg.startswith("-"):
+                    raise ValueError("Nur Paketnamen erlaubt, keine Flags")
+                if not package_pattern.match(arg):
+                    raise ValueError(f"Ungültiger Paketname: {arg}")
+
+        if base == "pip":
+            if len(parts) < 3 or parts[1] != "install":
+                raise ValueError("Nur 'pip install <paket>' erlaubt")
+            _validate_packages(parts[2:])
+        elif base == "python":
+            if len(parts) < 5 or parts[1] != "-m" or parts[2] != "pip" or parts[3] != "install":
+                raise ValueError("Nur 'python -m pip install <paket>' erlaubt")
+            _validate_packages(parts[4:])
+        elif base == "npm":
+            if len(parts) < 2 or parts[1] not in ["install", "i"]:
+                raise ValueError("Nur 'npm install' erlaubt")
+            _validate_packages(parts[2:])
+        else:
+            raise ValueError(f"Befehl nicht erlaubt: {base}")
+
+        return parts
+
     def install_dependencies(self, install_command: str, project_path: str = None) -> Dict[str, Any]:
         """
         Fuehrt einen Installationsbefehl aus.
@@ -381,23 +424,8 @@ class DependencyAgent:
         self._log("InstallStart", {"command": install_command, "path": project_path})
 
         try:
-            # Befehl in Teile zerlegen
-            import shlex
-            if os.name == 'nt':  # Windows
-                # Auf Windows shlex nicht verwenden fuer einfache Befehle
-                parts = install_command.split()
-            else:
-                parts = shlex.split(install_command)
-
-            # Sicherheitscheck: Nur erlaubte Befehle
-            allowed_commands = {"pip", "python", "npm", "yarn", "pnpm"}
-            base_command = parts[0].lower() if parts else ""
-
-            if base_command not in allowed_commands and not base_command.endswith("pip"):
-                return {
-                    "status": "BLOCKED",
-                    "output": f"Befehl '{base_command}' nicht erlaubt. Erlaubt: {allowed_commands}"
-                }
+            # ÄNDERUNG 29.01.2026: Strikte Validierung und sichere Argument-Liste
+            parts = self._validate_install_command(install_command)
 
             # Arbeitsverzeichnis
             cwd = project_path if project_path and os.path.isdir(project_path) else None
@@ -436,6 +464,9 @@ class DependencyAgent:
                     "return_code": result.returncode
                 }
 
+        except ValueError as e:
+            self._log("InstallError", {"status": "BLOCKED", "error": str(e)})
+            return {"status": "BLOCKED", "output": str(e)}
         except subprocess.TimeoutExpired:
             self._log("InstallError", {"status": "TIMEOUT"})
             return {"status": "TIMEOUT", "output": "Installation Timeout nach 300 Sekunden"}

@@ -820,12 +820,25 @@ const App = () => {
                 })
                 .map((l, i) => {
                   if (outputMode === 'debug') {
+                    // ÄNDERUNG 29.01.2026: Message zu String konvertieren falls Objekt
+                    // Verhindert React-Fehler "Objects are not valid as a React child"
+                    let messageStr = l.message;
+                    if (typeof l.message === 'object' && l.message !== null) {
+                      try {
+                        messageStr = JSON.stringify(l.message);
+                      } catch {
+                        messageStr = String(l.message);
+                      }
+                    } else if (typeof l.message !== 'string') {
+                      messageStr = String(l.message ?? '');
+                    }
+
                     // Debug-Ansicht (rohe Daten mit Event-Typ)
                     return (
                       <div key={i} className="flex gap-2 font-mono">
                         <span className="text-purple-500/60 shrink-0">[{l.event}]</span>
                         <span className="text-slate-600 shrink-0">[{l.agent}]</span>
-                        <span className={l.event === 'Error' ? 'text-red-400' : 'text-slate-300'}>{l.message}</span>
+                        <span className={l.event === 'Error' ? 'text-red-400' : 'text-slate-300'}>{messageStr}</span>
                       </div>
                     );
                   }

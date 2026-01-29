@@ -15,8 +15,11 @@ from .orchestration_manager import OrchestrationManager
 # ÄNDERUNG 25.01.2026: Konstante für Default max_retries
 DEFAULT_MAX_RETRIES = 5
 
-# ÄNDERUNG 29.01.2026: WebSocket Receive-Timeout (60 Sekunden)
-WS_RECEIVE_TIMEOUT = 60.0
+# ÄNDERUNG 29.01.2026: WebSocket Receive-Timeout (300 Sekunden = 5 Minuten)
+# Erhöht von 60s wegen langläufiger CrewAI execute_sync() Operationen
+WS_RECEIVE_TIMEOUT = 300.0
+# ÄNDERUNG 29.01.2026: Mehr Timeouts erlauben für bessere Stabilität bei langen Operationen
+WS_MAX_TIMEOUTS = 10
 
 
 # Speicher für aktive WebSocket-Verbindungen

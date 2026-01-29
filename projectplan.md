@@ -36,3 +36,38 @@
 - [x] Tests decken Status-Codes und JSON-Shape ab
 - [x] Dedup-Case liefert agents-Array und Zusammenführungen
 - [x] Dateischreiben und Env-Keys sauber gemockt
+
+## Problemanalyse (29.01.2026 - Fixes)
+- Dead Code und fail-open Stellen im Dev-Loop und Security-Handling.
+- Fehlende Fehler-Logs in Budget/Config/Discovery und Regex-Parsing.
+- Unsichere Dependency-Installation ermöglicht Command-Injection.
+- Race-Conditions in Session-Logs und Worker-Reset.
+- Tailwind-Klassen dynamisch generiert und State-Fehler im UI.
+
+## Aufgabenplanung (29.01.2026 - Fixes)
+- [x] `dev_loop_steps.py` Dead Code entfernen und Exceptions loggen
+- [x] `library_manager.py` Briefing-Normalisierung robust machen
+- [x] `orchestration_helpers.py` Rate-Limit-Prädikat bereinigen + Regex-Fehlerbehandlung
+- [x] Router-Fixes: Budget-Validierung, Config-Logging, Discovery-Logging, External-Bureau-Validierung
+- [x] Security/Worker/Session: fail-closed, reset await, atomare Logs
+- [x] Frontend: Tailwind-Static-Mapping und State-Resets
+- [x] Überprüfungsbereich aktualisieren
+
+## Überprüfungsbereich (29.01.2026 - Fixes)
+- [x] Keine stillen Exceptions in Budget/Config/Discovery/Regex
+- [x] Dependency-Installation validiert und ohne Shell-Ausführung
+- [x] Session-Logs atomar, Worker-Reset wartet auf Cancellation
+- [x] Security-Scan fail-closed mit klarer UI-Log-Meldung
+- [x] Tailwind-Classes statisch, Session-Resume robust, UI-State reset
+
+## Problemanalyse (29.01.2026 - Pydantic Validator)
+- Pydantic V2 bricht beim Import des Budget-Routers wegen veralteter Validator-Signatur.
+- Uvicorn startet nicht, weil `field`/`config` nicht mehr verfügbar sind.
+
+## Aufgabenplanung (29.01.2026 - Pydantic Validator)
+- [x] Budget-Validator auf Pydantic V2 `field_validator` umstellen
+- [ ] Prüfung: Lints/Start optional
+
+## Überprüfungsbereich (29.01.2026 - Pydantic Validator)
+- [x] Validator nutzt `info` statt `field`
+- [x] Import-Fehler beim Start behoben

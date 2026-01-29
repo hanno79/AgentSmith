@@ -47,11 +47,30 @@ AGENT_TO_SESSION_KEY = {
     "DBDesigner": "dbdesigner"
 }
 
-# Lade .env aus dem Projektverzeichnis (nicht CWD!)
-# Dies stellt sicher, dass die .env gefunden wird, auch wenn der Server
-# aus einem anderen Verzeichnis gestartet wird
+# ÄNDERUNG 29.01.2026: Robuste .env-Ladung mit mehreren Fallback-Pfaden
+# Löst das Problem wenn Module aus Worktree-Pfad importiert werden
+def _load_env_robust():
+    """Lädt .env aus mehreren möglichen Pfaden."""
+    possible_paths = [
+        # 1. Expliziter bekannter Pfad (höchste Priorität)
+        r"C:\Temp\multi_agent_poc\.env",
+        # 2. Relativ zum aktuellen Arbeitsverzeichnis
+        os.path.join(os.getcwd(), ".env"),
+        # 3. Relativ zu __file__ (funktioniert wenn nicht im Worktree)
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"),
+    ]
+
+    for env_path in possible_paths:
+        if os.path.exists(env_path):
+            load_dotenv(env_path, override=True)
+            logger.info(f".env geladen von: {env_path}")
+            return env_path
+
+    logger.warning("Keine .env gefunden! Geprüfte Pfade: %s", possible_paths)
+    return None
+
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-load_dotenv(os.path.join(_project_root, ".env"), override=True)
+_env_loaded_from = _load_env_robust()
 
 # Agenten-Struktur (muss evtl. Pfade anpassen)
 import sys
@@ -70,7 +89,9 @@ from model_router import get_model_router
 from .worker_pool import OfficeManager, WorkerStatus
 from .orchestration_helpers import (
     extract_tables_from_schema,
-    extract_design_data
+    extract_design_data,
+    is_model_unavailable_error,
+    is_rate_limit_error
 )
 from .dev_loop import DevLoop
 from .library_manager import get_library_manager
@@ -177,6 +198,10 @@ def run_with_timeout(func, timeout_seconds: int = 60):
     if exception[0]:
         raise exception[0]
     return result[0]
+
+
+# ÄNDERUNG 29.01.2026: Import aus separatem Modul um zirkuläre Imports zu vermeiden
+from .heartbeat_utils import run_with_heartbeat
 
 
 class OrchestrationManager:
@@ -478,9 +503,13 @@ class OrchestrationManager:
                         expected_output="Zusammenfassung.",
                         agent=res_agent
                     )
-                    # Mit Timeout wrappen um endloses Blockieren zu verhindern
-                    research_result = run_with_timeout(
-                        lambda: str(res_task.execute_sync()),
+                    # ÄNDERUNG 29.01.2026: Heartbeat-Wrapper für stabile WebSocket-Verbindung
+                    research_result = run_with_heartbeat(
+                        func=lambda: str(res_task.execute_sync()),
+                        ui_log_callback=self._ui_log,
+                        agent_name="Researcher",
+                        task_description="Recherche-Phase",
+                        heartbeat_interval=15,
                         timeout_seconds=RESEARCH_TIMEOUT_SECONDS
                     )
                     start_context = f"\n\nRecherche-Ergebnisse:\n{research_result}"
@@ -513,9 +542,15 @@ class OrchestrationManager:
                     }, ensure_ascii=False))
 
                 except Exception as e:
-                    self._ui_log("Researcher", "Error", f"Recherche fehlgeschlagen: {e}")
+                    # ÄNDERUNG 29.01.2026: 404/Model-Unavailable behandeln
+                    if is_model_unavailable_error(e) or is_rate_limit_error(e):
+                        self._ui_log("Researcher", "Warning", f"Recherche-Modell nicht verfügbar: {str(e)[:100]}")
+                        self.model_router.mark_rate_limited_sync(research_model)
+                    else:
+                        self._ui_log("Researcher", "Error", f"Recherche fehlgeschlagen: {e}")
                     # ÄNDERUNG 25.01.2026: Worker-Status auf "idle" setzen (auch bei Fehler)
                     self._update_worker_status("researcher", "idle")
+                    start_context = ""  # Ohne Recherche-Kontext fortfahren
 
                     # ResearchOutput Event: Status "error"
                     self._ui_log("Researcher", "ResearchOutput", json.dumps({
@@ -551,18 +586,48 @@ class OrchestrationManager:
                     set_current_agent("TechStack-Architect", project_id)  # Budget-Tracking
                     # ÄNDERUNG 25.01.2026: Worker-Status auf "working" setzen
                     self._update_worker_status("techstack_architect", "working", "Analysiere TechStack...", self.model_router.get_model("techstack_architect"))
-                    agent_techstack = init_agents(
-                        self.config,
-                        base_project_rules,
-                        router=self.model_router,
-                        include=["techstack_architect"]
-                    ).get("techstack_architect")
-                    techstack_task = Task(
-                        description=f"Entscheide TechStack für: {user_goal}",
-                        expected_output="JSON-Blueprint.",
-                        agent=agent_techstack
-                    )
-                    techstack_result = str(techstack_task.execute_sync())
+
+                    # ÄNDERUNG 29.01.2026: Retry-Logik mit Modellwechsel bei 404/Unavailable
+                    MAX_TECHSTACK_RETRIES = 3
+                    techstack_result = None
+                    for techstack_attempt in range(MAX_TECHSTACK_RETRIES):
+                        current_techstack_model = self.model_router.get_model("techstack_architect")
+                        try:
+                            agent_techstack = init_agents(
+                                self.config,
+                                base_project_rules,
+                                router=self.model_router,
+                                include=["techstack_architect"]
+                            ).get("techstack_architect")
+                            techstack_task = Task(
+                                description=f"Entscheide TechStack für: {user_goal}",
+                                expected_output="JSON-Blueprint.",
+                                agent=agent_techstack
+                            )
+                            # ÄNDERUNG 29.01.2026: Heartbeat-Wrapper für stabile WebSocket-Verbindung
+                            techstack_result = run_with_heartbeat(
+                                func=lambda: str(techstack_task.execute_sync()),
+                                ui_log_callback=self._ui_log,
+                                agent_name="TechStack",
+                                task_description="Tech-Stack Analyse",
+                                heartbeat_interval=15,
+                                timeout_seconds=180
+                            )
+                            break  # Erfolg - Schleife verlassen
+                        except Exception as ts_error:
+                            # Bei 404/Model-Unavailable oder Rate-Limit: Modell wechseln
+                            if is_model_unavailable_error(ts_error) or is_rate_limit_error(ts_error):
+                                self._ui_log("TechStack", "Warning",
+                                    f"Modell {current_techstack_model} nicht verfügbar (Versuch {techstack_attempt + 1}/{MAX_TECHSTACK_RETRIES}), wechsle zu Fallback...")
+                                self.model_router.mark_rate_limited_sync(current_techstack_model)
+                                if techstack_attempt == MAX_TECHSTACK_RETRIES - 1:
+                                    # Alle Versuche fehlgeschlagen - Fallback auf static_html
+                                    self._ui_log("TechStack", "Error", "Alle TechStack-Modelle nicht verfügbar, verwende Fallback")
+                                    techstack_result = '{"project_type": "static_html", "language": "html"}'
+                                continue
+                            else:
+                                # Anderer Fehler - weiterleiten
+                                raise ts_error
                     try:
                         json_match = re.search(r'\{[^{}]*"project_type"[^{}]*\}', techstack_result, re.DOTALL)
                         if json_match:
@@ -694,26 +759,54 @@ class OrchestrationManager:
                     dbdesigner_model = self.model_router.get_model("database_designer") if self.model_router else "unknown"
                     # ÄNDERUNG 25.01.2026: Worker-Status auf "working" setzen
                     self._update_worker_status("db_designer", "working", "Erstelle Schema...", dbdesigner_model)
-                    agent_db = init_agents(
-                        self.config,
-                        project_rules,
-                        router=self.model_router,
-                        include=["db_designer"]
-                    ).get("db_designer")
-                    if agent_db:
-                        task_db = Task(description=f"Schema für {user_goal}", expected_output="Schema", agent=agent_db)
-                        self.database_schema = str(task_db.execute_sync())
-                        # ÄNDERUNG 25.01.2026: Worker-Status auf "idle" setzen
-                        self._update_worker_status("db_designer", "idle")
 
-                        # ÄNDERUNG 24.01.2026: DBDesignerOutput Event für Frontend Office
-                        self._ui_log("DBDesigner", "DBDesignerOutput", json.dumps({
-                            "schema": self.database_schema[:2000] if self.database_schema else "",
-                            "model": dbdesigner_model,
-                            "status": "completed",
-                            "tables": extract_tables_from_schema(self.database_schema),
-                            "timestamp": datetime.now().isoformat()
-                        }, ensure_ascii=False))
+                    # ÄNDERUNG 29.01.2026: Retry-Logik mit Modellwechsel bei 404/Unavailable
+                    MAX_DB_RETRIES = 3
+                    for db_attempt in range(MAX_DB_RETRIES):
+                        current_db_model = self.model_router.get_model("database_designer")
+                        try:
+                            agent_db = init_agents(
+                                self.config,
+                                project_rules,
+                                router=self.model_router,
+                                include=["db_designer"]
+                            ).get("db_designer")
+                            if agent_db:
+                                task_db = Task(description=f"Schema für {user_goal}", expected_output="Schema", agent=agent_db)
+                                # ÄNDERUNG 29.01.2026: Heartbeat-Wrapper für stabile WebSocket-Verbindung
+                                self.database_schema = run_with_heartbeat(
+                                    func=lambda: str(task_db.execute_sync()),
+                                    ui_log_callback=self._ui_log,
+                                    agent_name="DB-Designer",
+                                    task_description="Datenbank-Schema Erstellung",
+                                    heartbeat_interval=15,
+                                    timeout_seconds=180
+                                )
+                                break  # Erfolg
+                        except Exception as db_error:
+                            if is_model_unavailable_error(db_error) or is_rate_limit_error(db_error):
+                                self._ui_log("DBDesigner", "Warning",
+                                    f"Modell {current_db_model} nicht verfügbar (Versuch {db_attempt + 1}/{MAX_DB_RETRIES}), wechsle...")
+                                self.model_router.mark_rate_limited_sync(current_db_model)
+                                if db_attempt == MAX_DB_RETRIES - 1:
+                                    self._ui_log("DBDesigner", "Error", "Alle DB-Modelle nicht verfügbar, überspringe Schema")
+                                    self.database_schema = ""
+                            else:
+                                self._ui_log("DBDesigner", "Error", f"Schema-Fehler: {str(db_error)[:200]}")
+                                self.database_schema = ""
+                                break
+
+                    # ÄNDERUNG 25.01.2026: Worker-Status auf "idle" setzen
+                    self._update_worker_status("db_designer", "idle")
+
+                    # ÄNDERUNG 24.01.2026: DBDesignerOutput Event für Frontend Office
+                    self._ui_log("DBDesigner", "DBDesignerOutput", json.dumps({
+                        "schema": self.database_schema[:2000] if self.database_schema else "",
+                        "model": dbdesigner_model,
+                        "status": "completed" if self.database_schema else "error",
+                        "tables": extract_tables_from_schema(self.database_schema) if self.database_schema else [],
+                        "timestamp": datetime.now().isoformat()
+                    }, ensure_ascii=False))
 
                 if "designer" in plan_data["plan"]:
                     self._ui_log("Designer", "Status", "Erstelle Design-Konzept...")
@@ -721,25 +814,53 @@ class OrchestrationManager:
                     designer_model = self.model_router.get_model("designer") if self.model_router else "unknown"
                     # ÄNDERUNG 25.01.2026: Worker-Status auf "working" setzen
                     self._update_worker_status("designer", "working", "Erstelle Design-Konzept...", designer_model)
-                    agent_des = init_agents(
-                        self.config,
-                        project_rules,
-                        router=self.model_router,
-                        include=["designer"]
-                    ).get("designer")
-                    if agent_des:
-                        # AENDERUNG 25.01.2026: Designer erhaelt TechStack-Blueprint
-                        tech_info = f"Tech-Stack: {self.tech_blueprint.get('project_type', 'webapp')}"
-                        if self.tech_blueprint.get('dependencies'):
-                            tech_info += f", Frameworks: {', '.join(self.tech_blueprint.get('dependencies', []))}"
-                        task_des = Task(description=f"Design für: {user_goal}\n{tech_info}", expected_output="Konzept", agent=agent_des)
-                        self.design_concept = str(task_des.execute_sync())
-                        # ÄNDERUNG 25.01.2026: Worker-Status auf "idle" setzen
-                        self._update_worker_status("designer", "idle")
 
-                        # ÄNDERUNG 24.01.2026: DesignerOutput Event für Frontend Office
+                    # ÄNDERUNG 29.01.2026: Retry-Logik mit Modellwechsel bei 404/Unavailable
+                    MAX_DESIGN_RETRIES = 3
+                    for design_attempt in range(MAX_DESIGN_RETRIES):
+                        current_design_model = self.model_router.get_model("designer")
+                        try:
+                            agent_des = init_agents(
+                                self.config,
+                                project_rules,
+                                router=self.model_router,
+                                include=["designer"]
+                            ).get("designer")
+                            if agent_des:
+                                # AENDERUNG 25.01.2026: Designer erhaelt TechStack-Blueprint
+                                tech_info = f"Tech-Stack: {self.tech_blueprint.get('project_type', 'webapp')}"
+                                if self.tech_blueprint.get('dependencies'):
+                                    tech_info += f", Frameworks: {', '.join(self.tech_blueprint.get('dependencies', []))}"
+                                task_des = Task(description=f"Design für: {user_goal}\n{tech_info}", expected_output="Konzept", agent=agent_des)
+                                # ÄNDERUNG 29.01.2026: Heartbeat-Wrapper für stabile WebSocket-Verbindung
+                                self.design_concept = run_with_heartbeat(
+                                    func=lambda: str(task_des.execute_sync()),
+                                    ui_log_callback=self._ui_log,
+                                    agent_name="Designer",
+                                    task_description="UI/UX Design",
+                                    heartbeat_interval=15,
+                                    timeout_seconds=180
+                                )
+                                break  # Erfolg
+                        except Exception as des_error:
+                            if is_model_unavailable_error(des_error) or is_rate_limit_error(des_error):
+                                self._ui_log("Designer", "Warning",
+                                    f"Modell {current_design_model} nicht verfügbar (Versuch {design_attempt + 1}/{MAX_DESIGN_RETRIES}), wechsle...")
+                                self.model_router.mark_rate_limited_sync(current_design_model)
+                                if design_attempt == MAX_DESIGN_RETRIES - 1:
+                                    self._ui_log("Designer", "Error", "Alle Design-Modelle nicht verfügbar, überspringe Design")
+                                    self.design_concept = ""
+                            else:
+                                self._ui_log("Designer", "Error", f"Design-Fehler: {str(des_error)[:200]}")
+                                self.design_concept = ""
+                                break
+
+                    # ÄNDERUNG 25.01.2026: Worker-Status auf "idle" setzen
+                    self._update_worker_status("designer", "idle")
+
+                    # ÄNDERUNG 24.01.2026: DesignerOutput Event für Frontend Office
+                    if self.design_concept:
                         design_data = extract_design_data(self.design_concept)
-
                         self._ui_log("Designer", "DesignerOutput", json.dumps({
                             "colorPalette": design_data["colorPalette"],
                             "typography": design_data["typography"],

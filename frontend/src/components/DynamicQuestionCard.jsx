@@ -199,22 +199,16 @@ const DynamicQuestionCard = ({
       )}
 
       {/* Optionen */}
-      <div className="space-y-2 mb-5">
+      <div className="space-y-2 mb-5" role="listbox" aria-multiselectable="true">
         {(question.options || []).map((opt, i) => {
           const isSelected = selectedOptions.includes(opt.value);
-          // ÄNDERUNG 29.01.2026: Checkbox-Semantik und Tastaturbedienung für Optionen
+          // ÄNDERUNG 29.01.2026: Listbox-Semantik für Optionen
           return (
             <button
               key={opt.value || i}
               onClick={() => toggleOption(opt.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
-                  e.preventDefault();
-                  toggleOption(opt.value);
-                }
-              }}
-              role="checkbox"
-              aria-checked={isSelected}
+              role="option"
+              aria-selected={isSelected}
               aria-label={opt.text}
               className="w-full text-left p-4 rounded transition-all flex items-center gap-3"
               style={{
@@ -286,6 +280,9 @@ const DynamicQuestionCard = ({
           const recommendedOpt = (question.options || []).find(opt => opt.recommended);
           if (recommendedOpt) {
             // Auto-Fallback: Empfohlene Antwort verwenden
+            // ÄNDERUNG 29.01.2026: Local State vor Antwort zurücksetzen
+            setSelectedOptions([]);
+            setCustomText('');
             onAnswer({
               agents,
               questionId: question.id,
@@ -297,6 +294,8 @@ const DynamicQuestionCard = ({
             });
           } else {
             // Keine Empfehlung vorhanden: Normal überspringen
+            setSelectedOptions([]);
+            setCustomText('');
             onAnswer({ agents, questionId: question.id, question: question.question, skipped: true });
           }
         }}

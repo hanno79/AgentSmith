@@ -31,13 +31,15 @@ const truncateText = (text, maxLength = 500) => {
 };
 
 // Events die in der Benutzer-Ansicht ausgeblendet werden (technische/interne Events)
+// ÄNDERUNG 29.01.2026: Heartbeat hinzugefügt - nur in DEBUG anzeigen
 export const HIDDEN_USER_EVENTS = [
   'WorkerStatus',
   'TokenMetrics',
   'LoopDecision',
   'Status',
   'Iteration',
-  'CoderTasksOutput'  // Security-Tasks werden separat angezeigt
+  'CoderTasksOutput',  // Security-Tasks werden separat angezeigt
+  'Heartbeat'          // Heartbeats nur in DEBUG (technische Status-Updates)
 ];
 
 // Formatiert TechStack-Entscheidungen

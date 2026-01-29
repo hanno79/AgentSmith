@@ -7,7 +7,10 @@ Beschreibung: Dependency-Agent Endpunkte für Inventar und Installationen.
 """
 # ÄNDERUNG 29.01.2026: Dependency-Endpunkte in eigenes Router-Modul verschoben
 
-from typing import Optional
+from typing import Optional, List
+import os
+import re
+import shlex
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from ..api_logging import log_event
@@ -71,6 +74,48 @@ class InstallRequest(BaseModel):
     project_path: Optional[str] = None
 
 
+def _validate_install_command(install_command: str) -> List[str]:
+    """
+    ÄNDERUNG 29.01.2026: Whitelist-Validierung für Installationsbefehle.
+    """
+    if not install_command or not install_command.strip():
+        raise HTTPException(status_code=400, detail="install_command darf nicht leer sein")
+
+    if any(token in install_command for token in ["&&", ";", "|", "||", "`"]):
+        raise HTTPException(status_code=400, detail="install_command enthält unzulässige Zeichen")
+
+    parts = shlex.split(install_command, posix=(os.name != "nt"))
+    if not parts:
+        raise HTTPException(status_code=400, detail="install_command ist ungültig")
+
+    base = parts[0].lower()
+    package_pattern = re.compile(r"^[A-Za-z0-9@/_.\-]+(==[A-Za-z0-9_.\-]+)?$")
+
+    def _validate_packages(args: List[str]):
+        for arg in args:
+            if arg.startswith("-"):
+                raise HTTPException(status_code=400, detail="Nur Paketnamen erlaubt, keine Flags")
+            if not package_pattern.match(arg):
+                raise HTTPException(status_code=400, detail=f"Ungültiger Paketname: {arg}")
+
+    if base == "pip":
+        if len(parts) < 3 or parts[1] != "install":
+            raise HTTPException(status_code=400, detail="Nur 'pip install <paket>' erlaubt")
+        _validate_packages(parts[2:])
+    elif base == "python":
+        if len(parts) < 5 or parts[1] != "-m" or parts[2] != "pip" or parts[3] != "install":
+            raise HTTPException(status_code=400, detail="Nur 'python -m pip install <paket>' erlaubt")
+        _validate_packages(parts[4:])
+    elif base == "npm":
+        if len(parts) < 2 or parts[1] not in ["install", "i"]:
+            raise HTTPException(status_code=400, detail="Nur 'npm install' erlaubt")
+        _validate_packages(parts[2:])
+    else:
+        raise HTTPException(status_code=400, detail=f"Befehl nicht erlaubt: {base}")
+
+    return parts
+
+
 @router.post("/dependencies/install")
 @limiter.limit("5/minute")
 def install_dependencies(request: Request, install_request: InstallRequest):
@@ -85,6 +130,8 @@ def install_dependencies(request: Request, install_request: InstallRequest):
     if not agent:
         raise HTTPException(status_code=503, detail="Dependency Agent nicht verfuegbar")
 
+    # ÄNDERUNG 29.01.2026: Installationsbefehl validieren
+    _validate_install_command(install_request.install_command)
     result = agent.install_dependencies(install_request.install_command, install_request.project_path)
     return result
 

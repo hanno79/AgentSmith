@@ -8,6 +8,7 @@ Beschreibung: DevLoop kapselt die Iterationslogik fuer Code-Generierung und Test
 import os
 import json
 from typing import Dict, Any, Tuple
+from concurrent.futures import ThreadPoolExecutor
 
 from agents.memory_agent import update_memory
 from .dev_loop_steps import (
@@ -134,7 +135,9 @@ class DevLoop:
                 manager._ui_log("Reviewer", "Status", f"Code OK - Projekt komplett mit {created_count} Dateien.")
                 try:
                     memory_path = os.path.join(manager.base_dir, "memory", "global_memory.json")
-                    update_memory(memory_path, manager.current_code, review_output, sandbox_result)
+                    # ÄNDERUNG 29.01.2026: Non-blocking Memory-Operation für WebSocket-Stabilität
+                    with ThreadPoolExecutor(max_workers=1) as executor:
+                        executor.submit(update_memory, memory_path, manager.current_code, review_output, sandbox_result)
                     manager._ui_log("Memory", "Recording", "Erfolgreiche Iteration aufgezeichnet.")
                 except Exception as mem_err:
                     manager._ui_log("Memory", "Error", f"Memory-Operation fehlgeschlagen: {mem_err}")
@@ -160,7 +163,9 @@ class DevLoop:
             manager._ui_log("Reviewer", "Feedback", feedback)
             try:
                 memory_path = os.path.join(manager.base_dir, "memory", "global_memory.json")
-                update_memory(memory_path, manager.current_code, review_output, sandbox_result)
+                # ÄNDERUNG 29.01.2026: Non-blocking Memory-Operation für WebSocket-Stabilität
+                with ThreadPoolExecutor(max_workers=1) as executor:
+                    executor.submit(update_memory, memory_path, manager.current_code, review_output, sandbox_result)
             except Exception as mem_err:
                 manager._ui_log("Memory", "Error", f"Memory-Operation fehlgeschlagen: {mem_err}")
 

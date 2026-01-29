@@ -18,6 +18,23 @@ VERSIONSHISTORIE
 ========================================
 
 ----------------------------------------
+Version 0.7 - 29.01.2026
+----------------------------------------
+
+# ÄNDERUNG 29.01.2026: WebSocket-Timeout stabilisiert
+# WebSocket-Verbindung trennt erst nach mehreren Timeouts, um Disconnects
+# bei hoher UI-Last (z.B. Memory-Phase) zu vermeiden.
+# Betroffene Dateien: backend/app_state.py, backend/routers/core.py
+
+# ÄNDERUNG 29.01.2026: WebSocket Host-Fallback und Debug-UI
+# Fallback von localhost auf 127.0.0.1 im Frontend-Hook; Debug-UI fuer WS-Logs.
+# Betroffene Dateien: frontend/src/hooks/useWebSocket.js, ui_mockups/ws_debug.html
+
+# ÄNDERUNG 29.01.2026: Backend als Paket initialisiert
+# __init__.py hinzugefuegt, damit uvicorn das lokale Backend korrekt importiert.
+# Betroffene Dateien: backend/__init__.py
+
+----------------------------------------
 Version 0.6 - 24.01.2026
 ----------------------------------------
 

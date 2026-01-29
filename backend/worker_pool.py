@@ -277,15 +277,25 @@ class WorkerPool:
         for task in tasks_to_cancel:
             task.cancel()
         
-        # ÄNDERUNG 29.01.2026: asyncio.get_running_loop() statt get_event_loop verwenden
-        # tasks_to_cancel per _await_task_cancellations ausführen, falls ein Loop läuft
+        # ÄNDERUNG 29.01.2026: tasks_to_cancel synchron abschließen bevor State mutiert
         if tasks_to_cancel:
             try:
-                asyncio.get_running_loop()
-                asyncio.create_task(self._await_task_cancellations(tasks_to_cancel))
+                loop = asyncio.get_running_loop()
+                # Laufender Loop → Cancellation im gleichen Loop ausführen
+                future = asyncio.run_coroutine_threadsafe(
+                    self._await_task_cancellations(tasks_to_cancel),
+                    loop
+                )
+                future.result()
             except RuntimeError:
-                # Kein laufender Loop → asyncio.run nutzt tasks_to_cancel für das Await
-                asyncio.run(asyncio.gather(*tasks_to_cancel, return_exceptions=True))
+                # Kein laufender Loop → eigener Loop für Await
+                loop = asyncio.new_event_loop()
+                try:
+                    loop.run_until_complete(
+                        asyncio.gather(*tasks_to_cancel, return_exceptions=True)
+                    )
+                finally:
+                    loop.close()
         
         # Worker zurücksetzen
         for worker in self.workers.values():

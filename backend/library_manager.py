@@ -75,6 +75,19 @@ class LibraryManager:
                 self.current_project["save_error_timestamp"] = datetime.now().isoformat()
                 raise
 
+    def _normalize_briefing_preview(self, briefing: Any) -> str:
+        """
+        Normalisiert Briefing-Daten zu einem kurzen String-Preview.
+        """
+        if briefing is None:
+            return ""
+        if isinstance(briefing, dict):
+            try:
+                return json.dumps(briefing, ensure_ascii=False, separators=(",", ":"))
+            except Exception:
+                return str(briefing)
+        return str(briefing)
+
     def start_project(self, name: str, goal: str, briefing: Optional[Dict[str, Any]] = None) -> str:
         """
         Startet ein neues Projekt und erstellt einen Protokoll-Eintrag.
@@ -90,11 +103,14 @@ class LibraryManager:
         project_id = f"proj_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}_{uuid.uuid4().hex[:6]}"
 
         # ÄNDERUNG 29.01.2026: Discovery Briefing wird mit Projekt gespeichert
+        # ÄNDERUNG 29.01.2026: Briefing-Preview normalisieren
+        briefing_preview = self._normalize_briefing_preview(briefing)[:200]
         self.current_project = {
             "project_id": project_id,
             "name": name,
             "goal": goal,
             "briefing": briefing,
+            "briefing_preview": briefing_preview,
             "started_at": datetime.now().isoformat(),
             "completed_at": None,
             "status": "running",
@@ -269,11 +285,15 @@ class LibraryManager:
                         # Nur Metadaten, nicht alle Einträge
                         # ÄNDERUNG 29.01.2026: Discovery Briefing kuerzen
                         # Briefing wird auf 200 Zeichen begrenzt zur Payload-Reduktion
+                        # ÄNDERUNG 29.01.2026: Briefing-Preview sicher normalisieren
+                        briefing_preview = self._normalize_briefing_preview(
+                            project.get("briefing_preview", project.get("briefing"))
+                        )[:200]
                         projects.append({
                             "project_id": project.get("project_id"),
                             "name": project.get("name"),
                             "goal": project.get("goal", "")[:200],
-                            "briefing": project.get("briefing", "")[:200],
+                            "briefing": briefing_preview,
                             "started_at": project.get("started_at"),
                             "completed_at": project.get("completed_at"),
                             "status": project.get("status"),

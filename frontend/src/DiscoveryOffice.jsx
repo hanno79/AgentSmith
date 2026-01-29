@@ -1,7 +1,7 @@
 /**
  * Author: rahn / Claude
  * Datum: 29.01.2026
- * Version: 1.4
+ * Version: 1.5
  * Beschreibung: Discovery Office - Strukturierte Projektaufnahme mit Guided Choice System.
  *               Implementiert interaktive Fragen mit vorgeschlagenen Antwortoptionen.
  *
@@ -10,6 +10,7 @@
  * ÄNDERUNG 29.01.2026 v1.3: Multi-Agent Support nach Backend-Deduplizierung.
  *                           Fragen mit agents: [] Array statt verschachtelter Struktur.
  * ÄNDERUNG 29.01.2026 v1.4: Session-Persistenz für Pausieren/Fortsetzen.
+ * ÄNDERUNG 29.01.2026 v1.5: LLM-basierte Agenten-Auswahl mit Begründungen.
  */
 
 import React, { useState, useEffect } from 'react';
@@ -22,7 +23,7 @@ import { useQuestions } from './hooks/useQuestions';
 import { useBriefing } from './hooks/useBriefing';
 import { useSessionStorage } from './hooks/useSessionStorage';
 import defaultDiscoveryQuestions from './constants/defaultDiscoveryQuestions';
-import { PHASES, AGENT_COLORS, ALL_AGENTS } from './constants/discoveryConstants';
+import { PHASES, AGENT_COLOR_CLASSES, ALL_AGENTS } from './constants/discoveryConstants';
 import { Lightbulb } from 'lucide-react';
 import {
   ArrowLeft,
@@ -82,7 +83,10 @@ const DiscoveryOffice = ({
     completedAgent,
     pendingNextAgent,
     handleFeedbackContinue,
-    getAgentAnswers
+    getAgentAnswers,
+    // ÄNDERUNG 29.01.2026 v1.3: LLM-basierte Agenten-Auswahl
+    agentReasons,
+    notNeededAgents
   } = useQuestions({
     vision,
     apiBase: API_BASE,
@@ -126,14 +130,26 @@ const DiscoveryOffice = ({
 
   // ÄNDERUNG 29.01.2026: Session fortsetzen (vollständig)
   const handleResumeSession = () => {
-    const saved = loadSession();
-    if (saved) {
-      setVision(saved.vision || '');
-      // ÄNDERUNG 29.01.2026 v1.1: Vollständiger Session-Restore
-      restoreSession(saved);
-      setPhase(saved.phase || PHASES.VISION);
+    try {
+      const saved = loadSession();
+      const isValidPhase = saved && Object.values(PHASES).includes(saved.phase);
+      const hasRequiredKeys = saved && typeof saved === 'object' && saved.vision !== undefined && isValidPhase;
+      if (hasRequiredKeys) {
+        setVision(saved.vision || '');
+        // ÄNDERUNG 29.01.2026 v1.1: Vollständiger Session-Restore
+        restoreSession(saved);
+        setPhase(saved.phase || PHASES.VISION);
+      } else {
+        console.warn('Ungültige Session-Daten gefunden. Session wird verworfen.');
+        clearSession();
+      }
+    } catch (err) {
+      console.error('Fehler beim Fortsetzen der Session:', err);
+      clearSession();
+    } finally {
+      // ÄNDERUNG 29.01.2026: UI-Zustand immer schließen
+      setShowResumeDialog(false);
     }
-    setShowResumeDialog(false);
   };
 
   // ÄNDERUNG 29.01.2026: Neue Session starten
@@ -277,23 +293,31 @@ const DiscoveryOffice = ({
                 </p>
               </div>
 
-              {/* Ausgewählte Agenten */}
+              {/* Ausgewählte Agenten - ÄNDERUNG 29.01.2026 v1.5: LLM-Begründungen anzeigen */}
               <div className="mb-6">
-                <h3 className="text-sm text-slate-400 uppercase tracking-wider mb-3">Aktives Team ({selectedAgents.length})</h3>
+                <h3 className="text-sm text-slate-400 uppercase tracking-wider mb-3">
+                  Empfohlenes Team ({selectedAgents.length})
+                </h3>
                 <div className="space-y-2">
                   {selectedAgents.map((agent) => {
                     const agentInfo = ALL_AGENTS.find(a => a.id === agent);
+                    const llmReason = agentReasons[agent];
                     return (
                       <div
                         key={agent}
                         className="p-3 rounded-lg bg-slate-700/50 border border-slate-600 flex items-center gap-3"
                       >
-                        <div className={`w-3 h-3 rounded-full bg-${AGENT_COLORS[agent] || 'gray'}-400`} />
+                        <div className={`w-3 h-3 rounded-full ${AGENT_COLOR_CLASSES[agent] || 'bg-gray-400'}`} />
                         <div className="flex-1">
                           <span className="text-white font-medium">{agent}</span>
-                          {agentInfo && (
+                          {/* LLM-Begründung hat Priorität über statische Beschreibung */}
+                          {llmReason ? (
+                            <p className="text-cyan-400 text-xs">
+                              <span className="text-slate-500">Empfohlen:</span> {llmReason}
+                            </p>
+                          ) : agentInfo ? (
                             <p className="text-slate-400 text-xs">{agentInfo.description}</p>
-                          )}
+                          ) : null}
                         </div>
                         <button
                           onClick={() => setSelectedAgents(prev => prev.filter(a => a !== agent))}
@@ -308,30 +332,42 @@ const DiscoveryOffice = ({
                 </div>
               </div>
 
-              {/* Verfügbare Agenten zum Hinzufügen */}
+              {/* Verfügbare Agenten zum Hinzufügen - ÄNDERUNG 29.01.2026 v1.5: Nicht-benötigt Begründungen */}
               {ALL_AGENTS.filter(a => !selectedAgents.includes(a.id)).length > 0 && (
                 <div className="mb-8">
-                  <h3 className="text-sm text-slate-400 uppercase tracking-wider mb-3">Verfügbare Experten</h3>
+                  <h3 className="text-sm text-slate-400 uppercase tracking-wider mb-3">
+                    Nicht empfohlen für dieses Projekt
+                  </h3>
                   <div className="space-y-2">
-                    {ALL_AGENTS.filter(a => !selectedAgents.includes(a.id)).map((agent) => (
-                      <div
-                        key={agent.id}
-                        className="p-3 rounded-lg bg-slate-900/50 border border-slate-700 flex items-center gap-3"
-                      >
-                        <div className={`w-3 h-3 rounded-full bg-${AGENT_COLORS[agent.id] || 'gray'}-400 opacity-50`} />
-                        <div className="flex-1">
-                          <span className="text-slate-300 font-medium">{agent.name}</span>
-                          <p className="text-slate-500 text-xs">{agent.description}</p>
-                        </div>
-                        <button
-                          onClick={() => setSelectedAgents(prev => [...prev, agent.id])}
-                          className="p-1 rounded hover:bg-green-500/20 text-slate-400 hover:text-green-400 transition-colors"
-                          title="Hinzufügen"
+                    {ALL_AGENTS.filter(a => !selectedAgents.includes(a.id)).map((agent) => {
+                      const notNeededReason = notNeededAgents[agent.id] || notNeededAgents[agent.name];
+                      return (
+                        <div
+                          key={agent.id}
+                          className="p-3 rounded-lg bg-slate-900/50 border border-slate-700 flex items-center gap-3"
                         >
-                          <Plus size={16} />
-                        </button>
-                      </div>
-                    ))}
+                          <div className={`${AGENT_COLOR_CLASSES[agent.id] || 'bg-gray-400'} w-3 h-3 rounded-full opacity-50`} />
+                          <div className="flex-1">
+                            <span className="text-slate-300 font-medium">{agent.name}</span>
+                            {/* LLM-Begründung warum nicht benötigt */}
+                            {notNeededReason ? (
+                              <p className="text-amber-500/70 text-xs">
+                                <span className="text-slate-500">Nicht nötig:</span> {notNeededReason}
+                              </p>
+                            ) : (
+                              <p className="text-slate-500 text-xs">{agent.description}</p>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => setSelectedAgents(prev => [...prev, agent.id])}
+                            className="p-1 rounded hover:bg-green-500/20 text-slate-400 hover:text-green-400 transition-colors"
+                            title="Trotzdem hinzufügen"
+                          >
+                            <Plus size={16} />
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}

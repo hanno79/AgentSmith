@@ -1,12 +1,13 @@
 /**
  * Author: rahn
  * Datum: 29.01.2026
- * Version: 1.2
+ * Version: 1.3
  * Beschreibung: Hook für Fragen-Logik, Antworten und Agentensteuerung.
  */
 // ÄNDERUNG 29.01.2026: Fragen- und Antwort-Logik ausgelagert
 // ÄNDERUNG 29.01.2026 v1.1: restoreSession Funktion für vollständigen Session-Restore
 // ÄNDERUNG 29.01.2026 v1.2: Feedback-Schleifen nach Agent-Runden
+// ÄNDERUNG 29.01.2026 v1.3: LLM-basierte intelligente Agenten-Auswahl
 
 import { useState, useCallback } from 'react';
 import { PHASES } from '../constants/discoveryConstants';
@@ -30,28 +31,67 @@ export const useQuestions = ({
   // ÄNDERUNG 29.01.2026 v1.2: Feedback-Schleifen State
   const [completedAgent, setCompletedAgent] = useState(null);
   const [pendingNextAgent, setPendingNextAgent] = useState(null);
+  // ÄNDERUNG 29.01.2026 v1.3: LLM-basierte Agenten-Auswahl State
+  const [agentReasons, setAgentReasons] = useState({});
+  const [notNeededAgents, setNotNeededAgents] = useState({});
 
-  const handleVisionSubmit = useCallback(() => {
+  // ÄNDERUNG 29.01.2026 v1.3: Async LLM-basierte Agenten-Auswahl
+  const handleVisionSubmit = useCallback(async () => {
     if (!vision.trim()) return;
 
     setIsLoading(true);
+    setLoadingMessage('Analysiere Projekt für optimale Team-Zusammenstellung...');
 
-    setTimeout(() => {
-      const agents = ['Analyst', 'Coder', 'Tester', 'Planner'];
+    try {
+      // LLM-basierte Team-Empfehlung vom Backend
+      const response = await fetch(`${apiBase}/discovery/suggest-team`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vision })
+      });
 
-      if (vision.toLowerCase().includes('ui') || vision.toLowerCase().includes('web')) {
-        agents.splice(2, 0, 'Designer');
+      if (response.ok) {
+        const data = await response.json();
+
+        // Empfohlene Agenten setzen
+        const recommendedAgents = data.recommended_agents || ['Coder', 'Designer', 'Tester'];
+        setSelectedAgents(recommendedAgents);
+
+        // Begründungen speichern
+        setAgentReasons(data.reasoning || {});
+        setNotNeededAgents(data.not_needed || {});
+
+        console.log('LLM Team-Empfehlung:', {
+          empfohlen: recommendedAgents,
+          begruendungen: data.reasoning,
+          nicht_noetig: data.not_needed
+        });
+      } else {
+        // Fallback bei Fehler: Standard-Team
+        console.warn('Team-Empfehlung fehlgeschlagen, verwende Standard-Team');
+        setSelectedAgents(['Coder', 'Designer', 'Tester']);
+        setAgentReasons({
+          'Coder': 'Standard-Agent für Implementierung',
+          'Designer': 'Standard-Agent für UI/UX',
+          'Tester': 'Standard-Agent für Qualitätsprüfung'
+        });
       }
-      if (vision.toLowerCase().includes('daten') || vision.toLowerCase().includes('data')) {
-        agents.splice(1, 0, 'Data Researcher');
-      }
+    } catch (error) {
+      console.error('Fehler bei Team-Empfehlung:', error);
+      // Fallback: Standard-Team
+      setSelectedAgents(['Coder', 'Designer', 'Tester']);
+      setAgentReasons({
+        'Coder': 'Standard-Agent für Implementierung',
+        'Designer': 'Standard-Agent für UI/UX',
+        'Tester': 'Standard-Agent für Qualitätsprüfung'
+      });
+    }
 
-      setSelectedAgents(agents);
-      setAgentQuestions(defaultQuestions);
-      setPhase(PHASES.TEAM_SETUP);
-      setIsLoading(false);
-    }, 1000);
-  }, [vision, defaultQuestions, setPhase, setIsLoading]);
+    setAgentQuestions(defaultQuestions);
+    setPhase(PHASES.TEAM_SETUP);
+    setIsLoading(false);
+    setLoadingMessage('');
+  }, [vision, apiBase, defaultQuestions, setPhase, setIsLoading, setLoadingMessage]);
 
   const handleTeamConfirm = useCallback(async () => {
     if (selectedAgents.length === 0) return;
@@ -222,6 +262,9 @@ export const useQuestions = ({
     completedAgent,
     pendingNextAgent,
     handleFeedbackContinue,
-    getAgentAnswers
+    getAgentAnswers,
+    // ÄNDERUNG 29.01.2026 v1.3: LLM-basierte Agenten-Auswahl
+    agentReasons,
+    notNeededAgents
   };
 };

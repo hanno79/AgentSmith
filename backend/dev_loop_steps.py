@@ -8,8 +8,11 @@ Beschreibung: Schritt-Funktionen fuer den DevLoop.
 import os
 import json
 import base64
+import time
+import traceback
 from datetime import datetime
 from typing import Dict, Any, List, Tuple
+from concurrent.futures import ThreadPoolExecutor
 
 from crewai import Task
 
@@ -27,10 +30,14 @@ from .agent_factory import init_agents
 from .orchestration_helpers import (
     format_test_feedback,
     is_rate_limit_error,
+    is_server_error,
+    is_litellm_internal_error,
     is_empty_or_invalid_response,
     create_human_readable_verdict,
     extract_vulnerabilities
 )
+# ÄNDERUNG 29.01.2026: Heartbeat für stabile WebSocket-Verbindung
+from .heartbeat_utils import run_with_heartbeat
 
 # ÄNDERUNG 29.01.2026: Dev-Loop Schritte aus OrchestrationManager ausgelagert
 
@@ -131,26 +138,108 @@ def build_coder_prompt(manager, user_goal: str, feedback: str, iteration: int) -
 
 def run_coder_task(manager, project_rules: Dict[str, Any], c_prompt: str, agent_coder) -> Tuple[str, Any]:
     """
-    Fuehrt den Coder-Task mit Retry-Logik aus.
+    Fuehrt den Coder-Task mit Retry-Logik und Heartbeat-Updates aus.
+    ÄNDERUNG 29.01.2026: Modellwechsel erst nach 2 gleichen Fehlern mit demselben Modell.
     """
     task_coder = Task(description=c_prompt, expected_output="Code", agent=agent_coder)
-    MAX_CODER_RETRIES = 3
-    coder_success = False
+    MAX_CODER_RETRIES = 6  # Erhöht: 2 Versuche pro Modell x 3 Modelle
+    CODER_TIMEOUT_SECONDS = 300  # 5 Minuten Timeout
+    # ÄNDERUNG 29.01.2026: Modellwechsel erst nach X gleichen Fehlern
+    ERRORS_BEFORE_MODEL_SWITCH = 2
     current_code = ""
 
+    # Fehler-Tracker: (modell, fehlertyp) -> anzahl
+    error_tracker = {}
+    last_error_type = None
+
     for coder_attempt in range(MAX_CODER_RETRIES):
+        current_model = manager.model_router.get_model("coder") if manager.model_router else "unknown"
         try:
-            current_code = str(task_coder.execute_sync()).strip()
-            coder_success = True
+            # ÄNDERUNG 29.01.2026: Heartbeat-Wrapper für stabile WebSocket-Verbindung
+            current_code = run_with_heartbeat(
+                func=lambda: str(task_coder.execute_sync()).strip(),
+                ui_log_callback=manager._ui_log,
+                agent_name="Coder",
+                task_description=f"Code-Generierung (Versuch {coder_attempt + 1}/{MAX_CODER_RETRIES})",
+                heartbeat_interval=15,
+                timeout_seconds=CODER_TIMEOUT_SECONDS
+            )
             break
+        except TimeoutError as te:
+            error_type = "timeout"
+            error_key = (current_model, error_type)
+
+            # Bei neuem Fehlertyp: Tracker zurücksetzen
+            if last_error_type and last_error_type != error_type:
+                error_tracker = {}
+            last_error_type = error_type
+
+            error_tracker[error_key] = error_tracker.get(error_key, 0) + 1
+            error_count = error_tracker[error_key]
+
+            manager._ui_log("Coder", "Timeout",
+                            f"Coder-Modell {current_model} timeout nach {CODER_TIMEOUT_SECONDS}s (Fehler {error_count}/{ERRORS_BEFORE_MODEL_SWITCH})")
+
+            # Erst nach ERRORS_BEFORE_MODEL_SWITCH gleichen Fehlern Modell wechseln
+            if error_count >= ERRORS_BEFORE_MODEL_SWITCH:
+                manager._ui_log("Coder", "Status", f"🔄 Modellwechsel nach {error_count} Timeouts")
+                manager.model_router.mark_rate_limited_sync(current_model)
+                agent_coder = init_agents(
+                    manager.config,
+                    project_rules,
+                    router=manager.model_router,
+                    include=["coder"]
+                ).get("coder")
+                task_coder = Task(description=c_prompt, expected_output="Code", agent=agent_coder)
+                error_tracker = {}  # Tracker zurücksetzen nach Modellwechsel
+
+            if coder_attempt == MAX_CODER_RETRIES - 1:
+                manager._ui_log("Coder", "Error", f"Alle {MAX_CODER_RETRIES} Versuche fehlgeschlagen (Timeout)")
+                raise te
+            continue
+
         except Exception as error:
-            current_model = manager.model_router.get_model("coder") if manager.model_router else "unknown"
+            # ÄNDERUNG 29.01.2026: LiteLLM interne Bugs wie Rate-Limits behandeln
+            if is_litellm_internal_error(error):
+                error_type = "litellm_bug"
+                error_key = (current_model, error_type)
+
+                # Bei neuem Fehlertyp: Tracker zurücksetzen
+                if last_error_type and last_error_type != error_type:
+                    error_tracker = {}
+                last_error_type = error_type
+
+                error_tracker[error_key] = error_tracker.get(error_key, 0) + 1
+                error_count = error_tracker[error_key]
+
+                manager._ui_log("Coder", "Warning",
+                                f"LiteLLM-Bug erkannt (Fehler {error_count}/{ERRORS_BEFORE_MODEL_SWITCH}): {str(error)[:100]}")
+
+                # Erst nach ERRORS_BEFORE_MODEL_SWITCH gleichen Fehlern Modell wechseln
+                if error_count >= ERRORS_BEFORE_MODEL_SWITCH:
+                    manager._ui_log("Coder", "Status", f"🔄 Modellwechsel nach {error_count} LiteLLM-Bugs")
+                    manager.model_router.mark_rate_limited_sync(current_model)
+                    agent_coder = init_agents(
+                        manager.config,
+                        project_rules,
+                        router=manager.model_router,
+                        include=["coder"]
+                    ).get("coder")
+                    task_coder = Task(description=c_prompt, expected_output="Code", agent=agent_coder)
+                    error_tracker = {}  # Tracker zurücksetzen nach Modellwechsel
+
+                if coder_attempt == MAX_CODER_RETRIES - 1:
+                    manager._ui_log("Coder", "Error", f"Alle {MAX_CODER_RETRIES} Versuche fehlgeschlagen (LiteLLM-Bug): {str(error)[:200]}")
+                    raise error
+                continue
+
             if is_rate_limit_error(error):
+                # Rate-Limit: Sofort wechseln (keine Wartezeit sinnvoll)
                 manager.model_router.mark_rate_limited_sync(current_model)
                 manager._ui_log(
                     "ModelRouter",
                     "RateLimit",
-                    f"Modell {current_model} pausiert (Versuch {coder_attempt + 1}/{MAX_CODER_RETRIES}), wechsle zu Fallback..."
+                    f"Modell {current_model} pausiert, wechsle zu Fallback..."
                 )
                 agent_coder = init_agents(
                     manager.config,
@@ -159,15 +248,19 @@ def run_coder_task(manager, project_rules: Dict[str, Any], c_prompt: str, agent_
                     include=["coder"]
                 ).get("coder")
                 task_coder = Task(description=c_prompt, expected_output="Code", agent=agent_coder)
+                error_tracker = {}  # Tracker zurücksetzen
+
                 if coder_attempt == MAX_CODER_RETRIES - 1:
                     manager._ui_log("Coder", "Error", f"Alle {MAX_CODER_RETRIES} Versuche fehlgeschlagen: {str(error)[:200]}")
                     raise error
-            else:
-                manager._ui_log("Coder", "Error", f"Unerwarteter Fehler: {str(error)[:200]}")
-                raise error
+                continue
 
-    if not coder_success:
-        raise Exception(f"Coder konnte nach {MAX_CODER_RETRIES} Versuchen keine Ausgabe generieren")
+            # ÄNDERUNG 29.01.2026: Server-Fehler-Delay im Caller statt im Helper
+            if is_server_error(error):
+                manager._ui_log("Coder", "Warning", "Server-Fehler erkannt - kurze Pause von 5s")
+                time.sleep(5)
+            manager._ui_log("Coder", "Error", f"Unerwarteter Fehler: {str(error)[:200]}")
+            raise error
 
     return current_code, agent_coder
 
@@ -197,8 +290,14 @@ def save_coder_output(manager, current_code: str, output_path: str, iteration: i
             "total_tokens": today_totals.get("total_tokens", 0),
             "total_cost": today_totals.get("total_cost", 0.0)
         }, ensure_ascii=False))
-    except Exception:
-        pass
+    except Exception as budget_err:
+        # ÄNDERUNG 29.01.2026: Budget-Tracker Fehler sichtbar loggen
+        manager._ui_log(
+            "Coder",
+            "Warning",
+            "Fehler bei get_budget_tracker/tracker.get_today_totals; Details siehe Stacktrace."
+        )
+        manager._ui_log("Coder", "Warning", traceback.format_exc())
 
     return created_files
 
@@ -245,7 +344,10 @@ def run_sandbox_and_tests(
             memory_path = os.path.join(manager.base_dir, "memory", "global_memory.json")
             error_msg = extract_error_pattern(sandbox_result)
             tags = generate_tags_from_context(manager.tech_blueprint, sandbox_result)
-            learn_result = learn_from_error(memory_path, error_msg, tags)
+            # ÄNDERUNG 29.01.2026: Non-blocking Memory-Operation für WebSocket-Stabilität
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(learn_from_error, memory_path, error_msg, tags)
+                learn_result = future.result(timeout=5)  # Max 5s warten
             manager._ui_log("Memory", "Learning", f"Sandbox: {learn_result}")
         except Exception as mem_err:
             manager._ui_log("Memory", "Error", f"Memory-Operation fehlgeschlagen: {mem_err}")
@@ -304,7 +406,10 @@ def run_sandbox_and_tests(
                 error_msg = extract_error_pattern(test_summary)
                 tags = generate_tags_from_context(manager.tech_blueprint, test_summary)
                 tags.append("ui-test")
-                learn_result = learn_from_error(memory_path, error_msg, tags)
+                # ÄNDERUNG 29.01.2026: Non-blocking Memory-Operation für WebSocket-Stabilität
+                with ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(learn_from_error, memory_path, error_msg, tags)
+                    learn_result = future.result(timeout=5)  # Max 5s warten
                 manager._ui_log("Memory", "Learning", f"Test: {learn_result}")
             except Exception as mem_err:
                 manager._ui_log("Memory", "Error", f"Memory-Operation fehlgeschlagen: {mem_err}")
@@ -357,26 +462,83 @@ def run_review(
 ) -> Tuple[str, str, str]:
     """
     Fuehrt den Review-Task mit Retry-Logik aus.
+    ÄNDERUNG 29.01.2026: Modellwechsel erst nach 2 gleichen Fehlern mit demselben Modell.
     """
     r_prompt = f"Review Code:\n{current_code}\nSandbox: {sandbox_result}\nTester: {test_summary}"
     manager._update_worker_status("reviewer", "working", "Prüfe Code...", manager.model_router.get_model("reviewer") if manager.model_router else "")
 
-    MAX_REVIEW_RETRIES = 3
-    REVIEWER_TIMEOUT_SECONDS = 120
+    MAX_REVIEW_RETRIES = 6  # Erhöht: 2 Versuche pro Modell x 3 Modelle
+    # ÄNDERUNG 29.01.2026: Timeout von 120s auf 300s erhöht für langsame Modelle
+    REVIEWER_TIMEOUT_SECONDS = 300
+    # ÄNDERUNG 29.01.2026: Modellwechsel erst nach X gleichen Fehlern
+    ERRORS_BEFORE_MODEL_SWITCH = 2
     review_output = None
     agent_reviewer = manager.agent_reviewer
+
+    # Fehler-Tracker: (modell, fehlertyp) -> anzahl
+    error_tracker = {}
+    last_error_type = None
 
     for review_attempt in range(MAX_REVIEW_RETRIES):
         task_review = Task(description=r_prompt, expected_output="OK/Feedback", agent=agent_reviewer)
         current_model = manager.model_router.get_model("reviewer")
         try:
-            review_output = run_with_timeout(
-                lambda: str(task_review.execute_sync()),
+            # ÄNDERUNG 29.01.2026: Heartbeat-Wrapper für stabile WebSocket-Verbindung
+            review_output = run_with_heartbeat(
+                func=lambda: str(task_review.execute_sync()),
+                ui_log_callback=manager._ui_log,
+                agent_name="Reviewer",
+                task_description=f"Code-Review (Versuch {review_attempt + 1}/{MAX_REVIEW_RETRIES})",
+                heartbeat_interval=15,
                 timeout_seconds=REVIEWER_TIMEOUT_SECONDS
             )
             if is_empty_or_invalid_response(review_output):
+                error_type = "no_response"
+                error_key = (current_model, error_type)
+
+                # Bei neuem Fehlertyp: Tracker zurücksetzen
+                if last_error_type and last_error_type != error_type:
+                    error_tracker = {}
+                last_error_type = error_type
+
+                error_tracker[error_key] = error_tracker.get(error_key, 0) + 1
+                error_count = error_tracker[error_key]
+
                 manager._ui_log("Reviewer", "NoResponse",
-                                f"Modell {current_model} lieferte keine Antwort (Versuch {review_attempt + 1}/{MAX_REVIEW_RETRIES})")
+                                f"Modell {current_model} lieferte keine Antwort (Fehler {error_count}/{ERRORS_BEFORE_MODEL_SWITCH})")
+
+                # Erst nach ERRORS_BEFORE_MODEL_SWITCH gleichen Fehlern Modell wechseln
+                if error_count >= ERRORS_BEFORE_MODEL_SWITCH:
+                    manager._ui_log("Reviewer", "Status", f"🔄 Modellwechsel nach {error_count} gleichen Fehlern")
+                    manager.model_router.mark_rate_limited_sync(current_model)
+                    agent_reviewer = init_agents(
+                        manager.config,
+                        project_rules,
+                        router=manager.model_router,
+                        include=["reviewer"]
+                    ).get("reviewer")
+                    manager.agent_reviewer = agent_reviewer
+                    error_tracker = {}  # Tracker zurücksetzen nach Modellwechsel
+                continue
+            break
+        except TimeoutError as te:
+            error_type = "timeout"
+            error_key = (current_model, error_type)
+
+            # Bei neuem Fehlertyp: Tracker zurücksetzen
+            if last_error_type and last_error_type != error_type:
+                error_tracker = {}
+            last_error_type = error_type
+
+            error_tracker[error_key] = error_tracker.get(error_key, 0) + 1
+            error_count = error_tracker[error_key]
+
+            manager._ui_log("Reviewer", "Timeout",
+                            f"Reviewer-Modell {current_model} timeout nach {REVIEWER_TIMEOUT_SECONDS}s (Fehler {error_count}/{ERRORS_BEFORE_MODEL_SWITCH})")
+
+            # Erst nach ERRORS_BEFORE_MODEL_SWITCH gleichen Fehlern Modell wechseln
+            if error_count >= ERRORS_BEFORE_MODEL_SWITCH:
+                manager._ui_log("Reviewer", "Status", f"🔄 Modellwechsel nach {error_count} Timeouts")
                 manager.model_router.mark_rate_limited_sync(current_model)
                 agent_reviewer = init_agents(
                     manager.config,
@@ -385,22 +547,11 @@ def run_review(
                     include=["reviewer"]
                 ).get("reviewer")
                 manager.agent_reviewer = agent_reviewer
-                continue
-            break
-        except TimeoutError as te:
-            manager._ui_log("Reviewer", "Timeout",
-                            f"Reviewer-Modell {current_model} timeout nach {REVIEWER_TIMEOUT_SECONDS}s (Versuch {review_attempt + 1}/{MAX_REVIEW_RETRIES}), wechsle zu Fallback...")
-            manager.model_router.mark_rate_limited_sync(current_model)
-            agent_reviewer = init_agents(
-                manager.config,
-                project_rules,
-                router=manager.model_router,
-                include=["reviewer"]
-            ).get("reviewer")
-            manager.agent_reviewer = agent_reviewer
+                error_tracker = {}  # Tracker zurücksetzen nach Modellwechsel
             continue
         except Exception as error:
             if is_rate_limit_error(error):
+                # Rate-Limit: Sofort wechseln (keine Wartezeit sinnvoll)
                 manager.model_router.mark_rate_limited_sync(current_model)
                 manager._ui_log("ModelRouter", "RateLimit", f"Reviewer-Modell {current_model} pausiert, wechsle zu Fallback...")
                 agent_reviewer = init_agents(
@@ -410,6 +561,7 @@ def run_review(
                     include=["reviewer"]
                 ).get("reviewer")
                 manager.agent_reviewer = agent_reviewer
+                error_tracker = {}  # Tracker zurücksetzen
                 continue
             raise error
 
@@ -481,7 +633,16 @@ Wenn KEINE kritischen Probleme gefunden: Antworte nur mit "SECURE"
         )
 
         try:
-            security_rescan_result = str(task_security_rescan.execute_sync())
+            # ÄNDERUNG 29.01.2026: Heartbeat-Wrapper für stabile WebSocket-Verbindung
+            security_rescan_result = run_with_heartbeat(
+                func=lambda: str(task_security_rescan.execute_sync()),
+                ui_log_callback=manager._ui_log,
+                agent_name="Security",
+                task_description=f"Security-Scan (Iteration {iteration + 1})",
+                heartbeat_interval=15,
+                # ÄNDERUNG 29.01.2026: Timeout von 180s auf 300s erhöht für langsame Modelle
+                timeout_seconds=300
+            )
             security_rescan_vulns = extract_vulnerabilities(security_rescan_result)
             manager.security_vulnerabilities = security_rescan_vulns
 
@@ -506,8 +667,10 @@ Wenn KEINE kritischen Probleme gefunden: Antworte nur mit "SECURE"
             manager._update_worker_status("security", "idle")
         except Exception as sec_err:
             manager._ui_log("Security", "Error", f"Security-Rescan fehlgeschlagen: {sec_err}")
+            manager._ui_log("Security", "Error", "Security-Rescan wird als FEHLGESCHLAGEN gewertet.")
             manager._update_worker_status("security", "idle")
-            security_passed = True
+            # ÄNDERUNG 29.01.2026: Fail-Closed bei Security-Fehlern
+            security_passed = False
 
     return security_passed, security_rescan_vulns
 
@@ -538,10 +701,26 @@ def build_feedback(
         manager._ui_log("Security", "BlockingIssues", f"❌ {len(security_rescan_vulns)} Vulnerabilities blockieren Abschluss")
         return feedback
 
+    # ÄNDERUNG 29.01.2026: Unit-Test-Skip ins Feedback aufnehmen
+    unit_tests = test_result.get("unit_tests", {})
+    if unit_tests.get("status") == "SKIP":
+        skip_feedback = "\n🧪 UNIT-TESTS FEHLEN:\n"
+        skip_feedback += "Es wurden keine Unit-Tests gefunden (tests/ Verzeichnis oder *_test.py Dateien).\n"
+        skip_feedback += "PFLICHT: Erstelle Unit-Tests für alle Funktionen:\n"
+        skip_feedback += "- Datei: tests/test_<modulname>.py (für pytest)\n"
+        skip_feedback += "- Mindestens 3 Test-Cases pro Funktion (normal, edge-case, error-case)\n"
+        skip_feedback += "- Format: ### FILENAME: tests/test_<modulname>.py\n\n"
+        if not sandbox_failed:
+            return skip_feedback
+
     if sandbox_failed:
         feedback = "KRITISCHER FEHLER: Die Sandbox oder der Tester hat Fehler gemeldet.\n"
         feedback += "Bitte analysiere die Fehlermeldungen und behebe sie:\n\n"
         feedback += f"SANDBOX:\n{sandbox_result}\n\n"
+
+        # Unit-Test-Skip auch bei Sandbox-Fehler erwähnen
+        if unit_tests.get("status") == "SKIP":
+            feedback += "\n🧪 ZUSÄTZLICH: Unit-Tests fehlen! Erstelle tests/test_*.py mit pytest-Tests.\n"
 
         structured_test_feedback = format_test_feedback(test_result)
         if structured_test_feedback and "✅" not in structured_test_feedback:

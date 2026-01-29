@@ -12,7 +12,10 @@ Beschreibung: Discovery-Session Endpunkte und Hilfsfunktionen.
 import json
 import os
 import re
-import requests
+import aiohttp
+import logging
+import uuid
+import random
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -21,6 +24,16 @@ from ..session_utils import get_session_manager_instance
 from ..api_logging import log_event
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+# ÄNDERUNG 29.01.2026: Logger-Format sicherstellen
+if not logger.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter(
+        "[%(asctime)s] [%(levelname)s] [%(funcName)s] - %(message)s"
+    ))
+    logger.addHandler(_handler)
+    logger.setLevel(logging.INFO)
 
 # ÄNDERUNG 29.01.2026 v1.2: Memory-Pfad für Quellen-System
 MEMORY_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "memory", "agent_memory.json")
@@ -110,7 +123,8 @@ async def save_discovery_briefing(briefing: dict):
         with open(briefing_path, "w", encoding="utf-8") as f:
             f.write(markdown)
     except Exception as e:
-        print(f"[WARN] Briefing-Datei konnte nicht gespeichert werden: {e}")
+        # ÄNDERUNG 29.01.2026: Standard-Logger statt print
+        logger.warning("Briefing-Datei konnte nicht gespeichert werden: %s", e, exc_info=True)
 
     return {
         "status": "ok",
@@ -203,14 +217,32 @@ MAX_QUESTIONS_PER_AGENT = {
     "TechStack": 1
 }
 
+# ÄNDERUNG 29.01.2026: Priorisierte Reihenfolge für Fragen-Generierung
+# Wichtigste Agenten zuerst (haben mehr Freiheit bei Fragen)
+AGENT_QUESTION_PRIORITY = [
+    "Analyst",          # Geschäftliche Grundfragen zuerst
+    "Data Researcher",  # Datenquellen
+    "Researcher",       # Recherche
+    "Coder",            # Technische Fragen
+    "TechStack",        # Technologie-Wahl
+    "DB-Designer",      # Datenbank
+    "Designer",         # UI/UX Fragen
+    "Planner",          # Timeline/Meilensteine
+    "Tester",           # Test-Anforderungen zuletzt
+]
 
-async def _generate_agent_questions(agent: str, vision: str) -> dict:
+
+async def _generate_agent_questions(agent: str, vision: str, already_asked: List[str] = None) -> dict:
     """
     Generiert kundenfreundliche Fragen für einen Agent via LLM.
+
+    ÄNDERUNG 29.01.2026: Sequentielle Generation mit Kontext
+    Jeder Agent bekommt die bereits gestellten Fragen und muss ANDERE stellen.
 
     Args:
         agent: Agent-Name (z.B. "Coder", "DB-Designer")
         vision: Projektbeschreibung vom Benutzer
+        already_asked: Liste bereits gestellter Fragen (von anderen Agenten)
 
     Returns:
         Dict mit agent und questions Array
@@ -222,17 +254,51 @@ async def _generate_agent_questions(agent: str, vision: str) -> dict:
         "DB-Designer": "Datenbankexperte, der die Datenstruktur plant",
         "Designer": "UI/UX Designer, der das Aussehen und die Bedienung gestaltet",
         "Researcher": "Recherche-Experte für technische Hintergründe",
-        "TechStack": "Technologie-Berater für die Wahl der Werkzeuge"
+        "TechStack": "Technologie-Berater für die Wahl der Werkzeuge",
+        "Analyst": "Business Analyst, der Geschäftsanforderungen analysiert",
+        "Data Researcher": "Daten-Experte für Quellen und Qualität",
+        "Planner": "Projektplaner für Timeline und Meilensteine"
     }
 
     role_desc = agent_roles.get(agent, f"{agent}-Experte")
 
+    # ÄNDERUNG 29.01.2026: Dynamische Variation für unterschiedliche Fragen
+    session_hint = str(uuid.uuid4())[:6]
+    focus_areas = [
+        "Benutzerfreundlichkeit und UX",
+        "technische Umsetzbarkeit",
+        "Skalierbarkeit und Performance",
+        "schnelle Implementierung (MVP)",
+        "langfristige Wartbarkeit",
+        "Sicherheit und Datenschutz",
+        "Integration mit bestehenden Systemen"
+    ]
+    random_focus = random.choice(focus_areas)
+
+    # ÄNDERUNG 29.01.2026: Kontext für bereits gestellte Fragen
+    exclusion_prompt = ""
+    if already_asked and len(already_asked) > 0:
+        questions_list = "\n".join([f"  - {q}" for q in already_asked])
+        exclusion_prompt = f"""
+⚠️ WICHTIG - DIESE FRAGEN WURDEN BEREITS GESTELLT:
+{questions_list}
+
+Du MUSST ANDERE Fragen stellen! Vermeide:
+- Wiederholungen der obigen Fragen
+- Leicht umformulierte Versionen derselben Themen
+- Fragen zu bereits abgedeckten Bereichen (Geräte, Offline, Benutzeranzahl etc.)
+
+Stelle stattdessen Fragen aus DEINER einzigartigen Fachperspektive als {role_desc}.
+"""
+
     prompt = f'''Du bist der {role_desc} in einem Entwicklungsteam.
-Analysiere diese Projektbeschreibung:
+[Session: {session_hint}]
+{exclusion_prompt}
+Analysiere diese Projektbeschreibung mit besonderem Fokus auf {random_focus}:
 
 "{vision}"
 
-Generiere {max_questions} Fragen um die genauen Anforderungen zu verstehen.
+Generiere {max_questions} EINZIGARTIGE Fragen aus DEINER Fachperspektive.
 
 WICHTIG - Formulierung:
 - Verständlich für Nicht-Techniker (KEINE Fachbegriffe!)
@@ -279,28 +345,39 @@ Antworte NUR mit validem JSON in diesem Format:
         if not api_key:
             raise ValueError("Kein API-Key gefunden")
 
-        response = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "model": model.replace("openrouter/", ""),
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.7,
-                "max_tokens": 1500
-            },
-            timeout=30
-        )
-        response.raise_for_status()
-
-        result = response.json()
+        # ÄNDERUNG 29.01.2026: Async HTTP für non-blocking WebSocket-Stabilität
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": model.replace("openrouter/", ""),
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.95,  # ÄNDERUNG 29.01.2026: Höhere Temperature für mehr Variation
+                    "max_tokens": 1500
+                },
+                timeout=aiohttp.ClientTimeout(total=30)
+            ) as response:
+                response.raise_for_status()
+                result = await response.json()
         content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
 
         json_match = re.search(r'\{[\s\S]*\}', content)
         if json_match:
             parsed = json.loads(json_match.group())
+            # ÄNDERUNG 29.01.2026: Logging für Debugging der Fragen-Variation
+            questions_count = len(parsed.get("questions", []))
+            log_event("Discovery", "LLMQuestions", json.dumps({
+                "agent": agent,
+                "model": model,
+                "session_hint": session_hint,
+                "focus": random_focus,
+                "questions_count": questions_count,
+                "temperature": 0.95
+            }, ensure_ascii=False))
             return parsed
         raise ValueError("Kein JSON in LLM-Antwort gefunden")
 
@@ -409,6 +486,11 @@ def _deduplicate_questions(all_agent_questions: list) -> list:
 async def generate_discovery_questions(request: DiscoveryQuestionsRequest):
     """
     LLM generiert projektspezifische Fragen pro Agent.
+
+    ÄNDERUNG 29.01.2026: Sequentielle Generation mit Kontext
+    - Agenten werden nach Priorität sortiert
+    - Jeder Agent kennt die bisherigen Fragen und muss ANDERE stellen
+    - Verhindert redundante Fragen wie "Soll die App offline funktionieren?"
     """
     vision = request.vision
     agents = request.agents
@@ -419,22 +501,58 @@ async def generate_discovery_questions(request: DiscoveryQuestionsRequest):
     if not agents:
         raise HTTPException(status_code=400, detail="Keine Agenten angegeben")
 
-    all_questions = []
+    # ÄNDERUNG 29.01.2026: Sortiere Agenten nach Priorität
+    # Wichtigste Agenten stellen zuerst Fragen (haben mehr Freiheit)
+    def get_priority(agent_name: str) -> int:
+        try:
+            return AGENT_QUESTION_PRIORITY.index(agent_name)
+        except ValueError:
+            return 99  # Unbekannte Agenten am Ende
 
-    for agent in agents:
+    agents_sorted = sorted(agents, key=get_priority)
+    log_event("Discovery", "AgentOrder", f"Fragen-Reihenfolge: {agents_sorted}")
+
+    all_questions = []
+    already_asked_questions = []  # Sammelt alle bisherigen Fragen
+
+    # ÄNDERUNG 29.01.2026: Sequentielle Generation mit Kontext
+    for agent in agents_sorted:
         if agent in SKIP_QUESTION_AGENTS:
             continue
 
         try:
-            agent_questions = await _generate_agent_questions(agent, vision)
+            # Generiere mit Kenntnis der bisherigen Fragen
+            agent_questions = await _generate_agent_questions(
+                agent=agent,
+                vision=vision,
+                already_asked=already_asked_questions
+            )
+
             if agent_questions.get("questions"):
                 all_questions.append(agent_questions)
+
+                # Füge die neuen Fragen zur Liste hinzu für nächsten Agent
+                for q in agent_questions.get("questions", []):
+                    question_text = q.get("question", "")
+                    if question_text:
+                        already_asked_questions.append(question_text)
+
+                log_event("Discovery", "AgentQuestions",
+                          f"{agent}: {len(agent_questions.get('questions', []))} Fragen, "
+                          f"Kontext: {len(already_asked_questions)} bisherige")
+
         except Exception as e:
             log_event("Discovery", "Warning", f"Fragen für {agent} übersprungen: {e}")
             continue
 
     original_count = sum(len(aq.get("questions", [])) for aq in all_questions)
+
+    # Deduplizierung bleibt als Sicherheitsnetz (sollte jetzt weniger zu tun haben)
     deduplicated = _deduplicate_questions(all_questions)
+
+    log_event("Discovery", "Summary",
+              f"Sequentielle Generation: {original_count} → {len(deduplicated)} "
+              f"({original_count - len(deduplicated)} zusammengeführt)")
 
     return {
         "status": "ok",
@@ -442,8 +560,130 @@ async def generate_discovery_questions(request: DiscoveryQuestionsRequest):
         "agents_processed": len(all_questions),
         "questions_original": original_count,
         "questions_deduplicated": len(deduplicated),
-        "questions_merged": original_count - len(deduplicated)
+        "questions_merged": original_count - len(deduplicated),
+        "generation_mode": "sequential_with_context"
     }
+
+
+# ÄNDERUNG 29.01.2026: Intelligente LLM-basierte Agenten-Auswahl
+class SuggestTeamRequest(BaseModel):
+    """Request für LLM-basierte Team-Empfehlung."""
+    vision: str
+
+
+@router.post("/discovery/suggest-team")
+async def suggest_team(request: SuggestTeamRequest):
+    """
+    LLM analysiert die Vision und empfiehlt die passenden Agenten.
+
+    Ersetzt die bisherige Regex-basierte Auswahl durch echte LLM-Analyse.
+    Für eine Todo-Liste App wird z.B. kein Data Researcher empfohlen.
+    """
+    vision = request.vision
+
+    if not vision or not vision.strip():
+        raise HTTPException(status_code=400, detail="Vision/Projektbeschreibung fehlt")
+
+    prompt = f'''Analysiere diese Projektbeschreibung und entscheide,
+welche Agenten wirklich benötigt werden:
+
+PROJEKT: "{vision}"
+
+VERFÜGBARE AGENTEN:
+- Analyst: Business-Anforderungsanalyse (nur bei komplexen Geschäftsprozessen)
+- Coder: Code-Implementierung (IMMER nötig bei Software-Projekten)
+- Designer: UI/UX Design (nur wenn visuelle Oberfläche/GUI nötig)
+- DB-Designer: Datenbank-Schema (nur bei Datenpersistenz in DB)
+- Tester: Qualitätsprüfung (IMMER empfohlen)
+- Data Researcher: Datenquellen recherchieren (NUR bei EXTERNEN Daten/APIs)
+- TechStack: Technologie-Beratung (nur bei unklarer Tech-Wahl)
+- Planner: Projektplanung (nur bei komplexen Projekten)
+- Security: Sicherheitsprüfung (bei sensiblen Daten/Login)
+
+WICHTIGE REGELN:
+- Wähle NUR die wirklich notwendigen Agenten
+- Für einfache Apps: Coder + Designer + Tester reicht oft
+- Data Researcher NUR wenn EXTERNE Datenquellen recherchiert werden müssen
+  (NICHT bei lokalen Datenbanken wie SQLite!)
+- Analyst nur bei komplexen Geschäftsanforderungen
+- DB-Designer wenn Datenbank-Schema geplant werden muss
+
+Antworte NUR mit validem JSON:
+{{
+  "recommended_agents": ["Coder", "Designer", ...],
+  "reasoning": {{
+    "Coder": "Kurze Begründung warum dieser Agent nötig ist",
+    "Designer": "Kurze Begründung..."
+  }},
+  "not_needed": {{
+    "Data Researcher": "Kurze Begründung warum nicht nötig",
+    "Analyst": "Kurze Begründung..."
+  }}
+}}'''
+
+    try:
+        api_key = os.environ.get("OPENROUTER_API_KEY")
+        model = os.environ.get("DEFAULT_MODEL", "openrouter/google/gemini-2.0-flash-001")
+
+        if not api_key:
+            log_event("Discovery", "Error", "OPENROUTER_API_KEY nicht gesetzt")
+            # Fallback: Standard-Agenten
+            return {
+                "status": "fallback",
+                "recommended_agents": ["Coder", "Designer", "Tester"],
+                "reasoning": {"fallback": "API-Key fehlt, Standard-Team verwendet"},
+                "not_needed": {}
+            }
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": model.replace("openrouter/", ""),
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.3,  # Niedrig für konsistente Entscheidungen
+                    "max_tokens": 1000
+                },
+                timeout=aiohttp.ClientTimeout(total=30)
+            ) as response:
+                response.raise_for_status()
+                result = await response.json()
+
+        content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+        # JSON aus Antwort extrahieren
+        json_match = re.search(r'\{[\s\S]*\}', content)
+        if json_match:
+            parsed = json.loads(json_match.group())
+            log_event("Discovery", "SuggestTeam",
+                      f"Empfohlen: {parsed.get('recommended_agents', [])}")
+            return {
+                "status": "ok",
+                "recommended_agents": parsed.get("recommended_agents", ["Coder", "Tester"]),
+                "reasoning": parsed.get("reasoning", {}),
+                "not_needed": parsed.get("not_needed", {})
+            }
+        else:
+            log_event("Discovery", "Warning", "Konnte JSON nicht parsen, Fallback")
+            return {
+                "status": "fallback",
+                "recommended_agents": ["Coder", "Designer", "Tester"],
+                "reasoning": {"fallback": "LLM-Antwort nicht parsebar"},
+                "not_needed": {}
+            }
+
+    except Exception as e:
+        log_event("Discovery", "Error", f"suggest-team Fehler: {e}")
+        return {
+            "status": "error",
+            "recommended_agents": ["Coder", "Designer", "Tester"],
+            "reasoning": {"error": str(e)},
+            "not_needed": {}
+        }
 
 
 # ÄNDERUNG 29.01.2026 v1.1: Quellen-System für erweiterte Optionen

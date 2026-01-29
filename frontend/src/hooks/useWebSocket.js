@@ -11,6 +11,7 @@
  *               ÄNDERUNG 25.01.2026: WorkerStatus Event Handler für parallele Worker-Anzeige.
  *               ÄNDERUNG 28.01.2026: Reconnection-Logik mit Exponential Backoff.
  *               ÄNDERUNG 28.01.2026: Heartbeat-Mechanismus fuer Verbindungsstabilitaet.
+ *               ÄNDERUNG 29.01.2026: Host-Fallback fuer localhost -> 127.0.0.1.
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react';
@@ -35,6 +36,9 @@ const useWebSocket = (setLogs, activeAgents, setActiveAgents, setAgentData, setS
   // ÄNDERUNG 28.01.2026: Ref für activeAgents um zirkuläre Dependencies zu vermeiden
   const activeAgentsRef = useRef(activeAgents);
   const hasConnectedOnce = useRef(false);
+  // ÄNDERUNG 29.01.2026: Host-Fallback fuer stabile WS-Verbindung
+  const wsHostRef = useRef(window.location.hostname);
+  const triedHostFallbackRef = useRef(false);
 
   // ÄNDERUNG 28.01.2026: Sync-Effect für activeAgentsRef
   useEffect(() => {
@@ -75,10 +79,12 @@ const useWebSocket = (setLogs, activeAgents, setActiveAgents, setAgentData, setS
       const agentKey = data.agent?.toLowerCase();
 
       // ÄNDERUNG 28.01.2026: Echte Arbeits-Events vs. Completion-Events unterscheiden
+      // ÄNDERUNG 29.01.2026: Heartbeat für stabile WebSocket-Verbindung bei langen Operationen
       const workingEvents = [
         'Status', 'Iteration', 'searching', 'RescanStart',
         'Analysis', 'generating', 'processing', 'testing',
-        'reviewing', 'designing', 'InstallStart', 'InstallProgress'
+        'reviewing', 'designing', 'InstallStart', 'InstallProgress',
+        'Heartbeat'
       ];
 
       const completionEvents = [
@@ -108,6 +114,40 @@ const useWebSocket = (setLogs, activeAgents, setActiveAgents, setAgentData, setS
               lastUpdate: data.message
             }
           }));
+        }
+      }
+
+      // ÄNDERUNG 29.01.2026: Heartbeat-Event Handler für Fortschrittsanzeige
+      if (data.event === 'Heartbeat') {
+        try {
+          const payload = JSON.parse(data.message);
+          const agentKey = data.agent?.toLowerCase();
+
+          if (agentKey) {
+            // Agent-Status auf "Working" halten mit Fortschrittsinfo
+            setActiveAgents(prev => ({
+              ...prev,
+              [agentKey]: {
+                status: 'Working',
+                lastUpdate: `${payload.task} (${payload.elapsed_seconds}s)`
+              }
+            }));
+
+            // Heartbeat-Daten in AgentData speichern
+            setAgentData(prev => ({
+              ...prev,
+              [agentKey]: {
+                ...prev[agentKey],
+                heartbeat: {
+                  elapsedSeconds: payload.elapsed_seconds,
+                  heartbeatCount: payload.heartbeat_count,
+                  task: payload.task
+                }
+              }
+            }));
+          }
+        } catch (e) {
+          console.warn('Heartbeat parsen fehlgeschlagen:', e);
         }
       }
 
@@ -438,7 +478,7 @@ const useWebSocket = (setLogs, activeAgents, setActiveAgents, setAgentData, setS
 
     try {
       console.log(`[WebSocket] Verbindungsversuch ${reconnectAttempts.current + 1}...`);
-      ws.current = new WebSocket(`ws://${window.location.hostname}:8000/ws`);
+      ws.current = new WebSocket(`ws://${wsHostRef.current}:8000/ws`);
 
       ws.current.onopen = () => {
         console.log('[WebSocket] Verbindung hergestellt');
@@ -484,6 +524,20 @@ const useWebSocket = (setLogs, activeAgents, setActiveAgents, setAgentData, setS
         if (heartbeatTimer.current) {
           clearInterval(heartbeatTimer.current);
           heartbeatTimer.current = null;
+        }
+
+        // ÄNDERUNG 29.01.2026: Host-Fallback fuer localhost falls Verbindung fehlschlaegt
+        if (
+          event.code !== 1000 &&
+          !triedHostFallbackRef.current &&
+          wsHostRef.current === 'localhost'
+        ) {
+          triedHostFallbackRef.current = true;
+          wsHostRef.current = '127.0.0.1';
+          console.warn('[WebSocket] Fallback Host aktiviert: 127.0.0.1');
+          reconnectAttempts.current = 0;
+          connect();
+          return;
         }
 
         // Nur reconnecten wenn nicht absichtlich geschlossen

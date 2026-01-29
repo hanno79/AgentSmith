@@ -210,7 +210,7 @@ class SessionManager:
             "is_active": self.current_session["status"] == "Working"
         }
 
-    def get_logs(self, limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
+    def get_logs(self, limit: int = 100, offset: int = 0) -> tuple:
         """
         Gibt die letzten N Logs zurueck.
 
@@ -221,10 +221,13 @@ class SessionManager:
         Returns:
             Liste von Log-Eintraegen
         """
-        logs_list = list(self.logs)
-        start = max(0, len(logs_list) - limit - offset)
-        end = len(logs_list) - offset if offset > 0 else len(logs_list)
-        return logs_list[start:end]
+        # ÄNDERUNG 29.01.2026: Atomare Rückgabe von Logs + Total
+        with self._lock:
+            logs_list = list(self.logs)
+            total = len(logs_list)
+            start = max(0, total - limit - offset)
+            end = total - offset if offset > 0 else total
+            return logs_list[start:end], total
 
     def restore_from_library(self, project_data: Dict[str, Any]) -> Dict[str, Any]:
         """

@@ -59,8 +59,9 @@ def get_session_logs(limit: int = Query(100, ge=1, le=500), offset: int = Query(
     if not session_mgr:
         return {"logs": [], "total": 0}
 
-    logs = session_mgr.get_logs(limit=limit, offset=offset)
-    return {"logs": logs, "total": len(session_mgr.logs)}
+    # ÄNDERUNG 29.01.2026: Atomare Logs + Total aus SessionManager
+    logs, total = session_mgr.get_logs(limit=limit, offset=offset)
+    return {"logs": logs, "total": total}
 
 
 class RestoreSessionRequest(BaseModel):

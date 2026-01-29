@@ -8,7 +8,7 @@ Beschreibung: Budget-Endpoints für Dashboard und Projekte.
 # ÄNDERUNG 29.01.2026: Budget-Endpunkte in eigenes Router-Modul verschoben
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional
 from budget_tracker import get_budget_tracker
 
@@ -21,6 +21,14 @@ class BudgetCapsRequest(BaseModel):
     auto_pause: bool = True
     slack_webhook: Optional[str] = None
     discord_webhook: Optional[str] = None
+
+    # ÄNDERUNG 29.01.2026: Pydantic V2 Validator-API verwenden
+    # ÄNDERUNG 29.01.2026: Keine negativen Caps erlauben
+    @field_validator("monthly", "daily")
+    def _non_negative_caps(cls, value, info):
+        if value < 0:
+            raise ValueError(f"{info.field_name} darf nicht negativ sein")
+        return value
 
 
 class ProjectCreateRequest(BaseModel):

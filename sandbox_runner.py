@@ -170,7 +170,7 @@ def validate_project_references(project_path: str) -> str:
                     # Prüfe auf absolute URLs mit urllib.parse
                     parsed = urlparse(src)
                     # ÄNDERUNG 29.01.2026: javascript:-URLs als externe Referenzen behandeln
-                    if parsed.scheme in ('http', 'https', 'data', 'blob', 'javascript') or src.startswith('//') or src.lower().startswith('javascript:'):
+                    if parsed.scheme.lower() in ('http', 'https', 'data', 'blob', 'javascript') or src.startswith('//'):
                         continue  # Externe URLs überspringen
                     ref_path = os.path.join(os.path.dirname(filepath), src)
                     if not os.path.exists(ref_path):
@@ -181,9 +181,15 @@ def validate_project_references(project_path: str) -> str:
                     href = match.group(1)
                     # Prüfe auf absolute URLs mit urllib.parse
                     parsed = urlparse(href)
-                    # ÄNDERUNG 29.01.2026: javascript:-URLs als externe Referenzen behandeln
-                    if parsed.scheme in ('http', 'https', 'data', 'blob', 'javascript') or href.startswith('//') or href.lower().startswith('javascript:'):
-                        continue  # Externe URLs überspringen
+                    # ÄNDERUNG 29.01.2026: Einrückung korrigiert - externe URLs überspringen
+                    if parsed.scheme.lower() in ('http', 'https', 'data', 'blob', 'javascript') or href.startswith('//'):
+                        if parsed.scheme.lower() == 'javascript':
+                            logger.warning(
+                                "Unerwartetes URL-Schema 'javascript' in CSS-Link gefunden: href='%s', datei='%s'",
+                                href,
+                                filename
+                            )
+                        continue  # Externe URLs (CDN etc.) überspringen
                     ref_path = os.path.join(os.path.dirname(filepath), href)
                     if not os.path.exists(ref_path):
                         missing_refs.append(f"HTML '{filename}': CSS '{href}' nicht gefunden")

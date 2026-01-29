@@ -5,13 +5,15 @@ Version: 1.0
 Beschreibung: Hilfsfunktionen fuer OrchestrationManager (Parsing/Formatting/Checks).
 """
 
+import logging
 import re
-import time
 from typing import Dict, Any, List
 
 from logger_utils import log_event
 
 # ÄNDERUNG 29.01.2026: Helper aus OrchestrationManager ausgelagert
+
+logger = logging.getLogger(__name__)
 
 
 def create_human_readable_verdict(verdict: str, sandbox_failed: bool, review_output: str) -> str:
@@ -51,35 +53,130 @@ def extract_tables_from_schema(schema: str) -> List[Dict[str, Any]]:
         return tables
 
     table_pattern = r'CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?[\"\`]?(\w+)[\"\`]?\s*\((.*?)\);'
-    matches = re.findall(table_pattern, schema, re.IGNORECASE | re.DOTALL)
+    try:
+        matches = re.findall(table_pattern, schema, re.IGNORECASE | re.DOTALL)
 
-    for match in matches:
-        table_name = match[0]
-        columns_str = match[1]
-        columns = []
-        for line in columns_str.split(','):
-            line = line.strip()
-            if line and not line.upper().startswith(('PRIMARY', 'FOREIGN', 'UNIQUE', 'CHECK', 'INDEX', 'CONSTRAINT')):
-                col_match = re.match(r'[\"\`]?(\w+)[\"\`]?\s+(\w+)', line)
-                if col_match:
-                    col_name = col_match.group(1)
-                    col_type = col_match.group(2)
-                    is_primary = 'PRIMARY KEY' in line.upper()
-                    is_foreign = 'REFERENCES' in line.upper() or 'FOREIGN' in line.upper()
-                    columns.append({
-                        "name": col_name,
-                        "type": col_type,
-                        "isPrimary": is_primary,
-                        "isForeign": is_foreign
-                    })
+        for match in matches:
+            table_name = match[0]
+            columns_str = match[1]
+            columns = []
+            for line in columns_str.split(','):
+                line = line.strip()
+                if line and not line.upper().startswith(('PRIMARY', 'FOREIGN', 'UNIQUE', 'CHECK', 'INDEX', 'CONSTRAINT')):
+                    col_match = re.match(r'[\"\`]?(\w+)[\"\`]?\s+(\w+)', line)
+                    if col_match:
+                        col_name = col_match.group(1)
+                        col_type = col_match.group(2)
+                        is_primary = 'PRIMARY KEY' in line.upper()
+                        is_foreign = 'REFERENCES' in line.upper() or 'FOREIGN' in line.upper()
+                        columns.append({
+                            "name": col_name,
+                            "type": col_type,
+                            "isPrimary": is_primary,
+                            "isForeign": is_foreign
+                        })
 
-        tables.append({
-            "name": table_name,
-            "columns": columns,
-            "type": "table"
-        })
+            tables.append({
+                "name": table_name,
+                "columns": columns,
+                "type": "table"
+            })
+    except Exception as parse_err:
+        # ÄNDERUNG 29.01.2026: Regex/Parsing-Fehler sichtbar machen
+        logger.exception(
+            "Fehler beim Parsen des Schemas mit Pattern %s: %s",
+            table_pattern,
+            parse_err
+        )
+        return tables[:10]
 
     return tables[:10]
+
+
+def is_server_error(error: Exception) -> bool:
+    """
+    Prüft, ob eine Exception ein Server-Fehler ist (500/502/503/504).
+    """
+    status_code = None
+    if hasattr(error, 'response') and hasattr(error.response, 'status_code'):
+        status_code = error.response.status_code
+    elif hasattr(error, 'status_code'):
+        status_code = error.status_code
+
+    if status_code in [500, 502, 503, 504]:
+        return True
+
+    error_str = str(error).lower()
+    server_error_patterns = [
+        'internal server error',
+        'service unavailable',
+        'bad gateway',
+        'gateway timeout',
+        '500',
+        '502',
+        '503',
+        '504'
+    ]
+    return any(pattern in error_str for pattern in server_error_patterns)
+
+
+# ÄNDERUNG 29.01.2026: LiteLLM interne Fehler erkennen
+def is_litellm_internal_error(error: Exception) -> bool:
+    """
+    Prüft ob ein Fehler ein bekannter LiteLLM/CrewAI interner Bug ist.
+    Diese Fehler treten auf wenn LiteLLM versucht auf Attribute zuzugreifen
+    die bei generischen Exceptions nicht existieren.
+
+    Args:
+        error: Die aufgetretene Exception
+
+    Returns:
+        True wenn es ein bekannter LiteLLM-Bug ist
+    """
+    error_str = str(error)
+    bug_patterns = [
+        "has no attribute 'request'",
+        "has no attribute 'status_code'",
+        "Exception-Mapping",
+        "convert_to_model_response_object",
+        "exception_mapping_utils"
+    ]
+    return any(pattern in error_str for pattern in bug_patterns)
+
+
+# ÄNDERUNG 29.01.2026: Modell-Nicht-Verfügbar Fehler erkennen (404)
+def is_model_unavailable_error(error: Exception) -> bool:
+    """
+    Prüft ob ein Fehler bedeutet, dass das Modell nicht verfügbar ist.
+    Dies tritt auf bei 404 Fehlern von OpenRouter wenn ein Provider offline ist.
+
+    Args:
+        error: Die aufgetretene Exception
+
+    Returns:
+        True wenn das Modell nicht verfügbar ist (404, NotFound)
+    """
+    # Prüfe Status-Code
+    status_code = None
+    if hasattr(error, 'response') and hasattr(error.response, 'status_code'):
+        status_code = error.response.status_code
+    elif hasattr(error, 'status_code'):
+        status_code = error.status_code
+
+    if status_code == 404:
+        return True
+
+    # Prüfe Fehler-String
+    error_str = str(error).lower()
+    unavailable_patterns = [
+        'notfounderror',
+        '404',
+        'not found',
+        'model not available',
+        'provider returned error',
+        'page not found'
+    ]
+    return any(pattern in error_str for pattern in unavailable_patterns)
 
 
 def extract_vulnerabilities(security_result: str) -> List[Dict[str, Any]]:
@@ -291,22 +388,9 @@ def is_rate_limit_error(error: Exception) -> bool:
     error_str = str(error).lower()
     rate_limit_pattern = r'\brate[_\s-]?limit\b'
 
-    server_error_patterns = [
-        'internal server error',
-        'service unavailable',
-        'bad gateway',
-        'gateway timeout',
-        '500',
-        '502',
-        '503',
-        '504'
-    ]
-    is_server_error = any(pattern in error_str for pattern in server_error_patterns)
-
-    if is_server_error:
+    if is_server_error(error):
         log_event("System", "Warning",
-                  "Server-Fehler erkannt (kein Rate-Limit) - kurze Pause von 5s")
-        time.sleep(5)
+                  "Server-Fehler erkannt (kein Rate-Limit)")
         return False
 
     is_rate_limit = (status_code in [429, 402]) or bool(re.search(rate_limit_pattern, error_str))

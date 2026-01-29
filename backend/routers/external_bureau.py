@@ -7,7 +7,9 @@ Beschreibung: External Bureau Endpunkte für Specialists und Reviews.
 """
 # ÄNDERUNG 29.01.2026: External-Bureau-Endpunkte in eigenes Router-Modul verschoben
 
-from typing import Optional
+from typing import Optional, Any
+import os
+import dataclasses
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from ..api_logging import log_event
@@ -16,6 +18,28 @@ from ..app_state import manager
 router = APIRouter()
 
 _external_bureau_manager = None
+
+
+def _safe_serialize(obj: Any):
+    """
+    ÄNDERUNG 29.01.2026: Sichere Serialisierung für Findings.
+    """
+    try:
+        if dataclasses.is_dataclass(obj):
+            return dataclasses.asdict(obj)
+        if hasattr(obj, "dict") and callable(obj.dict):
+            return obj.dict()
+        if hasattr(obj, "__dict__"):
+            return vars(obj)
+        if isinstance(obj, dict):
+            return {k: _safe_serialize(v) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            return [_safe_serialize(v) for v in obj]
+        if isinstance(obj, (str, int, float, bool)) or obj is None:
+            return obj
+    except Exception:
+        return {"_unserializable": True, "repr": repr(obj)}
+    return {"_unserializable": True, "repr": repr(obj)}
 
 
 def get_external_bureau_manager():
@@ -119,7 +143,7 @@ async def run_external_search(request: SearchRequest):
 
     return {
         "success": result.success,
-        "findings": [f.__dict__ if hasattr(f, '__dict__') else f for f in result.findings],
+        "findings": [_safe_serialize(f) for f in result.findings],
         "summary": result.summary,
         "duration_ms": result.duration_ms,
         "error": result.error
@@ -138,8 +162,15 @@ async def run_external_review(request: ReviewRequest):
     if not bureau:
         raise HTTPException(status_code=503, detail="External Bureau nicht verfuegbar")
 
+    # ÄNDERUNG 29.01.2026: project_path validieren, kein Default "."
+    project_path = request.project_path or manager.project_path
+    if not project_path or not str(project_path).strip() or str(project_path).strip() in [".", "./"]:
+        raise HTTPException(status_code=400, detail="project_path ist erforderlich und darf nicht '.' sein")
+    if not os.path.isdir(project_path):
+        raise HTTPException(status_code=400, detail=f"project_path existiert nicht: {project_path}")
+
     context = {
-        "project_path": request.project_path or manager.project_path or ".",
+        "project_path": project_path,
         "files": request.files or []
     }
 

@@ -1,12 +1,13 @@
 /**
  * Author: rahn
  * Datum: 29.01.2026
- * Version: 1.2
+ * Version: 1.3
  * Beschreibung: Standardfragen für die Discovery-Phase.
  */
 // ÄNDERUNG 29.01.2026: Standardfragen ausgelagert
 // ÄNDERUNG 29.01.2026 v1.1: SCOPE und ERFOLGSKRITERIEN Fragen hinzugefügt
 // ÄNDERUNG 29.01.2026 v1.2: DATENGRUNDLAGE und TIMELINE Fragen hinzugefügt
+// ÄNDERUNG 29.01.2026 v1.3: DB-Designer und TechStack Fragen hinzugefügt
 
 const defaultDiscoveryQuestions = {
   Analyst: [
@@ -233,6 +234,43 @@ const defaultDiscoveryQuestions = {
         { text: 'Personenbezogene Daten (DSGVO)', value: 'personal', recommended: false },
         { text: 'Hochsensible Daten', value: 'sensitive', recommended: false }
       ]
+    }
+  ],
+  // ÄNDERUNG 29.01.2026 v1.3: DB-Designer und TechStack Fragen hinzugefügt
+  'DB-Designer': [
+    {
+      id: 'db_type',
+      question: 'Welche Art von Datenbank wird benötigt?',
+      options: [
+        { text: 'Relationale DB (SQL)', value: 'sql', recommended: true, reason: 'Strukturierte Daten mit Beziehungen' },
+        { text: 'NoSQL (MongoDB, etc.)', value: 'nosql', recommended: false, reason: 'Flexible Schemas, hohe Skalierbarkeit' },
+        { text: 'SQLite (lokal)', value: 'sqlite', recommended: false, reason: 'Einfach, keine Server-Installation' },
+        { text: 'Key-Value Store (Redis)', value: 'keyvalue', recommended: false, reason: 'Schneller Cache, Session-Speicher' }
+      ],
+      allowCustom: true
+    },
+    {
+      id: 'db_relations',
+      question: 'Wie komplex sind die Datenbeziehungen?',
+      options: [
+        { text: 'Einfach (wenige Tabellen)', value: 'simple', recommended: false, reason: '1-5 Entitäten' },
+        { text: 'Mittel (mehrere Beziehungen)', value: 'medium', recommended: true, reason: '5-15 Entitäten' },
+        { text: 'Komplex (viele Verknüpfungen)', value: 'complex', recommended: false, reason: '15+ Entitäten mit n:m Beziehungen' }
+      ]
+    }
+  ],
+  'TechStack': [
+    {
+      id: 'tech_experience',
+      question: 'Welche Technologien kennt dein Team bereits?',
+      options: [
+        { text: 'Python/Flask/Django', value: 'python', recommended: false },
+        { text: 'JavaScript/Node.js', value: 'node', recommended: false },
+        { text: 'React/Vue/Angular', value: 'frontend_js', recommended: false },
+        { text: 'Keine Präferenz', value: 'any', recommended: true, reason: 'Beste Technologie für das Projekt' }
+      ],
+      multiple: true,
+      allowCustom: true
     }
   ]
 };

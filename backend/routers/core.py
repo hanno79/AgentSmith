@@ -12,7 +12,7 @@ import json
 from datetime import datetime
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, BackgroundTasks, HTTPException, Request
 from pydantic import BaseModel
-from ..app_state import manager, ws_manager, limiter, WS_RECEIVE_TIMEOUT
+from ..app_state import manager, ws_manager, limiter, WS_RECEIVE_TIMEOUT, WS_MAX_TIMEOUTS
 from ..api_logging import log_event
 
 router = APIRouter()
@@ -58,6 +58,7 @@ async def websocket_endpoint(websocket: WebSocket):
     """
     await ws_manager.connect(websocket)
     try:
+        missed_timeouts = 0
         while True:
             try:
                 data = await asyncio.wait_for(
@@ -65,8 +66,14 @@ async def websocket_endpoint(websocket: WebSocket):
                     timeout=WS_RECEIVE_TIMEOUT
                 )
             except asyncio.TimeoutError:
-                print(f"[WebSocket] Timeout - keine Nachricht seit {WS_RECEIVE_TIMEOUT}s")
-                break
+                missed_timeouts += 1
+                print(f"[WebSocket] Timeout {missed_timeouts}/{WS_MAX_TIMEOUTS} - keine Nachricht seit {WS_RECEIVE_TIMEOUT}s")
+                # ÄNDERUNG 29.01.2026: Erst nach mehreren Timeouts trennen (stabiler bei UI-Last)
+                if missed_timeouts >= WS_MAX_TIMEOUTS:
+                    break
+                continue
+            # ÄNDERUNG 29.01.2026: Timeout-Zaehler nach Empfang zuruecksetzen
+            missed_timeouts = 0
 
             try:
                 msg = json.loads(data)

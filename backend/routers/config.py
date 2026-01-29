@@ -10,7 +10,8 @@ Beschreibung: Konfigurations- und Modell-Endpoints.
 import os
 import sys
 import yaml
-import requests
+import aiohttp
+import logging
 from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -29,6 +30,7 @@ sys.path.insert(0, _project_root)
 from model_router import get_model_router
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 class ModeRequest(BaseModel):
@@ -161,7 +163,7 @@ _models_cache = {"data": None, "timestamp": None}
 MODELS_CACHE_DURATION = timedelta(hours=1)
 
 
-def fetch_openrouter_models():
+async def fetch_openrouter_models():
     """
     Holt Modelle von OpenRouter API mit Caching.
     Cache-Dauer: 1 Stunde.
@@ -177,13 +179,16 @@ def fetch_openrouter_models():
         if not api_key:
             raise ValueError("Kein API-Key gefunden")
 
-        response = requests.get(
-            "https://openrouter.ai/api/v1/models",
-            headers={"Authorization": f"Bearer {api_key}"},
-            timeout=10
-        )
-        response.raise_for_status()
-        models = response.json().get("data", [])
+        # ÄNDERUNG 29.01.2026: Async HTTP für non-blocking WebSocket-Stabilität
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                "https://openrouter.ai/api/v1/models",
+                headers={"Authorization": f"Bearer {api_key}"},
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as response:
+                response.raise_for_status()
+                data = await response.json()
+                models = data.get("data", [])
 
         free_models = []
         paid_models = []
@@ -218,11 +223,17 @@ def fetch_openrouter_models():
         _models_cache["data"] = result
         _models_cache["timestamp"] = now
 
-        print(f"OpenRouter API: {len(free_models)} Free + {len(paid_models)} Paid Modelle geladen")
+        # ÄNDERUNG 29.01.2026: Logging statt print
+        logger.info(
+            "OpenRouter API: %s Free + %s Paid Modelle geladen",
+            len(free_models),
+            len(paid_models)
+        )
         return result
 
     except Exception as e:
-        print(f"OpenRouter API Fehler: {e}")
+        # ÄNDERUNG 29.01.2026: Logging statt print mit Stacktrace
+        logger.exception("OpenRouter API Fehler: %s", e)
         if _models_cache["data"]:
             return _models_cache["data"]
         return {
@@ -238,9 +249,9 @@ def fetch_openrouter_models():
 
 
 @router.get("/models/available")
-def get_available_models():
+async def get_available_models():
     """Listet verfügbare OpenRouter Modelle auf (dynamisch von API)."""
-    return fetch_openrouter_models()
+    return await fetch_openrouter_models()
 
 
 @router.get("/models/router-status")
@@ -292,7 +303,9 @@ def _save_config():
 
             with open(config_path, "w", encoding="utf-8") as f:
                 yaml_loader.dump(existing_data, f)
-        except Exception:
+        except Exception as e:
+            # ÄNDERUNG 29.01.2026: Fehler beim Schreiben sichtbar loggen
+            logger.exception("Konnte %s nicht schreiben (yaml.dump fallback). Fehler: %s", config_path, e)
             with open(config_path, "w", encoding="utf-8") as f:
                 yaml.dump(manager.config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
     else:
