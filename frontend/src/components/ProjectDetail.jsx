@@ -155,7 +155,11 @@ const BriefingView = ({ briefing }) => {
                   className="text-sm p-2 rounded"
                   style={{ backgroundColor: COLORS.glass }}
                 >
-                  <span className="text-amber-200/70 text-xs">{answer.agent}:</span>
+                  <span className="text-amber-200/70 text-xs">
+                    {Array.isArray(answer.agents) && answer.agents.length > 0
+                      ? answer.agents.join(', ')
+                      : answer.agents || answer.agent || '—'}:
+                  </span>
                   <p className="text-amber-100">
                     {answer.selectedValues?.join(', ') || answer.customText || '-'}
                   </p>

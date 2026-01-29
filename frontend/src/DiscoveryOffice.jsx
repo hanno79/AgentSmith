@@ -1,7 +1,7 @@
 /**
  * Author: rahn / Claude
  * Datum: 29.01.2026
- * Version: 1.3
+ * Version: 1.4
  * Beschreibung: Discovery Office - Strukturierte Projektaufnahme mit Guided Choice System.
  *               Implementiert interaktive Fragen mit vorgeschlagenen Antwortoptionen.
  *
@@ -9,371 +9,137 @@
  * ÄNDERUNG 29.01.2026 v1.2: Dynamische LLM-generierte Fragen pro Agent (projektspezifisch).
  * ÄNDERUNG 29.01.2026 v1.3: Multi-Agent Support nach Backend-Deduplizierung.
  *                           Fragen mit agents: [] Array statt verschachtelter Struktur.
+ * ÄNDERUNG 29.01.2026 v1.4: Session-Persistenz für Pausieren/Fortsetzen.
  */
 
 import React, { useState, useEffect } from 'react';
-import { useOfficeCommon } from './hooks/useOfficeCommon';
 import { motion, AnimatePresence } from 'framer-motion';
 import DynamicQuestionCard from './components/DynamicQuestionCard';
+import QuestionCard from './components/QuestionCard';
+import ProgressBar from './components/ProgressBar';
+import { useDiscoveryPhase } from './hooks/useDiscoveryPhase';
+import { useQuestions } from './hooks/useQuestions';
+import { useBriefing } from './hooks/useBriefing';
+import { useSessionStorage } from './hooks/useSessionStorage';
+import defaultDiscoveryQuestions from './constants/defaultDiscoveryQuestions';
+import { PHASES, AGENT_COLORS, ALL_AGENTS } from './constants/discoveryConstants';
+import { Lightbulb } from 'lucide-react';
 import {
   ArrowLeft,
   ArrowRight,
   CheckCircle,
-  Circle,
-  MessageSquare,
   Users,
   FileText,
-  Lightbulb,
-  Star,
-  SkipForward,
-  Edit3,
-  Save,
   Download,
-  RefreshCw
+  RefreshCw,
+  PlayCircle,
+  Pause,
+  Plus,
+  X
 } from 'lucide-react';
-
-// Phasen der Discovery Session
-// ÄNDERUNG 29.01.2026: Neue Phase DYNAMIC_QUESTIONS für LLM-generierte Fragen
-const PHASES = {
-  VISION: 'vision',
-  TEAM_SETUP: 'team_setup',
-  DYNAMIC_QUESTIONS: 'dynamic_questions',
-  GUIDED_QA: 'guided_qa',
-  SUMMARY: 'summary',
-  BRIEFING: 'briefing'
-};
 
 // API Base URL
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-// Agenten-Farben
-const AGENT_COLORS = {
-  'Analyst': 'blue',
-  'Data Researcher': 'green',
-  'Coder': 'yellow',
-  'Tester': 'purple',
-  'Designer': 'cyan',
-  'Planner': 'red',
-  'Security': 'orange'
-};
-
 const DiscoveryOffice = ({
   onBack,
-  onComplete,
-  wsConnection,
-  logs = []
+  onComplete
 }) => {
-  const { logRef, getStatusBadge, formatTime } = useOfficeCommon(logs);
-
   // Session State
-  const [phase, setPhase] = useState(PHASES.VISION);
   const [vision, setVision] = useState('');
-  const [selectedAgents, setSelectedAgents] = useState([]);
-  const [currentAgent, setCurrentAgent] = useState(null);
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [answers, setAnswers] = useState([]);
-  const [openPoints, setOpenPoints] = useState([]);
   const [briefing, setBriefing] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [loadingMessage, setLoadingMessage] = useState('');
+  // ÄNDERUNG 29.01.2026: Session-Persistenz Dialog
+  const [showResumeDialog, setShowResumeDialog] = useState(false);
 
-  // Fragen pro Agent (vereinfachte Version für Frontend)
-  const [agentQuestions, setAgentQuestions] = useState({});
+  const {
+    phase,
+    setPhase,
+    isLoading,
+    setIsLoading,
+    loadingMessage,
+    setLoadingMessage
+  } = useDiscoveryPhase();
 
-  // ÄNDERUNG 29.01.2026 v1.3: State für dynamische LLM-Fragen (flache Struktur nach Deduplizierung)
-  // Backend liefert jetzt: [{id, question, agents: [...], options, ...}, ...]
-  const [dynamicQuestions, setDynamicQuestions] = useState([]);
-  const [currentDynamicIndex, setCurrentDynamicIndex] = useState(0);
+  // ÄNDERUNG 29.01.2026: Session-Persistenz Hook
+  const { hasSavedSession, saveSession, loadSession, clearSession } = useSessionStorage();
 
-  // Vordefinierte Fragen (wird später vom Backend geladen)
-  const defaultQuestions = {
-    'Analyst': [
-      {
-        id: 'analyst_purpose',
-        question: 'Was ist der primäre Geschäftszweck dieses Projekts?',
-        options: [
-          { text: 'Interne Prozessoptimierung', value: 'internal', recommended: false },
-          { text: 'Kundenprodukt / Externe Nutzung', value: 'customer', recommended: true, reason: 'Höhere Qualitätsanforderungen' },
-          { text: 'Forschung / Prototyp', value: 'research', recommended: false },
-          { text: 'Datenanalyse / Reporting', value: 'analytics', recommended: false }
-        ],
-        allowCustom: true,
-        allowSkip: true
-      },
-      {
-        id: 'analyst_users',
-        question: 'Wer sind die Hauptnutzer des Systems?',
-        options: [
-          { text: 'Technische Mitarbeiter', value: 'technical', recommended: false },
-          { text: 'Nicht-technische Endnutzer', value: 'non_technical', recommended: true, reason: 'Erfordert bessere UX' },
-          { text: 'Administratoren', value: 'admins', recommended: false },
-          { text: 'Externe Kunden', value: 'external', recommended: false }
-        ],
-        multiple: true,
-        allowCustom: true
-      }
-    ],
-    'Coder': [
-      {
-        id: 'coder_language',
-        question: 'Gibt es Vorgaben für die Programmiersprache?',
-        options: [
-          { text: 'Python', value: 'python', recommended: true, reason: 'Flexibel, große Community' },
-          { text: 'JavaScript / TypeScript', value: 'javascript', recommended: false },
-          { text: 'Java', value: 'java', recommended: false },
-          { text: 'Keine Vorgabe - beste Wahl treffen', value: 'auto', recommended: false }
-        ],
-        allowCustom: true
-      },
-      {
-        id: 'coder_deployment',
-        question: 'Welche Deployment-Umgebung ist geplant?',
-        options: [
-          { text: 'Lokale Ausführung', value: 'local', recommended: true, reason: 'Einfachster Start' },
-          { text: 'Cloud (AWS, Azure, GCP)', value: 'cloud', recommended: false },
-          { text: 'Docker Container', value: 'docker', recommended: false },
-          { text: 'Noch unklar', value: 'unknown', recommended: false }
-        ]
-      }
-    ],
-    'Tester': [
-      {
-        id: 'tester_coverage',
-        question: 'Welche Test-Abdeckung wird erwartet?',
-        options: [
-          { text: 'Minimal (nur kritische Pfade)', value: 'minimal', recommended: false },
-          { text: 'Standard (Unit + Integration)', value: 'standard', recommended: true },
-          { text: 'Umfassend (inkl. E2E)', value: 'comprehensive', recommended: false },
-          { text: 'Keine automatisierten Tests', value: 'none', recommended: false }
-        ]
-      }
-    ],
-    'Planner': [
-      {
-        id: 'planner_timeline',
-        question: 'Wie ist der gewünschte Zeitrahmen?',
-        options: [
-          { text: 'So schnell wie möglich', value: 'asap', recommended: false },
-          { text: '1-2 Wochen', value: 'short', recommended: true },
-          { text: '1 Monat', value: 'medium', recommended: false },
-          { text: 'Kein fester Termin', value: 'flexible', recommended: false }
-        ]
-      }
-    ],
-    // ÄNDERUNG 29.01.2026: Fehlende Agenten-Fragen hinzugefügt
-    'Data Researcher': [
-      {
-        id: 'researcher_sources',
-        question: 'Welche Datenquellen sollen verwendet werden?',
-        options: [
-          { text: 'Interne Datenbanken', value: 'internal_db', recommended: true, reason: 'Direkter Zugriff' },
-          { text: 'Externe APIs', value: 'external_api', recommended: false },
-          { text: 'Dateien (CSV, Excel, JSON)', value: 'files', recommended: false },
-          { text: 'Web Scraping', value: 'scraping', recommended: false }
-        ],
-        multiple: true,
-        allowCustom: true
-      },
-      {
-        id: 'researcher_volume',
-        question: 'Welches Datenvolumen wird erwartet?',
-        options: [
-          { text: 'Klein (< 10.000 Datensätze)', value: 'small', recommended: true },
-          { text: 'Mittel (10.000 - 1 Million)', value: 'medium', recommended: false },
-          { text: 'Groß (> 1 Million)', value: 'large', recommended: false },
-          { text: 'Noch unklar', value: 'unknown', recommended: false }
-        ]
-      }
-    ],
-    'Designer': [
-      {
-        id: 'designer_style',
-        question: 'Welchen Designstil bevorzugst du?',
-        options: [
-          { text: 'Modern / Minimalistisch', value: 'modern', recommended: true, reason: 'Zeitgemäß und übersichtlich' },
-          { text: 'Klassisch / Business', value: 'business', recommended: false },
-          { text: 'Verspielt / Kreativ', value: 'creative', recommended: false },
-          { text: 'Kein spezieller Stil', value: 'auto', recommended: false }
-        ]
-      },
-      {
-        id: 'designer_responsive',
-        question: 'Welche Geräte sollen unterstützt werden?',
-        options: [
-          { text: 'Nur Desktop', value: 'desktop', recommended: false },
-          { text: 'Desktop + Tablet', value: 'desktop_tablet', recommended: false },
-          { text: 'Alle Geräte (Responsive)', value: 'responsive', recommended: true, reason: 'Maximale Reichweite' },
-          { text: 'Mobile First', value: 'mobile_first', recommended: false }
-        ]
-      }
-    ],
-    'Security': [
-      {
-        id: 'security_auth',
-        question: 'Welche Authentifizierung wird benötigt?',
-        options: [
-          { text: 'Keine (öffentliche Anwendung)', value: 'none', recommended: false },
-          { text: 'Einfache Anmeldung (Benutzername/Passwort)', value: 'basic', recommended: true },
-          { text: 'OAuth / Social Login', value: 'oauth', recommended: false },
-          { text: 'Enterprise SSO', value: 'sso', recommended: false }
-        ]
-      },
-      {
-        id: 'security_data',
-        question: 'Welche Daten-Sensitivität liegt vor?',
-        options: [
-          { text: 'Öffentliche Daten', value: 'public', recommended: false },
-          { text: 'Interne Daten', value: 'internal', recommended: true },
-          { text: 'Personenbezogene Daten (DSGVO)', value: 'personal', recommended: false },
-          { text: 'Hochsensible Daten', value: 'sensitive', recommended: false }
-        ]
-      }
-    ]
-  };
+  const {
+    selectedAgents,
+    agentQuestions,
+    dynamicQuestions,
+    currentDynamicIndex,
+    currentAgent,
+    currentQuestionIndex,
+    answers,
+    openPoints,
+    setSelectedAgents,
+    handleVisionSubmit,
+    handleTeamConfirm,
+    handleDynamicAnswer,
+    handleAnswer,
+    restoreSession,
+    // ÄNDERUNG 29.01.2026: Feedback-Schleifen
+    completedAgent,
+    pendingNextAgent,
+    handleFeedbackContinue,
+    getAgentAnswers
+  } = useQuestions({
+    vision,
+    apiBase: API_BASE,
+    defaultQuestions: defaultDiscoveryQuestions,
+    setPhase,
+    setIsLoading,
+    setLoadingMessage
+  });
 
-  // Phase 1: Vision eingeben
-  const handleVisionSubmit = () => {
-    if (!vision.trim()) return;
+  const {
+    buildBriefing,
+    generateBriefingMarkdown,
+    exportBriefing
+  } = useBriefing();
 
-    setIsLoading(true);
+  // ÄNDERUNG 29.01.2026: Prüfe beim Start ob Session fortgesetzt werden kann
+  useEffect(() => {
+    if (hasSavedSession && phase === PHASES.VISION) {
+      setShowResumeDialog(true);
+    }
+  }, [hasSavedSession, phase]);
 
-    // Simuliere Team-Zusammenstellung (später: API-Call)
-    setTimeout(() => {
-      const agents = ['Analyst', 'Coder', 'Tester', 'Planner'];
-
-      // Bedingte Agenten basierend auf Vision
-      if (vision.toLowerCase().includes('ui') || vision.toLowerCase().includes('web')) {
-        agents.splice(2, 0, 'Designer');
-      }
-      if (vision.toLowerCase().includes('daten') || vision.toLowerCase().includes('data')) {
-        agents.splice(1, 0, 'Data Researcher');
-      }
-
-      setSelectedAgents(agents);
-      setAgentQuestions(defaultQuestions);
-      setPhase(PHASES.TEAM_SETUP);
-      setIsLoading(false);
-    }, 1000);
-  };
-
-  // Phase 2: Team bestätigen und dynamische Fragen laden
-  // ÄNDERUNG 29.01.2026: API-Call für LLM-generierte Fragen
-  const handleTeamConfirm = async () => {
-    if (selectedAgents.length === 0) return;
-
-    setIsLoading(true);
-    setLoadingMessage('Agenten analysieren dein Projekt...');
-
-    try {
-      // Dynamische Fragen vom Backend holen
-      const response = await fetch(`${API_BASE}/discovery/generate-questions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ vision, agents: selectedAgents })
+  // ÄNDERUNG 29.01.2026: Session automatisch speichern bei relevanten Änderungen
+  useEffect(() => {
+    // Nur speichern wenn wir über die Vision-Phase hinaus sind
+    if (phase !== PHASES.VISION && phase !== PHASES.BRIEFING && vision) {
+      saveSession({
+        vision,
+        phase,
+        selectedAgents,
+        dynamicQuestions,
+        currentDynamicIndex,
+        currentAgent,
+        currentQuestionIndex,
+        answers,
+        openPoints
       });
-
-      if (response.ok) {
-        const data = await response.json();
-
-        if (data.questions && data.questions.length > 0) {
-          // ÄNDERUNG 29.01.2026 v1.3: Dynamische Fragen sind jetzt flach (dedupliziert)
-          // Format: [{id, question, agents: [...], options, ...}, ...]
-          setDynamicQuestions(data.questions);
-          setCurrentDynamicIndex(0);
-          setPhase(PHASES.DYNAMIC_QUESTIONS);
-        } else {
-          // Keine dynamischen Fragen -> direkt zu statischen Fragen
-          setCurrentAgent(selectedAgents[0]);
-          setCurrentQuestionIndex(0);
-          setPhase(PHASES.GUIDED_QA);
-        }
-      } else {
-        // API-Fehler -> Fallback zu statischen Fragen
-        console.warn('Dynamische Fragen konnten nicht geladen werden, verwende statische Fragen');
-        setCurrentAgent(selectedAgents[0]);
-        setCurrentQuestionIndex(0);
-        setPhase(PHASES.GUIDED_QA);
-      }
-    } catch (error) {
-      console.error('Fehler beim Laden der dynamischen Fragen:', error);
-      // Fallback zu statischen Fragen
-      setCurrentAgent(selectedAgents[0]);
-      setCurrentQuestionIndex(0);
-      setPhase(PHASES.GUIDED_QA);
-    } finally {
-      setIsLoading(false);
-      setLoadingMessage('');
     }
+  }, [phase, vision, selectedAgents, dynamicQuestions, currentDynamicIndex,
+      currentAgent, currentQuestionIndex, answers, openPoints, saveSession]);
+
+  // ÄNDERUNG 29.01.2026: Session fortsetzen (vollständig)
+  const handleResumeSession = () => {
+    const saved = loadSession();
+    if (saved) {
+      setVision(saved.vision || '');
+      // ÄNDERUNG 29.01.2026 v1.1: Vollständiger Session-Restore
+      restoreSession(saved);
+      setPhase(saved.phase || PHASES.VISION);
+    }
+    setShowResumeDialog(false);
   };
 
-  // Dynamische Frage beantworten
-  // ÄNDERUNG 29.01.2026 v1.3: Vereinfachte Logik für flache Fragen-Struktur
-  const handleDynamicAnswer = (answer) => {
-    // Antwort speichern (mit agents Array für Multi-Agent Support)
-    if (!answer.skipped) {
-      setAnswers(prev => [...prev, {
-        ...answer,
-        questionId: answer.questionId,
-        // ÄNDERUNG 29.01.2026 v1.3: agents Array statt einzelnem agent
-        agents: answer.agents || [answer.agent || 'Unknown'],
-        // Für Abwärtskompatibilität: Erster Agent als Fallback
-        agent: (answer.agents && answer.agents[0]) || answer.agent || 'Unknown',
-        selectedValues: answer.selectedValues || [],
-        customText: answer.customText || '',
-        timestamp: new Date().toISOString(),
-        isDynamic: true
-      }]);
-    } else {
-      // Übersprungene Frage als offener Punkt
-      const agentNames = (answer.agents || [answer.agent]).join(', ');
-      setOpenPoints(prev => [...prev, `${agentNames}: ${answer.question || 'Frage übersprungen'}`]);
-    }
-
-    // ÄNDERUNG 29.01.2026 v1.3: Einfache Index-Navigation durch flaches Array
-    if (currentDynamicIndex < dynamicQuestions.length - 1) {
-      // Nächste Frage
-      setCurrentDynamicIndex(prev => prev + 1);
-    } else {
-      // Alle dynamischen Fragen beantwortet -> zu statischen Fragen
-      setCurrentAgent(selectedAgents[0]);
-      setCurrentQuestionIndex(0);
-      setPhase(PHASES.GUIDED_QA);
-    }
-  };
-
-  // Phase 3: Antwort speichern
-  const handleAnswer = (questionId, selectedValues, customText = null, skipped = false) => {
-    const answer = {
-      questionId,
-      agent: currentAgent,
-      selectedValues: Array.isArray(selectedValues) ? selectedValues : [selectedValues],
-      customText,
-      skipped,
-      timestamp: new Date().toISOString()
-    };
-
-    setAnswers(prev => [...prev, answer]);
-
-    if (skipped) {
-      const currentQ = agentQuestions[currentAgent]?.[currentQuestionIndex];
-      setOpenPoints(prev => [...prev, `${currentAgent}: ${currentQ?.question}`]);
-    }
-
-    // Nächste Frage oder nächster Agent
-    const questions = agentQuestions[currentAgent] || [];
-    if (currentQuestionIndex < questions.length - 1) {
-      setCurrentQuestionIndex(prev => prev + 1);
-    } else {
-      // Nächster Agent
-      const agentIndex = selectedAgents.indexOf(currentAgent);
-      if (agentIndex < selectedAgents.length - 1) {
-        setCurrentAgent(selectedAgents[agentIndex + 1]);
-        setCurrentQuestionIndex(0);
-      } else {
-        // Alle Fragen beantwortet -> Zusammenfassung
-        setPhase(PHASES.SUMMARY);
-      }
-    }
+  // ÄNDERUNG 29.01.2026: Neue Session starten
+  const handleNewSession = () => {
+    clearSession();
+    setShowResumeDialog(false);
   };
 
   // Phase 4: Briefing generieren
@@ -382,266 +148,14 @@ const DiscoveryOffice = ({
 
     // Generiere Briefing aus Antworten
     setTimeout(() => {
-      const generatedBriefing = {
-        projectName: vision.split(' ').slice(0, 3).join('_').toLowerCase(),
-        date: new Date().toLocaleDateString('de-DE'),
-        agents: selectedAgents,
-        goal: vision,
-        answers: answers,
-        openPoints: openPoints,
-        techRequirements: extractTechRequirements(answers)
-      };
+      const generatedBriefing = buildBriefing(vision, selectedAgents, answers, openPoints);
 
       setBriefing(generatedBriefing);
       setPhase(PHASES.BRIEFING);
       setIsLoading(false);
+      // ÄNDERUNG 29.01.2026: Session löschen nach erfolgreichem Briefing
+      clearSession();
     }, 1500);
-  };
-
-  // Helfer: Tech-Anforderungen extrahieren
-  const extractTechRequirements = (answers) => {
-    const tech = {};
-    answers.forEach(a => {
-      if (a.questionId === 'coder_language' && a.selectedValues.length > 0) {
-        tech.language = a.selectedValues[0];
-      }
-      if (a.questionId === 'coder_deployment' && a.selectedValues.length > 0) {
-        tech.deployment = a.selectedValues[0];
-      }
-    });
-    return tech;
-  };
-
-  // Export Briefing
-  const handleExportBriefing = () => {
-    if (!briefing) return;
-
-    const markdown = generateBriefingMarkdown(briefing);
-    const blob = new Blob([markdown], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `briefing_${briefing.projectName}.md`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  // Markdown-Generator
-  const generateBriefingMarkdown = (b) => {
-    return `# PROJEKTBRIEFING
-
-**Projekt:** ${b.projectName}
-**Datum:** ${b.date}
-**Teilnehmende Agenten:** ${b.agents.join(', ')}
-
----
-
-## PROJEKTZIEL
-
-${b.goal}
-
----
-
-## TECHNISCHE ANFORDERUNGEN
-
-- **Sprache:** ${b.techRequirements.language || 'auto'}
-- **Deployment:** ${b.techRequirements.deployment || 'local'}
-
----
-
-## OFFENE PUNKTE
-
-${b.openPoints.length > 0 ? b.openPoints.map(p => `- ${p}`).join('\n') : '- Keine offenen Punkte'}
-
----
-
-*Generiert von AgentSmith Discovery Session*
-`;
-  };
-
-  // Render: Question Card
-  const QuestionCard = ({ question, onAnswer }) => {
-    const [selected, setSelected] = useState(question.multiple ? [] : null);
-    const [customInput, setCustomInput] = useState('');
-    const [showCustom, setShowCustom] = useState(false);
-
-    const handleSelect = (value) => {
-      if (question.multiple) {
-        setSelected(prev =>
-          prev.includes(value)
-            ? prev.filter(v => v !== value)
-            : [...prev, value]
-        );
-      } else {
-        setSelected(value);
-      }
-    };
-
-    const handleSubmit = () => {
-      if (showCustom && customInput.trim()) {
-        onAnswer(question.id, [], customInput);
-      } else if (selected !== null && (Array.isArray(selected) ? selected.length > 0 : true)) {
-        onAnswer(question.id, selected);
-      }
-    };
-
-    const color = AGENT_COLORS[currentAgent] || 'gray';
-
-    return (
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="bg-slate-800 rounded-xl p-6 border border-slate-700"
-      >
-        {/* Agent Header */}
-        <div className={`flex items-center gap-2 mb-4 text-${color}-400`}>
-          <MessageSquare size={20} />
-          <span className="font-semibold">{currentAgent} fragt:</span>
-        </div>
-
-        {/* Frage */}
-        <h3 className="text-xl font-bold text-white mb-6">{question.question}</h3>
-
-        {/* Optionen */}
-        <div className="space-y-3 mb-6">
-          {question.options.map((opt, idx) => (
-            <button
-              key={idx}
-              onClick={() => handleSelect(opt.value)}
-              className={`w-full p-4 rounded-lg border-2 transition-all text-left flex items-start gap-3 ${
-                (question.multiple ? selected.includes(opt.value) : selected === opt.value)
-                  ? `border-${color}-500 bg-${color}-900/30`
-                  : 'border-slate-600 hover:border-slate-500 bg-slate-700/50'
-              }`}
-            >
-              <div className="mt-0.5">
-                {(question.multiple ? selected.includes(opt.value) : selected === opt.value) ? (
-                  <CheckCircle size={20} className={`text-${color}-400`} />
-                ) : (
-                  <Circle size={20} className="text-slate-500" />
-                )}
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-white font-medium">{opt.text}</span>
-                  {opt.recommended && (
-                    <span className="flex items-center gap-1 text-xs bg-green-900/50 text-green-400 px-2 py-0.5 rounded-full">
-                      <Star size={12} />
-                      EMPFOHLEN
-                    </span>
-                  )}
-                </div>
-                {opt.reason && (
-                  <p className="text-sm text-slate-400 mt-1">{opt.reason}</p>
-                )}
-              </div>
-            </button>
-          ))}
-
-          {/* Eigene Eingabe */}
-          {question.allowCustom && (
-            <button
-              onClick={() => setShowCustom(!showCustom)}
-              className={`w-full p-4 rounded-lg border-2 transition-all text-left flex items-center gap-3 ${
-                showCustom
-                  ? 'border-yellow-500 bg-yellow-900/30'
-                  : 'border-slate-600 hover:border-slate-500 bg-slate-700/50'
-              }`}
-            >
-              <Edit3 size={20} className={showCustom ? 'text-yellow-400' : 'text-slate-500'} />
-              <span className="text-white">Eigene Angabe eingeben</span>
-            </button>
-          )}
-
-          {showCustom && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              className="pl-10"
-            >
-              <textarea
-                value={customInput}
-                onChange={(e) => setCustomInput(e.target.value)}
-                placeholder="Deine eigene Angabe..."
-                className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-yellow-500 focus:outline-none"
-                rows={3}
-              />
-            </motion.div>
-          )}
-        </div>
-
-        {/* Actions */}
-        <div className="flex justify-between items-center">
-          {question.allowSkip && (
-            <button
-              onClick={() => onAnswer(question.id, [], null, true)}
-              className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors"
-            >
-              <SkipForward size={18} />
-              Überspringen
-            </button>
-          )}
-          <button
-            onClick={handleSubmit}
-            disabled={!showCustom && selected === null}
-            className={`flex items-center gap-2 px-6 py-2 rounded-lg font-semibold transition-all ${
-              (showCustom && customInput.trim()) || selected !== null
-                ? `bg-${color}-600 hover:bg-${color}-500 text-white`
-                : 'bg-slate-700 text-slate-500 cursor-not-allowed'
-            }`}
-          >
-            Weiter
-            <ArrowRight size={18} />
-          </button>
-        </div>
-      </motion.div>
-    );
-  };
-
-  // Progress Bar
-  // ÄNDERUNG 29.01.2026: DYNAMIC_QUESTIONS Phase hinzugefügt
-  const ProgressBar = () => {
-    const phases = [
-      { key: PHASES.VISION, label: 'Vision', icon: Lightbulb },
-      { key: PHASES.TEAM_SETUP, label: 'Team', icon: Users },
-      { key: PHASES.DYNAMIC_QUESTIONS, label: 'Projekt-Fragen', icon: MessageSquare },
-      { key: PHASES.GUIDED_QA, label: 'Tech-Fragen', icon: MessageSquare },
-      { key: PHASES.SUMMARY, label: 'Zusammenfassung', icon: CheckCircle },
-      { key: PHASES.BRIEFING, label: 'Briefing', icon: FileText }
-    ];
-
-    const currentIndex = phases.findIndex(p => p.key === phase);
-
-    return (
-      <div className="flex items-center justify-between mb-8 px-4">
-        {phases.map((p, idx) => {
-          const Icon = p.icon;
-          const isActive = idx === currentIndex;
-          const isComplete = idx < currentIndex;
-
-          return (
-            <React.Fragment key={p.key}>
-              <div className={`flex flex-col items-center ${
-                isActive ? 'text-cyan-400' : isComplete ? 'text-green-400' : 'text-slate-500'
-              }`}>
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                  isActive ? 'bg-cyan-900/50 ring-2 ring-cyan-400' :
-                  isComplete ? 'bg-green-900/50' : 'bg-slate-800'
-                }`}>
-                  <Icon size={20} />
-                </div>
-                <span className="text-xs mt-2">{p.label}</span>
-              </div>
-              {idx < phases.length - 1 && (
-                <div className={`flex-1 h-0.5 mx-2 ${
-                  idx < currentIndex ? 'bg-green-400' : 'bg-slate-700'
-                }`} />
-              )}
-            </React.Fragment>
-          );
-        })}
-      </div>
-    );
   };
 
   return (
@@ -659,8 +173,39 @@ ${b.openPoints.length > 0 ? b.openPoints.map(p => `- ${p}`).join('\n') : '- Kein
         <div className="w-20" /> {/* Spacer */}
       </div>
 
+      {/* ÄNDERUNG 29.01.2026: Resume Dialog */}
+      {showResumeDialog && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-slate-800 rounded-xl p-8 border border-slate-600 max-w-md mx-4">
+            <div className="text-center mb-6">
+              <Pause size={48} className="text-cyan-400 mx-auto mb-4" />
+              <h2 className="text-xl font-bold text-white mb-2">Session fortsetzen?</h2>
+              <p className="text-slate-400 text-sm">
+                Es wurde eine unterbrochene Discovery Session gefunden.
+                Möchtest du diese fortsetzen oder neu beginnen?
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={handleResumeSession}
+                className="flex-1 py-3 rounded-lg font-semibold bg-cyan-600 hover:bg-cyan-500 text-white flex items-center justify-center gap-2"
+              >
+                <PlayCircle size={18} />
+                Fortsetzen
+              </button>
+              <button
+                onClick={handleNewSession}
+                className="flex-1 py-3 rounded-lg font-semibold bg-slate-700 hover:bg-slate-600 text-white"
+              >
+                Neu starten
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Progress */}
-      <ProgressBar />
+      <ProgressBar phase={phase} />
 
       {/* Content */}
       <div className="max-w-3xl mx-auto">
@@ -714,7 +259,7 @@ ${b.openPoints.length > 0 ? b.openPoints.map(p => `- ${p}`).join('\n') : '- Kein
             </motion.div>
           )}
 
-          {/* Phase 2: Team */}
+          {/* Phase 2: Team - ÄNDERUNG 29.01.2026 v1.4: Manuelle Team-Bearbeitung */}
           {phase === PHASES.TEAM_SETUP && (
             <motion.div
               key="team"
@@ -727,27 +272,75 @@ ${b.openPoints.length > 0 ? b.openPoints.map(p => `- ${p}`).join('\n') : '- Kein
                 <Users size={48} className="text-green-400 mx-auto mb-4" />
                 <h2 className="text-2xl font-bold text-white mb-2">Phase 2: Team-Zusammenstellung</h2>
                 <p className="text-slate-400">
-                  Basierend auf deiner Vision wurden folgende Experten ausgewählt:
+                  Basierend auf deiner Vision wurden folgende Experten ausgewählt.
+                  Du kannst das Team anpassen:
                 </p>
               </div>
 
-              <div className="space-y-3 mb-8">
-                {selectedAgents.map((agent, idx) => (
-                  <div
-                    key={agent}
-                    className={`p-4 rounded-lg bg-slate-700/50 border border-slate-600 flex items-center gap-3`}
-                  >
-                    <div className={`w-3 h-3 rounded-full bg-${AGENT_COLORS[agent] || 'gray'}-400`} />
-                    <span className="text-white font-medium">{agent}</span>
-                  </div>
-                ))}
+              {/* Ausgewählte Agenten */}
+              <div className="mb-6">
+                <h3 className="text-sm text-slate-400 uppercase tracking-wider mb-3">Aktives Team ({selectedAgents.length})</h3>
+                <div className="space-y-2">
+                  {selectedAgents.map((agent) => {
+                    const agentInfo = ALL_AGENTS.find(a => a.id === agent);
+                    return (
+                      <div
+                        key={agent}
+                        className="p-3 rounded-lg bg-slate-700/50 border border-slate-600 flex items-center gap-3"
+                      >
+                        <div className={`w-3 h-3 rounded-full bg-${AGENT_COLORS[agent] || 'gray'}-400`} />
+                        <div className="flex-1">
+                          <span className="text-white font-medium">{agent}</span>
+                          {agentInfo && (
+                            <p className="text-slate-400 text-xs">{agentInfo.description}</p>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => setSelectedAgents(prev => prev.filter(a => a !== agent))}
+                          className="p-1 rounded hover:bg-red-500/20 text-slate-400 hover:text-red-400 transition-colors"
+                          title="Entfernen"
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
+
+              {/* Verfügbare Agenten zum Hinzufügen */}
+              {ALL_AGENTS.filter(a => !selectedAgents.includes(a.id)).length > 0 && (
+                <div className="mb-8">
+                  <h3 className="text-sm text-slate-400 uppercase tracking-wider mb-3">Verfügbare Experten</h3>
+                  <div className="space-y-2">
+                    {ALL_AGENTS.filter(a => !selectedAgents.includes(a.id)).map((agent) => (
+                      <div
+                        key={agent.id}
+                        className="p-3 rounded-lg bg-slate-900/50 border border-slate-700 flex items-center gap-3"
+                      >
+                        <div className={`w-3 h-3 rounded-full bg-${AGENT_COLORS[agent.id] || 'gray'}-400 opacity-50`} />
+                        <div className="flex-1">
+                          <span className="text-slate-300 font-medium">{agent.name}</span>
+                          <p className="text-slate-500 text-xs">{agent.description}</p>
+                        </div>
+                        <button
+                          onClick={() => setSelectedAgents(prev => [...prev, agent.id])}
+                          className="p-1 rounded hover:bg-green-500/20 text-slate-400 hover:text-green-400 transition-colors"
+                          title="Hinzufügen"
+                        >
+                          <Plus size={16} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <button
                 onClick={handleTeamConfirm}
-                disabled={isLoading}
+                disabled={isLoading || selectedAgents.length === 0}
                 className={`w-full py-3 rounded-lg font-semibold flex items-center justify-center gap-2 ${
-                  isLoading
+                  isLoading || selectedAgents.length === 0
                     ? 'bg-slate-600 text-slate-400 cursor-not-allowed'
                     : 'bg-green-600 hover:bg-green-500 text-white'
                 }`}
@@ -785,6 +378,56 @@ ${b.openPoints.length > 0 ? b.openPoints.map(p => `- ${p}`).join('\n') : '- Kein
             </motion.div>
           )}
 
+          {/* ÄNDERUNG 29.01.2026 v1.2: Feedback-Schleife nach Agent-Runde */}
+          {phase === PHASES.AGENT_FEEDBACK && completedAgent && (
+            <motion.div
+              key="agent-feedback"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="bg-slate-800 rounded-xl p-8 border border-slate-700"
+            >
+              <div className="text-center mb-6">
+                <CheckCircle size={48} className="text-green-400 mx-auto mb-4" />
+                <h2 className="text-xl font-bold text-white mb-2">
+                  {completedAgent} abgeschlossen
+                </h2>
+                <p className="text-slate-400">
+                  Hier sind die gesammelten Antworten. Alles korrekt?
+                </p>
+              </div>
+
+              {/* Antworten-Übersicht */}
+              <div className="bg-slate-900 rounded-lg p-4 mb-6 max-h-64 overflow-y-auto">
+                {getAgentAnswers(completedAgent).length > 0 ? (
+                  <div className="space-y-3">
+                    {getAgentAnswers(completedAgent).map((a, idx) => (
+                      <div key={idx} className="border-b border-slate-700 pb-2 last:border-0">
+                        <p className="text-slate-400 text-sm">{a.questionText || a.question || 'Frage'}</p>
+                        <p className="text-white">
+                          {a.selectedValues?.join(', ') || a.customText || '-'}
+                          {a.autoFallback && <span className="text-cyan-400 text-xs ml-2">(Auto)</span>}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-slate-500 text-center">Keine Antworten erfasst</p>
+                )}
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={handleFeedbackContinue}
+                  className="flex-1 py-3 rounded-lg font-semibold bg-green-600 hover:bg-green-500 text-white flex items-center justify-center gap-2"
+                >
+                  <CheckCircle size={18} />
+                  {pendingNextAgent ? `Weiter zu ${pendingNextAgent}` : 'Zur Zusammenfassung'}
+                </button>
+              </div>
+            </motion.div>
+          )}
+
           {/* Phase 3: Guided Questions (statisch) */}
           {phase === PHASES.GUIDED_QA && currentAgent && (
             <motion.div
@@ -804,6 +447,7 @@ ${b.openPoints.length > 0 ? b.openPoints.map(p => `- ${p}`).join('\n') : '- Kein
               {agentQuestions[currentAgent]?.[currentQuestionIndex] && (
                 <QuestionCard
                   question={agentQuestions[currentAgent][currentQuestionIndex]}
+                  currentAgent={currentAgent}
                   onAnswer={handleAnswer}
                 />
               )}
@@ -898,7 +542,7 @@ ${b.openPoints.length > 0 ? b.openPoints.map(p => `- ${p}`).join('\n') : '- Kein
 
               <div className="flex gap-4">
                 <button
-                  onClick={handleExportBriefing}
+                  onClick={() => exportBriefing(briefing)}
                   className="flex-1 py-3 rounded-lg font-semibold bg-green-600 hover:bg-green-500 text-white flex items-center justify-center gap-2"
                 >
                   <Download size={18} />

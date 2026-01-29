@@ -9,6 +9,7 @@ Beschreibung: SessionManager - Verwaltet aktive Sessions und deren Status.
 """
 
 import logging
+from copy import deepcopy
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 from collections import deque
@@ -286,7 +287,10 @@ class SessionManager:
         Returns:
             Das gespeicherte Briefing oder None
         """
-        return self.discovery_briefing
+        with self._lock:
+            if self.discovery_briefing is None:
+                return None
+            return deepcopy(self.discovery_briefing)
 
     def get_briefing_context_for_agent(self) -> str:
         """
@@ -295,10 +299,10 @@ class SessionManager:
         Returns:
             Formatierter Briefing-Kontext oder leerer String
         """
-        if not self.discovery_briefing:
-            return ""
-
-        b = self.discovery_briefing
+        with self._lock:
+            if not self.discovery_briefing:
+                return ""
+            b = deepcopy(self.discovery_briefing)
         tech = b.get("techRequirements", {})
         agents = b.get("agents", [])
         answers = b.get("answers", [])

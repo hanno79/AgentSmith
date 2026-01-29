@@ -267,12 +267,13 @@ class LibraryManager:
                     with open(filepath, 'r', encoding='utf-8') as f:
                         project = json.load(f)
                         # Nur Metadaten, nicht alle Einträge
-                        # ÄNDERUNG 29.01.2026: Discovery Briefing inkludieren
+                        # ÄNDERUNG 29.01.2026: Discovery Briefing kuerzen
+                        # Briefing wird auf 200 Zeichen begrenzt zur Payload-Reduktion
                         projects.append({
                             "project_id": project.get("project_id"),
                             "name": project.get("name"),
                             "goal": project.get("goal", "")[:200],
-                            "briefing": project.get("briefing"),
+                            "briefing": project.get("briefing", "")[:200],
                             "started_at": project.get("started_at"),
                             "completed_at": project.get("completed_at"),
                             "status": project.get("status"),

@@ -1,16 +1,19 @@
 # -*- coding: utf-8 -*-
 """
 Author: rahn
-Datum: 24.01.2026
-Version: 1.0
+Datum: 29.01.2026
+Version: 1.1
 Beschreibung: Memory Agent - Verwaltet Projekt- und Langzeiterinnerungen.
               Speichert Erkenntnisse aus Code-, Review- und Sandbox-Ergebnissen.
+              ÄNDERUNG 29.01.2026: Async-Versionen (save_memory_async, update_memory_async)
+              für non-blocking I/O und WebSocket-Stabilität.
 """
 
 import os
 import json
 import re
 import base64
+import asyncio
 from datetime import datetime
 from typing import Any, Dict, List, Optional, TypedDict, Union
 
@@ -99,6 +102,25 @@ def save_memory(memory_path: str, memory_data: MemoryData) -> None:
         f.write(encrypted_content)
 
 
+# ÄNDERUNG 29.01.2026: Async-Version für non-blocking WebSocket-Stabilität
+async def save_memory_async(memory_path: str, memory_data: MemoryData) -> None:
+    """
+    Async-Version von save_memory.
+    Führt blockierende I/O und Encryption in separatem Thread aus,
+    um den Event-Loop nicht zu blockieren.
+    """
+    def _blocking_save():
+        dirpath = os.path.dirname(memory_path)
+        if dirpath:
+            os.makedirs(dirpath, exist_ok=True)
+        json_content = json.dumps(memory_data, indent=2, ensure_ascii=False)
+        encrypted_content = _encrypt_data(json_content)
+        with open(memory_path, "w", encoding="utf-8") as f:
+            f.write(encrypted_content)
+
+    await asyncio.to_thread(_blocking_save)
+
+
 def update_memory(
     memory_path: str,
     coder_output: str,
@@ -119,6 +141,33 @@ def update_memory(
 
     memory_data["history"].append(entry)
     save_memory(memory_path, memory_data)
+
+    return entry
+
+
+# ÄNDERUNG 29.01.2026: Async-Version für non-blocking WebSocket-Stabilität
+async def update_memory_async(
+    memory_path: str,
+    coder_output: str,
+    review_output: Optional[str],
+    sandbox_output: Optional[str] = None
+) -> MemoryEntry:
+    """
+    Async-Version von update_memory.
+    Führt blockierende I/O in separatem Thread aus.
+    """
+    # load_memory ist schnell (read-only), bleibt synchron
+    memory_data = load_memory(memory_path)
+
+    entry = {
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "coder_output_preview": str(coder_output)[:500],
+        "review_feedback": str(review_output)[:500] if review_output else None,
+        "sandbox_feedback": str(sandbox_output)[:500] if sandbox_output else None
+    }
+
+    memory_data["history"].append(entry)
+    await save_memory_async(memory_path, memory_data)
 
     return entry
 

@@ -400,10 +400,7 @@ const LibraryOffice = ({
           </div>
 
           {/* Bottom Panel: Protokoll-Feed */}
-          <div
-            className="overflow-auto flex-1"
-            style={{ height: `${100 - topPanelHeight}%` }}
-          >
+          <div className="overflow-auto flex-1 min-h-0">
             <ProtocolFeed entries={entries} />
           </div>
         </main>

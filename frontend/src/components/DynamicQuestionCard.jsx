@@ -1,11 +1,12 @@
 /**
  * Author: rahn
  * Datum: 29.01.2026
- * Version: 1.1
+ * Version: 1.2
  * Beschreibung: DynamicQuestionCard - Zeigt LLM-generierte, projektspezifische Fragen
  *               in der Discovery Session an. Kundenfreundlich mit Beispielen.
  *               ÄNDERUNG 29.01.2026: Multi-Agent Support nach Fragen-Deduplizierung.
  *               Fragen können jetzt mehreren Agenten zugeordnet sein.
+ *               ÄNDERUNG 29.01.2026 v1.2: Auto-Fallback bei Skip (empfohlene Antwort verwenden).
  */
 
 import React, { useState } from 'react';
@@ -201,10 +202,20 @@ const DynamicQuestionCard = ({
       <div className="space-y-2 mb-5">
         {(question.options || []).map((opt, i) => {
           const isSelected = selectedOptions.includes(opt.value);
+          // ÄNDERUNG 29.01.2026: Checkbox-Semantik und Tastaturbedienung für Optionen
           return (
             <button
               key={opt.value || i}
               onClick={() => toggleOption(opt.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+                  e.preventDefault();
+                  toggleOption(opt.value);
+                }
+              }}
+              role="checkbox"
+              aria-checked={isSelected}
+              aria-label={opt.text}
               className="w-full text-left p-4 rounded transition-all flex items-center gap-3"
               style={{
                 backgroundColor: isSelected ? COLORS.selected : COLORS.woodDark,
@@ -238,7 +249,7 @@ const DynamicQuestionCard = ({
             placeholder="Eigene Antwort eingeben..."
             value={customText}
             onChange={(e) => setCustomText(e.target.value)}
-            className="w-full p-3 rounded text-amber-100 placeholder-amber-200/30 focus:outline-none focus:ring-2"
+            className="w-full p-3 rounded text-amber-100 placeholder-amber-200/30 focus:outline-none focus:ring-2 focus:ring-offset-0"
             style={{
               backgroundColor: COLORS.woodDark,
               border: `1px solid ${COLORS.glassBorder}`,
@@ -268,12 +279,30 @@ const DynamicQuestionCard = ({
         <ChevronRight size={18} />
       </button>
 
-      {/* Skip Option */}
+      {/* Skip Option - ÄNDERUNG 29.01.2026: Auto-Fallback mit empfohlener Antwort */}
       <button
-        onClick={() => onAnswer({ agents, questionId: question.id, question: question.question, skipped: true })}
+        onClick={() => {
+          // Finde empfohlene Option für Auto-Fallback
+          const recommendedOpt = (question.options || []).find(opt => opt.recommended);
+          if (recommendedOpt) {
+            // Auto-Fallback: Empfohlene Antwort verwenden
+            onAnswer({
+              agents,
+              questionId: question.id,
+              question: question.question,
+              selectedOptions: [recommendedOpt.value],
+              selectedValues: [recommendedOpt.text],
+              autoFallback: true,  // Markierung für Briefing
+              fallbackReason: recommendedOpt.reason || 'Empfohlen'
+            });
+          } else {
+            // Keine Empfehlung vorhanden: Normal überspringen
+            onAnswer({ agents, questionId: question.id, question: question.question, skipped: true });
+          }
+        }}
         className="w-full mt-2 py-2 text-amber-200/40 text-sm hover:text-amber-200/60 transition-colors"
       >
-        Frage überspringen
+        Überspringen (Empfehlung verwenden)
       </button>
     </div>
   );
