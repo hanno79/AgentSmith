@@ -38,6 +38,9 @@ class ModelRouter:
         self.on_fallback: Optional[Callable[[str, str, str], None]] = None  # Callback für Fallback-Events
         self._rate_limit_lock = asyncio.Lock()  # Lock für Async-Sicherheit
         self._rate_limit_thread_lock = threading.Lock()  # Lock für Thread-Sicherheit bei sync-Methoden
+        # ÄNDERUNG 28.01.2026: Exponentieller Backoff und Endlosschleifen-Schutz
+        self.model_failure_count: Dict[str, int] = {}  # model -> failure count für exponentiellen Backoff
+        self.all_paused_count: int = 0  # Zähler für "alle pausiert" Situationen
 
     def get_model(self, agent_role: str) -> str:
         """
@@ -85,10 +88,21 @@ class ModelRouter:
                 self._notify_fallback(agent_role, primary, fallback_model)
                 return fallback_model
 
-        # Alle rate-limited? Gib Primary zurück (wird beim nächsten Aufruf erneut versucht)
-        log_event("ModelRouter", "Warning", f"Alle Modelle für {agent_role} sind rate-limited. Verwende Primary.")
+        # ÄNDERUNG 28.01.2026: Endlosschleifen-Schutz wenn alle Modelle pausiert sind
+        self.all_paused_count += 1
+
+        if self.all_paused_count >= 5:
+            log_event("ModelRouter", "Error",
+                      f"KRITISCH: Alle Modelle für {agent_role} sind erschöpft nach {self.all_paused_count} Versuchen")
+            # Reset für nächsten Versuch
+            self.all_paused_count = 0
+            raise RuntimeError(f"Alle Modelle für {agent_role} sind erschöpft. Bitte später erneut versuchen.")
+
+        log_event("ModelRouter", "Warning",
+                  f"Alle Modelle für {agent_role} pausiert ({self.all_paused_count}/5). Warte 30s...")
+        time.sleep(30)  # Warte bevor Primary zurückgegeben wird
         return primary
-    
+
     async def get_model_async(self, agent_role: str) -> str:
         """
         Async-Version: Gibt das beste verfügbare Modell für eine Rolle zurück.
@@ -135,10 +149,21 @@ class ModelRouter:
                 self._notify_fallback(agent_role, primary, fallback_model)
                 return fallback_model
 
-        # Alle rate-limited? Gib Primary zurück (wird beim nächsten Aufruf erneut versucht)
-        log_event("ModelRouter", "Warning", f"Alle Modelle für {agent_role} sind rate-limited. Verwende Primary.")
+        # ÄNDERUNG 28.01.2026: Endlosschleifen-Schutz wenn alle Modelle pausiert sind (async)
+        self.all_paused_count += 1
+
+        if self.all_paused_count >= 5:
+            log_event("ModelRouter", "Error",
+                      f"KRITISCH: Alle Modelle für {agent_role} sind erschöpft nach {self.all_paused_count} Versuchen")
+            # Reset für nächsten Versuch
+            self.all_paused_count = 0
+            raise RuntimeError(f"Alle Modelle für {agent_role} sind erschöpft. Bitte später erneut versuchen.")
+
+        log_event("ModelRouter", "Warning",
+                  f"Alle Modelle für {agent_role} pausiert ({self.all_paused_count}/5). Warte 30s...")
+        await asyncio.sleep(30)  # Async-Warten bevor Primary zurückgegeben wird
         return primary
-    
+
     def _is_rate_limited_sync(self, model: str) -> bool:
         """Synchrone Version für Fallback wenn kein Event Loop vorhanden."""
         if not model:
@@ -175,19 +200,39 @@ class ModelRouter:
     async def mark_rate_limited(self, model: str):
         """
         Markiert ein Modell als temporär nicht verfügbar (thread/async-safe).
+        ÄNDERUNG 28.01.2026: Exponentieller Backoff - 30s, 60s, 120s, 240s, max 300s
 
         Args:
             model: Modell-ID die rate-limited wurde
         """
         async with self._rate_limit_lock:
-            self.rate_limited_models[model] = time.time() + self.cooldown_seconds
-            log_event("ModelRouter", "RateLimit", f"Modell {model} für {self.cooldown_seconds}s pausiert.")
+            # Exponentieller Backoff basierend auf Fehleranzahl
+            failure_count = self.model_failure_count.get(model, 0) + 1
+            self.model_failure_count[model] = failure_count
+
+            # Berechne Cooldown: 30 * 2^(failures-1), max 300s
+            cooldown = min(30 * (2 ** (failure_count - 1)), 300)
+
+            self.rate_limited_models[model] = time.time() + cooldown
+            log_event("ModelRouter", "RateLimit",
+                      f"Modell {model} pausiert für {cooldown}s (Fehler #{failure_count})")
     
     def mark_rate_limited_sync(self, model: str):
-        """Synchrone Version für Fallback."""
+        """
+        Synchrone Version für Fallback.
+        ÄNDERUNG 28.01.2026: Exponentieller Backoff - 30s, 60s, 120s, 240s, max 300s
+        """
         with self._rate_limit_thread_lock:
-            self.rate_limited_models[model] = time.time() + self.cooldown_seconds
-            log_event("ModelRouter", "RateLimit", f"Modell {model} für {self.cooldown_seconds}s pausiert.")
+            # Exponentieller Backoff basierend auf Fehleranzahl
+            failure_count = self.model_failure_count.get(model, 0) + 1
+            self.model_failure_count[model] = failure_count
+
+            # Berechne Cooldown: 30 * 2^(failures-1), max 300s
+            cooldown = min(30 * (2 ** (failure_count - 1)), 300)
+
+            self.rate_limited_models[model] = time.time() + cooldown
+            log_event("ModelRouter", "RateLimit",
+                      f"Modell {model} pausiert für {cooldown}s (Fehler #{failure_count})")
 
     def _track_usage(self, model: str):
         """Trackt die Nutzung eines Modells für Statistiken."""
@@ -227,7 +272,24 @@ class ModelRouter:
     def clear_rate_limits(self):
         """Löscht alle Rate-Limit-Markierungen (für Tests oder manuelles Reset)."""
         self.rate_limited_models.clear()
-        log_event("ModelRouter", "Info", "Alle Rate-Limits zurückgesetzt.")
+        self.model_failure_count.clear()
+        self.all_paused_count = 0
+        log_event("ModelRouter", "Info", "Alle Rate-Limits und Failure-Counter zurückgesetzt.")
+
+    def mark_success(self, model: str):
+        """
+        ÄNDERUNG 28.01.2026: Markiert ein Modell als erfolgreich - resettet Failure-Counter.
+        Sollte nach erfolgreichen API-Calls aufgerufen werden.
+
+        Args:
+            model: Modell-ID das erfolgreich war
+        """
+        with self._rate_limit_thread_lock:
+            if model in self.model_failure_count:
+                del self.model_failure_count[model]
+                log_event("ModelRouter", "Info", f"Modell {model} erfolgreich - Failure-Counter zurückgesetzt.")
+            # Reset auch den Paused-Counter wenn ein Modell erfolgreich ist
+            self.all_paused_count = 0
 
     def get_all_models_for_role(self, agent_role: str) -> List[str]:
         """

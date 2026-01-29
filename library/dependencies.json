@@ -1,32 +1,1602 @@
 {
-  "last_updated": "2026-01-28T15:00:00",
+  "last_updated": "2026-01-28T21:37:42.514787",
   "python": {
-    "version": "3.13.0",
+    "version": "3.12.9",
     "packages": [
-      {"name": "pytest", "version": "8.4.2", "status": "installed"},
-      {"name": "crewai", "version": "0.28.0", "status": "installed"},
-      {"name": "fastapi", "version": "0.109.0", "status": "installed"},
-      {"name": "uvicorn", "version": "0.27.0", "status": "installed"},
-      {"name": "playwright", "version": "1.41.0", "status": "installed"},
-      {"name": "langchain", "version": "0.1.0", "status": "installed"},
-      {"name": "pyyaml", "version": "6.0.1", "status": "installed"},
-      {"name": "websockets", "version": "12.0", "status": "installed"}
+      {
+        "name": "aiofiles",
+        "version": "23.2.1",
+        "status": "installed"
+      },
+      {
+        "name": "aiohappyeyeballs",
+        "version": "2.6.1",
+        "status": "installed"
+      },
+      {
+        "name": "aiohttp",
+        "version": "3.12.15",
+        "status": "installed"
+      },
+      {
+        "name": "aiosignal",
+        "version": "1.4.0",
+        "status": "installed"
+      },
+      {
+        "name": "alembic",
+        "version": "1.16.5",
+        "status": "installed"
+      },
+      {
+        "name": "altair",
+        "version": "5.5.0",
+        "status": "installed"
+      },
+      {
+        "name": "annotated-types",
+        "version": "0.7.0",
+        "status": "installed"
+      },
+      {
+        "name": "anyio",
+        "version": "4.9.0",
+        "status": "installed"
+      },
+      {
+        "name": "archspec",
+        "version": "0.2.5",
+        "status": "installed"
+      },
+      {
+        "name": "asttokens",
+        "version": "3.0.0",
+        "status": "installed"
+      },
+      {
+        "name": "asyncssh",
+        "version": "2.21.1",
+        "status": "installed"
+      },
+      {
+        "name": "attrs",
+        "version": "25.3.0",
+        "status": "installed"
+      },
+      {
+        "name": "Authlib",
+        "version": "1.6.0",
+        "status": "installed"
+      },
+      {
+        "name": "bandit",
+        "version": "1.8.5",
+        "status": "installed"
+      },
+      {
+        "name": "bcrypt",
+        "version": "4.3.0",
+        "status": "installed"
+      },
+      {
+        "name": "beautifulsoup4",
+        "version": "4.14.0",
+        "status": "installed"
+      },
+      {
+        "name": "blinker",
+        "version": "1.9.0",
+        "status": "installed"
+      },
+      {
+        "name": "blis",
+        "version": "1.3.3",
+        "status": "installed"
+      },
+      {
+        "name": "boltons",
+        "version": "24.0.0",
+        "status": "installed"
+      },
+      {
+        "name": "Brotli",
+        "version": "1.1.0",
+        "status": "installed"
+      },
+      {
+        "name": "build",
+        "version": "1.3.0",
+        "status": "installed"
+      },
+      {
+        "name": "CacheControl",
+        "version": "0.14.3",
+        "status": "installed"
+      },
+      {
+        "name": "cachetools",
+        "version": "5.5.2",
+        "status": "installed"
+      },
+      {
+        "name": "catalogue",
+        "version": "2.0.10",
+        "status": "installed"
+      },
+      {
+        "name": "certifi",
+        "version": "2025.1.31",
+        "status": "installed"
+      },
+      {
+        "name": "cffi",
+        "version": "1.17.1",
+        "status": "installed"
+      },
+      {
+        "name": "charset-normalizer",
+        "version": "3.4.1",
+        "status": "installed"
+      },
+      {
+        "name": "cleo",
+        "version": "2.1.0",
+        "status": "installed"
+      },
+      {
+        "name": "click",
+        "version": "8.1.8",
+        "status": "installed"
+      },
+      {
+        "name": "cloudpathlib",
+        "version": "0.23.0",
+        "status": "installed"
+      },
+      {
+        "name": "colorama",
+        "version": "0.4.6",
+        "status": "installed"
+      },
+      {
+        "name": "comm",
+        "version": "0.2.3",
+        "status": "installed"
+      },
+      {
+        "name": "conda",
+        "version": "25.3.0",
+        "status": "installed"
+      },
+      {
+        "name": "conda-libmamba-solver",
+        "version": "25.3.0",
+        "status": "installed"
+      },
+      {
+        "name": "conda-package-handling",
+        "version": "2.4.0",
+        "status": "installed"
+      },
+      {
+        "name": "conda_package_streaming",
+        "version": "0.11.0",
+        "status": "installed"
+      },
+      {
+        "name": "confection",
+        "version": "0.1.5",
+        "status": "installed"
+      },
+      {
+        "name": "contourpy",
+        "version": "1.3.3",
+        "status": "installed"
+      },
+      {
+        "name": "coverage",
+        "version": "7.12.0",
+        "status": "installed"
+      },
+      {
+        "name": "crashtest",
+        "version": "0.4.1",
+        "status": "installed"
+      },
+      {
+        "name": "cryptography",
+        "version": "45.0.4",
+        "status": "installed"
+      },
+      {
+        "name": "cycler",
+        "version": "0.12.1",
+        "status": "installed"
+      },
+      {
+        "name": "cymem",
+        "version": "2.0.13",
+        "status": "installed"
+      },
+      {
+        "name": "de_core_news_lg",
+        "version": "3.8.0",
+        "status": "installed"
+      },
+      {
+        "name": "debugpy",
+        "version": "1.8.17",
+        "status": "installed"
+      },
+      {
+        "name": "decorator",
+        "version": "5.2.1",
+        "status": "installed"
+      },
+      {
+        "name": "Deprecated",
+        "version": "1.3.1",
+        "status": "installed"
+      },
+      {
+        "name": "distlib",
+        "version": "0.4.0",
+        "status": "installed"
+      },
+      {
+        "name": "distro",
+        "version": "1.9.0",
+        "status": "installed"
+      },
+      {
+        "name": "dnspython",
+        "version": "2.7.0",
+        "status": "installed"
+      },
+      {
+        "name": "dparse",
+        "version": "0.6.4",
+        "status": "installed"
+      },
+      {
+        "name": "duckdb",
+        "version": "1.3.1",
+        "status": "installed"
+      },
+      {
+        "name": "dulwich",
+        "version": "0.24.10",
+        "status": "installed"
+      },
+      {
+        "name": "ecdsa",
+        "version": "0.19.1",
+        "status": "installed"
+      },
+      {
+        "name": "email-validator",
+        "version": "2.3.0",
+        "status": "installed"
+      },
+      {
+        "name": "en_core_web_lg",
+        "version": "3.8.0",
+        "status": "installed"
+      },
+      {
+        "name": "et_xmlfile",
+        "version": "2.0.0",
+        "status": "installed"
+      },
+      {
+        "name": "executing",
+        "version": "2.2.1",
+        "status": "installed"
+      },
+      {
+        "name": "fastapi",
+        "version": "0.115.12",
+        "status": "installed"
+      },
+      {
+        "name": "fastjsonschema",
+        "version": "2.21.2",
+        "status": "installed"
+      },
+      {
+        "name": "ffmpy",
+        "version": "1.0.0",
+        "status": "installed"
+      },
+      {
+        "name": "filelock",
+        "version": "3.16.1",
+        "status": "installed"
+      },
+      {
+        "name": "findpython",
+        "version": "0.7.1",
+        "status": "installed"
+      },
+      {
+        "name": "firebase-admin",
+        "version": "6.9.0",
+        "status": "installed"
+      },
+      {
+        "name": "Flask",
+        "version": "3.1.1",
+        "status": "installed"
+      },
+      {
+        "name": "Flask-Bcrypt",
+        "version": "1.0.1",
+        "status": "installed"
+      },
+      {
+        "name": "flask-cors",
+        "version": "6.0.1",
+        "status": "installed"
+      },
+      {
+        "name": "Flask-JWT-Extended",
+        "version": "4.7.1",
+        "status": "installed"
+      },
+      {
+        "name": "Flask-Login",
+        "version": "0.6.3",
+        "status": "installed"
+      },
+      {
+        "name": "Flask-SQLAlchemy",
+        "version": "3.1.1",
+        "status": "installed"
+      },
+      {
+        "name": "Flask-WTF",
+        "version": "1.2.2",
+        "status": "installed"
+      },
+      {
+        "name": "fonttools",
+        "version": "4.60.1",
+        "status": "installed"
+      },
+      {
+        "name": "frozendict",
+        "version": "2.4.6",
+        "status": "installed"
+      },
+      {
+        "name": "frozenlist",
+        "version": "1.7.0",
+        "status": "installed"
+      },
+      {
+        "name": "fsspec",
+        "version": "2025.10.0",
+        "status": "installed"
+      },
+      {
+        "name": "fuzzywuzzy",
+        "version": "0.18.0",
+        "status": "installed"
+      },
+      {
+        "name": "git-filter-repo",
+        "version": "2.47.0",
+        "status": "installed"
+      },
+      {
+        "name": "gitdb",
+        "version": "4.0.12",
+        "status": "installed"
+      },
+      {
+        "name": "GitPython",
+        "version": "3.1.45",
+        "status": "installed"
+      },
+      {
+        "name": "google-ai-generativelanguage",
+        "version": "0.6.15",
+        "status": "installed"
+      },
+      {
+        "name": "google-api-core",
+        "version": "2.25.1",
+        "status": "installed"
+      },
+      {
+        "name": "google-api-python-client",
+        "version": "2.173.0",
+        "status": "installed"
+      },
+      {
+        "name": "google-auth",
+        "version": "2.40.3",
+        "status": "installed"
+      },
+      {
+        "name": "google-auth-httplib2",
+        "version": "0.2.0",
+        "status": "installed"
+      },
+      {
+        "name": "google-cloud-core",
+        "version": "2.4.3",
+        "status": "installed"
+      },
+      {
+        "name": "google-cloud-firestore",
+        "version": "2.21.0",
+        "status": "installed"
+      },
+      {
+        "name": "google-cloud-storage",
+        "version": "3.1.1",
+        "status": "installed"
+      },
+      {
+        "name": "google-crc32c",
+        "version": "1.7.1",
+        "status": "installed"
+      },
+      {
+        "name": "google-generativeai",
+        "version": "0.8.5",
+        "status": "installed"
+      },
+      {
+        "name": "google-resumable-media",
+        "version": "2.7.2",
+        "status": "installed"
+      },
+      {
+        "name": "googleapis-common-protos",
+        "version": "1.70.0",
+        "status": "installed"
+      },
+      {
+        "name": "gradio",
+        "version": "4.44.1",
+        "status": "installed"
+      },
+      {
+        "name": "gradio_client",
+        "version": "1.3.0",
+        "status": "installed"
+      },
+      {
+        "name": "greenlet",
+        "version": "3.2.3",
+        "status": "installed"
+      },
+      {
+        "name": "grpcio",
+        "version": "1.73.0",
+        "status": "installed"
+      },
+      {
+        "name": "grpcio-status",
+        "version": "1.71.2",
+        "status": "installed"
+      },
+      {
+        "name": "h11",
+        "version": "0.16.0",
+        "status": "installed"
+      },
+      {
+        "name": "h2",
+        "version": "4.2.0",
+        "status": "installed"
+      },
+      {
+        "name": "hf-xet",
+        "version": "1.2.0",
+        "status": "installed"
+      },
+      {
+        "name": "hpack",
+        "version": "4.1.0",
+        "status": "installed"
+      },
+      {
+        "name": "httpcore",
+        "version": "1.0.9",
+        "status": "installed"
+      },
+      {
+        "name": "httplib2",
+        "version": "0.22.0",
+        "status": "installed"
+      },
+      {
+        "name": "httptools",
+        "version": "0.6.4",
+        "status": "installed"
+      },
+      {
+        "name": "httpx",
+        "version": "0.28.1",
+        "status": "installed"
+      },
+      {
+        "name": "huggingface_hub",
+        "version": "1.1.4",
+        "status": "installed"
+      },
+      {
+        "name": "hyperframe",
+        "version": "6.1.0",
+        "status": "installed"
+      },
+      {
+        "name": "idna",
+        "version": "3.10",
+        "status": "installed"
+      },
+      {
+        "name": "importlib_resources",
+        "version": "6.5.2",
+        "status": "installed"
+      },
+      {
+        "name": "iniconfig",
+        "version": "2.1.0",
+        "status": "installed"
+      },
+      {
+        "name": "installer",
+        "version": "0.7.0",
+        "status": "installed"
+      },
+      {
+        "name": "ipykernel",
+        "version": "6.29.5",
+        "status": "installed"
+      },
+      {
+        "name": "ipython",
+        "version": "9.5.0",
+        "status": "installed"
+      },
+      {
+        "name": "ipython_pygments_lexers",
+        "version": "1.1.1",
+        "status": "installed"
+      },
+      {
+        "name": "itsdangerous",
+        "version": "2.2.0",
+        "status": "installed"
+      },
+      {
+        "name": "jaraco.classes",
+        "version": "3.4.0",
+        "status": "installed"
+      },
+      {
+        "name": "jaraco.context",
+        "version": "6.0.1",
+        "status": "installed"
+      },
+      {
+        "name": "jaraco.functools",
+        "version": "4.3.0",
+        "status": "installed"
+      },
+      {
+        "name": "jedi",
+        "version": "0.19.2",
+        "status": "installed"
+      },
+      {
+        "name": "Jinja2",
+        "version": "3.1.6",
+        "status": "installed"
+      },
+      {
+        "name": "jiter",
+        "version": "0.10.0",
+        "status": "installed"
+      },
+      {
+        "name": "joblib",
+        "version": "1.5.1",
+        "status": "installed"
+      },
+      {
+        "name": "jsonpatch",
+        "version": "1.33",
+        "status": "installed"
+      },
+      {
+        "name": "jsonpointer",
+        "version": "3.0.0",
+        "status": "installed"
+      },
+      {
+        "name": "jsonschema",
+        "version": "4.25.1",
+        "status": "installed"
+      },
+      {
+        "name": "jsonschema-specifications",
+        "version": "2025.9.1",
+        "status": "installed"
+      },
+      {
+        "name": "jupyter_client",
+        "version": "8.6.3",
+        "status": "installed"
+      },
+      {
+        "name": "jupyter_core",
+        "version": "5.8.1",
+        "status": "installed"
+      },
+      {
+        "name": "keyring",
+        "version": "25.6.0",
+        "status": "installed"
+      },
+      {
+        "name": "kiwisolver",
+        "version": "1.4.9",
+        "status": "installed"
+      },
+      {
+        "name": "langdetect",
+        "version": "1.0.9",
+        "status": "installed"
+      },
+      {
+        "name": "Levenshtein",
+        "version": "0.27.1",
+        "status": "installed"
+      },
+      {
+        "name": "libmambapy",
+        "version": "2.0.8",
+        "status": "installed"
+      },
+      {
+        "name": "limits",
+        "version": "5.6.0",
+        "status": "installed"
+      },
+      {
+        "name": "lxml",
+        "version": "5.4.0",
+        "status": "installed"
+      },
+      {
+        "name": "Mako",
+        "version": "1.3.10",
+        "status": "installed"
+      },
+      {
+        "name": "markdown-it-py",
+        "version": "3.0.0",
+        "status": "installed"
+      },
+      {
+        "name": "MarkupSafe",
+        "version": "2.1.5",
+        "status": "installed"
+      },
+      {
+        "name": "marshmallow",
+        "version": "4.0.0",
+        "status": "installed"
+      },
+      {
+        "name": "matplotlib",
+        "version": "3.10.7",
+        "status": "installed"
+      },
+      {
+        "name": "matplotlib-inline",
+        "version": "0.1.7",
+        "status": "installed"
+      },
+      {
+        "name": "mdurl",
+        "version": "0.1.2",
+        "status": "installed"
+      },
+      {
+        "name": "menuinst",
+        "version": "2.2.0",
+        "status": "installed"
+      },
+      {
+        "name": "more-itertools",
+        "version": "10.8.0",
+        "status": "installed"
+      },
+      {
+        "name": "msgpack",
+        "version": "1.1.1",
+        "status": "installed"
+      },
+      {
+        "name": "multidict",
+        "version": "6.6.4",
+        "status": "installed"
+      },
+      {
+        "name": "murmurhash",
+        "version": "1.0.15",
+        "status": "installed"
+      },
+      {
+        "name": "narwhals",
+        "version": "2.12.0",
+        "status": "installed"
+      },
+      {
+        "name": "nest-asyncio",
+        "version": "1.6.0",
+        "status": "installed"
+      },
+      {
+        "name": "nltk",
+        "version": "3.9.1",
+        "status": "installed"
+      },
+      {
+        "name": "numpy",
+        "version": "2.3.2",
+        "status": "installed"
+      },
+      {
+        "name": "openai",
+        "version": "1.90.0",
+        "status": "installed"
+      },
+      {
+        "name": "openpyxl",
+        "version": "3.1.5",
+        "status": "installed"
+      },
+      {
+        "name": "optional-django",
+        "version": "0.3.0",
+        "status": "installed"
+      },
+      {
+        "name": "orjson",
+        "version": "3.11.4",
+        "status": "installed"
+      },
+      {
+        "name": "packaging",
+        "version": "24.2",
+        "status": "installed"
+      },
+      {
+        "name": "pandas",
+        "version": "2.3.1",
+        "status": "installed"
+      },
+      {
+        "name": "parso",
+        "version": "0.8.5",
+        "status": "installed"
+      },
+      {
+        "name": "passlib",
+        "version": "1.7.4",
+        "status": "installed"
+      },
+      {
+        "name": "pbr",
+        "version": "6.1.1",
+        "status": "installed"
+      },
+      {
+        "name": "pbs-installer",
+        "version": "2025.10.31",
+        "status": "installed"
+      },
+      {
+        "name": "pdfminer.six",
+        "version": "20250506",
+        "status": "installed"
+      },
+      {
+        "name": "pdfplumber",
+        "version": "0.11.7",
+        "status": "installed"
+      },
+      {
+        "name": "pillow",
+        "version": "10.4.0",
+        "status": "installed"
+      },
+      {
+        "name": "pip",
+        "version": "25.3",
+        "status": "installed"
+      },
+      {
+        "name": "pkginfo",
+        "version": "1.12.1.2",
+        "status": "installed"
+      },
+      {
+        "name": "platformdirs",
+        "version": "4.3.7",
+        "status": "installed"
+      },
+      {
+        "name": "playwright",
+        "version": "1.52.0",
+        "status": "installed"
+      },
+      {
+        "name": "pluggy",
+        "version": "1.5.0",
+        "status": "installed"
+      },
+      {
+        "name": "poetry",
+        "version": "2.2.1",
+        "status": "installed"
+      },
+      {
+        "name": "poetry-core",
+        "version": "2.2.1",
+        "status": "installed"
+      },
+      {
+        "name": "preshed",
+        "version": "3.0.12",
+        "status": "installed"
+      },
+      {
+        "name": "prompt_toolkit",
+        "version": "3.0.52",
+        "status": "installed"
+      },
+      {
+        "name": "propcache",
+        "version": "0.3.2",
+        "status": "installed"
+      },
+      {
+        "name": "proto-plus",
+        "version": "1.26.1",
+        "status": "installed"
+      },
+      {
+        "name": "protobuf",
+        "version": "5.29.5",
+        "status": "installed"
+      },
+      {
+        "name": "psutil",
+        "version": "6.1.1",
+        "status": "installed"
+      },
+      {
+        "name": "psycopg2",
+        "version": "2.9.11",
+        "status": "installed"
+      },
+      {
+        "name": "pure_eval",
+        "version": "0.2.3",
+        "status": "installed"
+      },
+      {
+        "name": "pyarrow",
+        "version": "21.0.0",
+        "status": "installed"
+      },
+      {
+        "name": "pyasn1",
+        "version": "0.6.1",
+        "status": "installed"
+      },
+      {
+        "name": "pyasn1_modules",
+        "version": "0.4.2",
+        "status": "installed"
+      },
+      {
+        "name": "pycosat",
+        "version": "0.6.6",
+        "status": "installed"
+      },
+      {
+        "name": "pycparser",
+        "version": "2.22",
+        "status": "installed"
+      },
+      {
+        "name": "pydantic",
+        "version": "2.9.2",
+        "status": "installed"
+      },
+      {
+        "name": "pydantic_core",
+        "version": "2.23.4",
+        "status": "installed"
+      },
+      {
+        "name": "pydantic-settings",
+        "version": "2.12.0",
+        "status": "installed"
+      },
+      {
+        "name": "pydeck",
+        "version": "0.9.1",
+        "status": "installed"
+      },
+      {
+        "name": "pydub",
+        "version": "0.25.1",
+        "status": "installed"
+      },
+      {
+        "name": "pyee",
+        "version": "13.0.0",
+        "status": "installed"
+      },
+      {
+        "name": "Pygments",
+        "version": "2.19.1",
+        "status": "installed"
+      },
+      {
+        "name": "PyJWT",
+        "version": "2.10.1",
+        "status": "installed"
+      },
+      {
+        "name": "PyMuPDF",
+        "version": "1.26.3",
+        "status": "installed"
+      },
+      {
+        "name": "pyparsing",
+        "version": "3.2.3",
+        "status": "installed"
+      },
+      {
+        "name": "pypdf",
+        "version": "5.6.0",
+        "status": "installed"
+      },
+      {
+        "name": "PyPDF2",
+        "version": "3.0.1",
+        "status": "installed"
+      },
+      {
+        "name": "pypdfium2",
+        "version": "4.30.0",
+        "status": "installed"
+      },
+      {
+        "name": "pyproject_hooks",
+        "version": "1.2.0",
+        "status": "installed"
+      },
+      {
+        "name": "PySocks",
+        "version": "1.7.1",
+        "status": "installed"
+      },
+      {
+        "name": "pytesseract",
+        "version": "0.3.13",
+        "status": "installed"
+      },
+      {
+        "name": "pytest",
+        "version": "8.4.2",
+        "status": "installed"
+      },
+      {
+        "name": "pytest-asyncio",
+        "version": "1.3.0",
+        "status": "installed"
+      },
+      {
+        "name": "pytest-base-url",
+        "version": "2.1.0",
+        "status": "installed"
+      },
+      {
+        "name": "pytest-cov",
+        "version": "7.0.0",
+        "status": "installed"
+      },
+      {
+        "name": "pytest-playwright",
+        "version": "0.7.1",
+        "status": "installed"
+      },
+      {
+        "name": "python-dateutil",
+        "version": "2.9.0.post0",
+        "status": "installed"
+      },
+      {
+        "name": "python-docx",
+        "version": "1.2.0",
+        "status": "installed"
+      },
+      {
+        "name": "python-dotenv",
+        "version": "1.1.0",
+        "status": "installed"
+      },
+      {
+        "name": "python-jose",
+        "version": "3.5.0",
+        "status": "installed"
+      },
+      {
+        "name": "python-Levenshtein",
+        "version": "0.27.1",
+        "status": "installed"
+      },
+      {
+        "name": "python-multipart",
+        "version": "0.0.9",
+        "status": "installed"
+      },
+      {
+        "name": "python-slugify",
+        "version": "8.0.4",
+        "status": "installed"
+      },
+      {
+        "name": "pytz",
+        "version": "2025.2",
+        "status": "installed"
+      },
+      {
+        "name": "pywin32",
+        "version": "311",
+        "status": "installed"
+      },
+      {
+        "name": "pywin32-ctypes",
+        "version": "0.2.3",
+        "status": "installed"
+      },
+      {
+        "name": "PyYAML",
+        "version": "6.0.2",
+        "status": "installed"
+      },
+      {
+        "name": "pyzmq",
+        "version": "27.1.0",
+        "status": "installed"
+      },
+      {
+        "name": "RapidFuzz",
+        "version": "3.13.0",
+        "status": "installed"
+      },
+      {
+        "name": "react",
+        "version": "4.3.0",
+        "status": "installed"
+      },
+      {
+        "name": "referencing",
+        "version": "0.37.0",
+        "status": "installed"
+      },
+      {
+        "name": "regex",
+        "version": "2024.11.6",
+        "status": "installed"
+      },
+      {
+        "name": "reportlab",
+        "version": "4.4.5",
+        "status": "installed"
+      },
+      {
+        "name": "requests",
+        "version": "2.32.3",
+        "status": "installed"
+      },
+      {
+        "name": "requests-toolbelt",
+        "version": "1.0.0",
+        "status": "installed"
+      },
+      {
+        "name": "rich",
+        "version": "14.0.0",
+        "status": "installed"
+      },
+      {
+        "name": "rpds-py",
+        "version": "0.29.0",
+        "status": "installed"
+      },
+      {
+        "name": "rsa",
+        "version": "4.9.1",
+        "status": "installed"
+      },
+      {
+        "name": "ruamel.yaml",
+        "version": "0.18.10",
+        "status": "installed"
+      },
+      {
+        "name": "ruamel.yaml.clib",
+        "version": "0.2.8",
+        "status": "installed"
+      },
+      {
+        "name": "ruff",
+        "version": "0.14.5",
+        "status": "installed"
+      },
+      {
+        "name": "safety",
+        "version": "3.5.2",
+        "status": "installed"
+      },
+      {
+        "name": "safety-schemas",
+        "version": "0.0.14",
+        "status": "installed"
+      },
+      {
+        "name": "scipy",
+        "version": "1.16.3",
+        "status": "installed"
+      },
+      {
+        "name": "semantic-version",
+        "version": "2.10.0",
+        "status": "installed"
+      },
+      {
+        "name": "setuptools",
+        "version": "78.1.0",
+        "status": "installed"
+      },
+      {
+        "name": "shellingham",
+        "version": "1.5.4",
+        "status": "installed"
+      },
+      {
+        "name": "six",
+        "version": "1.17.0",
+        "status": "installed"
+      },
+      {
+        "name": "slowapi",
+        "version": "0.1.9",
+        "status": "installed"
+      },
+      {
+        "name": "smart_open",
+        "version": "7.5.0",
+        "status": "installed"
+      },
+      {
+        "name": "smmap",
+        "version": "5.0.2",
+        "status": "installed"
+      },
+      {
+        "name": "sniffio",
+        "version": "1.3.1",
+        "status": "installed"
+      },
+      {
+        "name": "soupsieve",
+        "version": "2.8",
+        "status": "installed"
+      },
+      {
+        "name": "spacy",
+        "version": "3.8.11",
+        "status": "installed"
+      },
+      {
+        "name": "spacy-legacy",
+        "version": "3.0.12",
+        "status": "installed"
+      },
+      {
+        "name": "spacy-loggers",
+        "version": "1.0.5",
+        "status": "installed"
+      },
+      {
+        "name": "SQLAlchemy",
+        "version": "2.0.43",
+        "status": "installed"
+      },
+      {
+        "name": "srsly",
+        "version": "2.5.2",
+        "status": "installed"
+      },
+      {
+        "name": "sse-starlette",
+        "version": "3.0.3",
+        "status": "installed"
+      },
+      {
+        "name": "stack-data",
+        "version": "0.6.3",
+        "status": "installed"
+      },
+      {
+        "name": "starlette",
+        "version": "0.46.2",
+        "status": "installed"
+      },
+      {
+        "name": "stevedore",
+        "version": "5.4.1",
+        "status": "installed"
+      },
+      {
+        "name": "streamlit",
+        "version": "1.51.0",
+        "status": "installed"
+      },
+      {
+        "name": "tenacity",
+        "version": "9.1.2",
+        "status": "installed"
+      },
+      {
+        "name": "text-unidecode",
+        "version": "1.3",
+        "status": "installed"
+      },
+      {
+        "name": "thinc",
+        "version": "8.3.10",
+        "status": "installed"
+      },
+      {
+        "name": "toml",
+        "version": "0.10.2",
+        "status": "installed"
+      },
+      {
+        "name": "tomlkit",
+        "version": "0.12.0",
+        "status": "installed"
+      },
+      {
+        "name": "tornado",
+        "version": "6.5.2",
+        "status": "installed"
+      },
+      {
+        "name": "tqdm",
+        "version": "4.67.1",
+        "status": "installed"
+      },
+      {
+        "name": "traitlets",
+        "version": "5.14.3",
+        "status": "installed"
+      },
+      {
+        "name": "trove-classifiers",
+        "version": "2025.9.11.17",
+        "status": "installed"
+      },
+      {
+        "name": "truststore",
+        "version": "0.10.1",
+        "status": "installed"
+      },
+      {
+        "name": "typer",
+        "version": "0.16.0",
+        "status": "installed"
+      },
+      {
+        "name": "typer-slim",
+        "version": "0.20.0",
+        "status": "installed"
+      },
+      {
+        "name": "typing_extensions",
+        "version": "4.14.0",
+        "status": "installed"
+      },
+      {
+        "name": "typing-inspection",
+        "version": "0.4.2",
+        "status": "installed"
+      },
+      {
+        "name": "tzdata",
+        "version": "2025.2",
+        "status": "installed"
+      },
+      {
+        "name": "uritemplate",
+        "version": "4.2.0",
+        "status": "installed"
+      },
+      {
+        "name": "urllib3",
+        "version": "2.3.0",
+        "status": "installed"
+      },
+      {
+        "name": "utm",
+        "version": "0.8.1",
+        "status": "installed"
+      },
+      {
+        "name": "uv",
+        "version": "0.8.15",
+        "status": "installed"
+      },
+      {
+        "name": "uvicorn",
+        "version": "0.34.2",
+        "status": "installed"
+      },
+      {
+        "name": "virtualenv",
+        "version": "20.35.4",
+        "status": "installed"
+      },
+      {
+        "name": "wasabi",
+        "version": "1.1.3",
+        "status": "installed"
+      },
+      {
+        "name": "watchdog",
+        "version": "6.0.0",
+        "status": "installed"
+      },
+      {
+        "name": "watchfiles",
+        "version": "1.1.0",
+        "status": "installed"
+      },
+      {
+        "name": "wcwidth",
+        "version": "0.2.14",
+        "status": "installed"
+      },
+      {
+        "name": "weasel",
+        "version": "0.4.3",
+        "status": "installed"
+      },
+      {
+        "name": "websockets",
+        "version": "12.0",
+        "status": "installed"
+      },
+      {
+        "name": "Werkzeug",
+        "version": "3.1.3",
+        "status": "installed"
+      },
+      {
+        "name": "wheel",
+        "version": "0.45.1",
+        "status": "installed"
+      },
+      {
+        "name": "win_inet_pton",
+        "version": "1.1.0",
+        "status": "installed"
+      },
+      {
+        "name": "wrapt",
+        "version": "2.0.1",
+        "status": "installed"
+      },
+      {
+        "name": "WTForms",
+        "version": "3.2.1",
+        "status": "installed"
+      },
+      {
+        "name": "xlrd",
+        "version": "2.0.2",
+        "status": "installed"
+      },
+      {
+        "name": "yarl",
+        "version": "1.20.1",
+        "status": "installed"
+      },
+      {
+        "name": "zstandard",
+        "version": "0.23.0",
+        "status": "installed"
+      }
     ]
   },
   "npm": {
-    "version": "10.2.0",
+    "version": "11.6.2",
     "packages": [
-      {"name": "react", "version": "18.2.0", "status": "installed"},
-      {"name": "vite", "version": "5.0.0", "status": "installed"},
-      {"name": "tailwindcss", "version": "3.4.0", "status": "installed"}
+      {
+        "name": "@executeautomation/database-server",
+        "version": "1.0.2",
+        "status": "installed"
+      },
+      {
+        "name": "@google/gemini-cli",
+        "version": "unknown",
+        "status": "installed"
+      },
+      {
+        "name": "@modelcontextprotocol/server-brave-search",
+        "version": "0.5.1",
+        "status": "installed"
+      },
+      {
+        "name": "@modelcontextprotocol/server-everything",
+        "version": "0.5.1",
+        "status": "installed"
+      },
+      {
+        "name": "@modelcontextprotocol/server-filesystem",
+        "version": "0.5.1",
+        "status": "installed"
+      },
+      {
+        "name": "@modelcontextprotocol/server-memory",
+        "version": "0.5.1",
+        "status": "installed"
+      },
+      {
+        "name": "@modelcontextprotocol/server-postgres",
+        "version": "0.5.1",
+        "status": "installed"
+      },
+      {
+        "name": "@modelcontextprotocol/server-puppeteer",
+        "version": "0.5.1",
+        "status": "installed"
+      },
+      {
+        "name": "@ngrok/ngrok-win32-x64-msvc",
+        "version": "1.5.1",
+        "status": "installed"
+      },
+      {
+        "name": "@openai/codex",
+        "version": "0.42.0",
+        "status": "installed"
+      },
+      {
+        "name": "@smithery/cli",
+        "version": "1.2.1",
+        "status": "installed"
+      },
+      {
+        "name": "@testsprite/testsprite-mcp",
+        "version": "0.0.12",
+        "status": "installed"
+      },
+      {
+        "name": "claude-flow",
+        "version": "unknown",
+        "status": "installed"
+      },
+      {
+        "name": "csv-writer",
+        "version": "1.6.0",
+        "status": "installed"
+      },
+      {
+        "name": "eas-cli",
+        "version": "16.28.0",
+        "status": "installed"
+      },
+      {
+        "name": "excalidraw-mcp",
+        "version": "1.0.0",
+        "status": "installed"
+      },
+      {
+        "name": "express",
+        "version": "5.2.1",
+        "status": "installed"
+      },
+      {
+        "name": "jsonwebtoken",
+        "version": "9.0.3",
+        "status": "installed"
+      },
+      {
+        "name": "netlify-cli",
+        "version": "22.1.3",
+        "status": "installed"
+      },
+      {
+        "name": "npm",
+        "version": "11.6.2",
+        "status": "installed"
+      },
+      {
+        "name": "pdfkit",
+        "version": "0.17.2",
+        "status": "installed"
+      },
+      {
+        "name": "pg",
+        "version": "8.17.2",
+        "status": "installed"
+      },
+      {
+        "name": "pnpm",
+        "version": "10.13.1",
+        "status": "installed"
+      },
+      {
+        "name": "postgres",
+        "version": "3.4.5",
+        "status": "installed"
+      },
+      {
+        "name": "react-dom",
+        "version": "19.2.4",
+        "status": "installed"
+      },
+      {
+        "name": "react-router-dom",
+        "version": "7.13.0",
+        "status": "installed"
+      },
+      {
+        "name": "react",
+        "version": "19.2.4",
+        "status": "installed"
+      },
+      {
+        "name": "sequelize",
+        "version": "6.37.7",
+        "status": "installed"
+      },
+      {
+        "name": "uv",
+        "version": "1.4.0",
+        "status": "installed"
+      },
+      {
+        "name": "yarn",
+        "version": "1.22.22",
+        "status": "installed"
+      }
     ]
   },
   "system": {
-    "python": "3.13.0",
-    "node": "20.10.0",
-    "npm": "10.2.0",
-    "git": "2.43.0"
+    "node": "22.17.0",
+    "git": "2.51.0",
+    "docker": "29.1.3",
+    "python": "3.12.9",
+    "npm": null,
+    "curl": "8.16.0"
   },
-  "health_score": 95,
-  "_note": "Diese Datei wird automatisch vom DependencyAgent aktualisiert"
+  "health_score": 85
 }

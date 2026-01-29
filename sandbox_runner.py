@@ -15,6 +15,7 @@ import tempfile
 import subprocess
 import logging
 from typing import Literal
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -166,8 +167,10 @@ def validate_project_references(project_path: str) -> str:
                 # Script-Referenzen pruefen
                 for match in re.finditer(r'<script[^>]+src=["\']([^"\']+)["\']', content, re.IGNORECASE):
                     src = match.group(1)
-                    if src.startswith(('http', '//', 'data:', 'blob:', 'cdn')):
-                        continue  # Externe URLs ueberspringen
+                    # Prüfe auf absolute URLs mit urllib.parse
+                    parsed = urlparse(src)
+                    if parsed.scheme in ('http', 'https', 'data', 'blob') or src.startswith('//'):
+                        continue  # Externe URLs überspringen
                     ref_path = os.path.join(os.path.dirname(filepath), src)
                     if not os.path.exists(ref_path):
                         missing_refs.append(f"HTML '{filename}': Script '{src}' nicht gefunden")
@@ -175,8 +178,10 @@ def validate_project_references(project_path: str) -> str:
                 # CSS-Referenzen pruefen
                 for match in re.finditer(r'<link[^>]+href=["\']([^"\']+\.css)["\']', content, re.IGNORECASE):
                     href = match.group(1)
-                    if href.startswith(('http', '//', 'data:', 'cdn')):
-                        continue
+                    # Prüfe auf absolute URLs mit urllib.parse
+                    parsed = urlparse(href)
+                    if parsed.scheme in ('http', 'https', 'data', 'blob') or href.startswith('//'):
+                        continue  # Externe URLs überspringen
                     ref_path = os.path.join(os.path.dirname(filepath), href)
                     if not os.path.exists(ref_path):
                         missing_refs.append(f"HTML '{filename}': CSS '{href}' nicht gefunden")

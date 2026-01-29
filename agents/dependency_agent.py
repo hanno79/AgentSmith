@@ -2,10 +2,13 @@
 """
 Author: rahn
 Datum: 28.01.2026
-Version: 1.0
+Version: 1.3
 Beschreibung: Dependency Agent - IT-Abteilung des Bueros.
               Verwaltet Software-Installationen, fuehrt Inventar und prueft Verfuegbarkeit.
               Kein LLM erforderlich - deterministische Funktionen.
+              ÄNDERUNG 28.01.2026: Intelligente npm/pip Paketerkennung für hybride Projekte.
+              ÄNDERUNG 28.01.2026: Windows PATH-Fallback für npm-Erkennung.
+              ÄNDERUNG 28.01.2026: Fix WinError 2 - Direkte List fuer npm subprocess (keine .split()).
 """
 
 import os
@@ -21,6 +24,37 @@ logger = logging.getLogger(__name__)
 
 # Pfad zur Inventar-Datei
 INVENTORY_PATH = Path(__file__).parent.parent / "library" / "dependencies.json"
+
+# ÄNDERUNG 28.01.2026: Bekannte npm-Pakete die NIEMALS via pip installiert werden sollen
+NPM_PACKAGES = {
+    # React Ecosystem
+    "react", "react-dom", "react-router", "react-router-dom", "react-redux",
+    "react-query", "react-hook-form", "next", "gatsby", "create-react-app",
+    # Vue Ecosystem
+    "vue", "vue-router", "vuex", "pinia", "nuxt",
+    # Angular
+    "angular", "@angular/core", "@angular/cli", "@angular/common",
+    # Svelte
+    "svelte", "sveltekit", "@sveltejs/kit",
+    # Build Tools
+    "webpack", "vite", "parcel", "rollup", "esbuild", "turbopack",
+    # CSS/Styling
+    "tailwindcss", "postcss", "autoprefixer", "sass", "less", "styled-components",
+    # Utilities
+    "typescript", "eslint", "prettier", "jest", "vitest", "mocha", "chai",
+    "axios", "lodash", "moment", "dayjs", "date-fns",
+    # Node.js specific
+    "express", "fastify", "koa", "nest", "socket.io"
+}
+
+# ÄNDERUNG 28.01.2026: Bekannte Windows-Installationspfade für Node.js/npm
+WINDOWS_NPM_PATHS = [
+    r"C:\Program Files\nodejs\npm.cmd",
+    r"C:\Program Files (x86)\nodejs\npm.cmd",
+    os.path.expandvars(r"%APPDATA%\npm\npm.cmd"),
+    os.path.expandvars(r"%LOCALAPPDATA%\Programs\nodejs\npm.cmd"),
+    os.path.expandvars(r"%ProgramFiles%\nodejs\npm.cmd"),
+]
 
 
 class DependencyAgent:
@@ -51,7 +85,37 @@ class DependencyAgent:
         # Callback fuer UI-Updates (wird vom Orchestrator gesetzt)
         self.on_log = None
 
+        # ÄNDERUNG 28.01.2026: npm-Pfad mit Windows-Fallback cachen
+        self._npm_path = self._find_npm_path()
+
         logger.info("DependencyAgent initialisiert (IT-Abteilung bereit)")
+
+    def _find_npm_path(self) -> Optional[str]:
+        """
+        Findet npm-Pfad mit Windows-Fallback.
+
+        1. Versucht shutil.which() (Standard-PATH)
+        2. Falls nicht gefunden: Durchsucht bekannte Windows-Pfade
+
+        Returns:
+            Vollstaendiger Pfad zu npm oder None
+        """
+        # Standard PATH-Suche
+        npm_path = shutil.which("npm")
+        if npm_path:
+            logger.info(f"npm gefunden via PATH: {npm_path}")
+            return npm_path
+
+        # Windows-Fallback: Bekannte Installationspfade durchsuchen
+        if os.name == 'nt':
+            for path in WINDOWS_NPM_PATHS:
+                expanded = os.path.expandvars(path)
+                if os.path.isfile(expanded):
+                    logger.info(f"npm gefunden via Fallback: {expanded}")
+                    return expanded
+
+        logger.warning("npm nicht gefunden - npm-Pakete werden uebersprungen")
+        return None
 
     def _log(self, event: str, message: Any):
         """Sendet Log-Event an UI wenn Callback gesetzt."""
@@ -88,27 +152,54 @@ class DependencyAgent:
         else:
             return {"installed": False, "version": None, "error": f"Unbekannter Pakettyp: {package_type}"}
 
-    def _detect_package_type(self, name: str) -> str:
-        """Erkennt automatisch den Pakettyp basierend auf Namen."""
+    def _detect_package_type(self, name: str, blueprint: Dict[str, Any] = None) -> str:
+        """
+        ÄNDERUNG 28.01.2026: Erkennt automatisch den Pakettyp basierend auf Namen.
+        Erweitert um Blueprint-Kontext fuer hybride Projekte.
+
+        Args:
+            name: Paketname
+            blueprint: Optional - TechStack Blueprint fuer Kontext
+
+        Returns:
+            "python", "npm" oder "system"
+        """
         # Bekannte Python-Pakete
         python_packages = {"pytest", "flask", "django", "numpy", "pandas", "requests",
-                          "sqlalchemy", "celery", "fastapi", "crewai", "langchain"}
-        # Bekannte NPM-Pakete
-        npm_packages = {"react", "vue", "angular", "express", "webpack", "vite",
-                       "jest", "mocha", "typescript", "eslint"}
+                          "sqlalchemy", "celery", "fastapi", "crewai", "langchain",
+                          "flask_sqlalchemy", "flask_login", "flask_wtf", "psycopg2"}
         # System-Tools
         system_tools = {"node", "npm", "python", "git", "docker", "curl"}
 
         name_lower = name.lower()
+
+        # 1. System-Tools haben Vorrang
+        if name_lower in system_tools:
+            return "system"
+
+        # 2. Bekannte Python-Pakete
         if name_lower in python_packages:
             return "python"
-        elif name_lower in npm_packages:
+
+        # 3. ÄNDERUNG 28.01.2026: NPM_PACKAGES Konstante nutzen (umfassender)
+        if name_lower in NPM_PACKAGES:
             return "npm"
-        elif name_lower in system_tools:
-            return "system"
-        else:
-            # Default: Python versuchen
-            return "python"
+
+        # 4. Scoped npm packages (@scope/package)
+        if name.startswith("@"):
+            return "npm"
+
+        # 5. Typische npm-Paketnamen-Muster
+        npm_keywords = ["react", "vue", "angular", "svelte", "webpack", "vite", "eslint"]
+        if any(kw in name_lower for kw in npm_keywords):
+            return "npm"
+
+        # 6. Blueprint-Kontext als Fallback
+        if blueprint and blueprint.get("language") == "javascript":
+            return "npm"
+
+        # Default: Python versuchen
+        return "python"
 
     def _check_python_package(self, name: str, min_version: str = None) -> Dict[str, Any]:
         """Prueft ob ein Python-Paket installiert ist."""
@@ -148,12 +239,12 @@ class DependencyAgent:
     def _check_npm_package(self, name: str, min_version: str = None) -> Dict[str, Any]:
         """Prueft ob ein NPM-Paket global installiert ist."""
         try:
-            npm_path = shutil.which("npm")
-            if not npm_path:
-                return {"installed": False, "version": None, "error": "npm nicht gefunden", "type": "npm"}
+            # ÄNDERUNG 28.01.2026: Gecachten npm-Pfad verwenden
+            if not self._npm_path:
+                return {"installed": False, "version": None, "error": "npm nicht verfuegbar", "type": "npm"}
 
             result = subprocess.run(
-                ["npm", "list", "-g", name, "--depth=0", "--json"],
+                [self._npm_path, "list", "-g", name, "--depth=0", "--json"],
                 capture_output=True,
                 text=True,
                 timeout=30
@@ -262,6 +353,31 @@ class DependencyAgent:
         if not install_command:
             return {"status": "SKIP", "output": "Kein Installationsbefehl angegeben"}
 
+        # ÄNDERUNG 28.01.2026: Prüfe ob referenzierte Dateien existieren
+        if "requirements.txt" in install_command:
+            req_path = os.path.join(project_path, "requirements.txt") if project_path else "requirements.txt"
+            if not os.path.exists(req_path):
+                self._log("InstallSkipped", {
+                    "command": install_command,
+                    "reason": f"Datei nicht gefunden: {req_path}"
+                })
+                return {
+                    "status": "SKIP",
+                    "output": f"requirements.txt nicht gefunden in {project_path or 'aktuellem Verzeichnis'}. Erstelle die Datei oder installiere einzelne Pakete."
+                }
+
+        if install_command.strip() in ["npm install", "npm i"] and project_path:
+            pkg_path = os.path.join(project_path, "package.json")
+            if not os.path.exists(pkg_path):
+                self._log("InstallSkipped", {
+                    "command": install_command,
+                    "reason": f"package.json nicht gefunden: {pkg_path}"
+                })
+                return {
+                    "status": "SKIP",
+                    "output": f"package.json nicht gefunden in {project_path}. Erstelle die Datei mit 'npm init'."
+                }
+
         self._log("InstallStart", {"command": install_command, "path": project_path})
 
         try:
@@ -343,13 +459,54 @@ class DependencyAgent:
         if package_type == "python":
             package_spec = f"{name}=={version}" if version else name
             command = f"python -m pip install {package_spec}"
+            return self.install_dependencies(command)
+
         elif package_type == "npm":
+            # ÄNDERUNG 28.01.2026: npm nur wenn verfuegbar
+            if not self._npm_path:
+                self._log("InstallSkipped", {
+                    "package": name,
+                    "reason": "npm nicht verfuegbar",
+                    "type": "npm"
+                })
+                return {
+                    "status": "SKIPPED",
+                    "output": f"npm nicht verfuegbar - {name} uebersprungen"
+                }
             package_spec = f"{name}@{version}" if version else name
-            command = f"npm install -g {package_spec}"
+
+            # ÄNDERUNG 28.01.2026: Direkter subprocess-Aufruf mit List statt String
+            # Vermeidet .split()-Problem bei Pfaden mit Leerzeichen (WinError 2 Fix)
+            try:
+                self._log("InstallProgress", {"status": "running", "package": name, "type": "npm"})
+                result = subprocess.run(
+                    [self._npm_path, "install", "-g", package_spec],
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                    encoding='utf-8',
+                    errors='replace'
+                )
+
+                output = result.stdout + "\n" + result.stderr
+
+                if result.returncode == 0:
+                    self._log("InstallComplete", {"status": "OK", "package": name, "type": "npm"})
+                    self.update_inventory()
+                    return {"status": "OK", "output": output.strip(), "return_code": 0}
+                else:
+                    self._log("InstallError", {"status": "FAIL", "output": output[:500]})
+                    return {"status": "FAIL", "output": output.strip(), "return_code": result.returncode}
+
+            except subprocess.TimeoutExpired:
+                self._log("InstallError", {"status": "TIMEOUT", "package": name})
+                return {"status": "TIMEOUT", "output": "npm Installation Timeout nach 300 Sekunden"}
+            except Exception as e:
+                self._log("InstallError", {"status": "ERROR", "error": str(e)})
+                return {"status": "ERROR", "output": str(e)}
+
         else:
             return {"status": "ERROR", "output": f"Unbekannter Pakettyp: {package_type}"}
-
-        return self.install_dependencies(command)
 
     # =========================================================================
     # INVENTAR
@@ -450,22 +607,22 @@ class DependencyAgent:
     def _scan_npm_packages(self) -> Dict[str, Any]:
         """Scannt installierte NPM-Pakete (global)."""
         try:
-            npm_path = shutil.which("npm")
-            if not npm_path:
+            # ÄNDERUNG 28.01.2026: Gecachten npm-Pfad verwenden
+            if not self._npm_path:
                 return {"version": "not installed", "packages": []}
 
-            # npm Version
+            # npm Version - mit vollstaendigem Pfad
             result = subprocess.run(
-                ["npm", "--version"],
+                [self._npm_path, "--version"],
                 capture_output=True,
                 text=True,
                 timeout=10
             )
             npm_version = result.stdout.strip() if result.returncode == 0 else "unknown"
 
-            # Globale Pakete
+            # Globale Pakete - mit vollstaendigem Pfad
             result = subprocess.run(
-                ["npm", "list", "-g", "--depth=0", "--json"],
+                [self._npm_path, "list", "-g", "--depth=0", "--json"],
                 capture_output=True,
                 text=True,
                 timeout=60
@@ -689,8 +846,8 @@ class DependencyAgent:
             check = self.check_dependency(dep)
             if not check.get("installed"):
                 if self.auto_install:
-                    # Versuche Installation
-                    pkg_type = "npm" if tech_blueprint.get("language") == "javascript" else "python"
+                    # ÄNDERUNG 28.01.2026: Intelligente Paketttyp-Erkennung
+                    pkg_type = self._detect_package_type(dep, tech_blueprint)
                     install = self.install_single_package(dep, pkg_type)
                     if install.get("status") != "OK":
                         results["warnings"].append(f"Konnte {dep} nicht installieren")

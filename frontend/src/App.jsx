@@ -1,7 +1,7 @@
 /**
  * Author: rahn
  * Datum: 28.01.2026
- * Version: 1.8
+ * Version: 1.10
  * Beschreibung: App Hauptkomponente - Zentrale UI mit WebSocket-Verbindung und Agenten-Steuerung.
  *               Refaktoriert: WebSocket, Config, AgentCard und NavigationHeader extrahiert.
  *               ÄNDERUNG 25.01.2026: Token-Metriken Props für CoderOffice hinzugefügt.
@@ -9,6 +9,7 @@
  *               ÄNDERUNG 25.01.2026: Toggle USER/DEBUG im Global Output Loop mit formatierter Ausgabe.
  *               ÄNDERUNG 25.01.2026: Einheitliche Lucide-Icons mit Farbcodierung im Global Output Loop.
  *               ÄNDERUNG 28.01.2026: LibraryOffice für Protokoll und Archiv hinzugefügt.
+ *               ÄNDERUNG 28.01.2026: Session-Persistenz - State-Recovery nach Browser-Refresh.
  */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -223,6 +224,104 @@ const App = () => {
     handleMaxModelAttemptsChange
   } = useConfig(setAgentData);
 
+  // ÄNDERUNG 28.01.2026: Session-Recovery nach Browser-Refresh
+  // Lädt aktiven State vom Backend oder aus localStorage
+  useEffect(() => {
+    const loadPersistedState = async () => {
+      try {
+        // 1. Prüfe ob Backend eine aktive Session hat
+        const response = await fetch(`${API_BASE}/session/current`);
+        if (response.ok) {
+          const sessionData = await response.json();
+
+          // Wenn Backend eine aktive oder beendete Session hat
+          if (sessionData.is_active || sessionData.session?.status !== 'Idle') {
+            console.log('[Session] Backend-Session gefunden:', sessionData.session?.status);
+
+            // State aus Backend übernehmen
+            if (sessionData.session?.goal) {
+              setGoal(sessionData.session.goal);
+            }
+            if (sessionData.session?.status) {
+              setStatus(sessionData.session.status);
+            }
+            if (sessionData.recent_logs?.length > 0) {
+              setLogs(sessionData.recent_logs.map(log => ({
+                agent: log.agent,
+                event: log.event,
+                message: log.message,
+                timestamp: log.timestamp
+              })));
+            }
+
+            // Agent-Data aus Snapshots wiederherstellen
+            if (sessionData.agent_data && Object.keys(sessionData.agent_data).length > 0) {
+              setAgentData(prev => ({
+                ...prev,
+                ...Object.fromEntries(
+                  Object.entries(sessionData.agent_data)
+                    .filter(([_, data]) => data && Object.keys(data).length > 0)
+                    .map(([name, data]) => [name, { ...prev[name], ...data }])
+                )
+              }));
+            }
+
+            return; // Backend-Session hat Vorrang
+          }
+        }
+      } catch (err) {
+        console.warn('[Session] Backend nicht erreichbar, versuche localStorage...');
+      }
+
+      // 2. Fallback: Lade aus localStorage wenn kein Backend verfügbar
+      try {
+        const saved = localStorage.getItem('agent_office_state');
+        if (saved) {
+          const { goal: savedGoal, status: savedStatus, logs: savedLogs, timestamp } = JSON.parse(saved);
+
+          // Nur wiederherstellen wenn nicht älter als 24 Stunden
+          const age = Date.now() - (timestamp || 0);
+          const maxAge = 24 * 60 * 60 * 1000; // 24 Stunden
+
+          if (age < maxAge) {
+            console.log('[Session] localStorage-State wiederhergestellt');
+            if (savedGoal) setGoal(savedGoal);
+            // ÄNDERUNG 28.01.2026: Status wiederherstellen für Reset-Button
+            if (savedStatus && savedStatus !== 'Idle') setStatus(savedStatus);
+            if (savedLogs?.length > 0) setLogs(savedLogs.slice(-100));
+          } else {
+            // Alten State löschen
+            localStorage.removeItem('agent_office_state');
+          }
+        }
+      } catch (err) {
+        console.warn('[Session] localStorage-Wiederherstellung fehlgeschlagen:', err);
+      }
+    };
+
+    loadPersistedState();
+  }, []); // Nur einmal beim Mount
+
+  // ÄNDERUNG 28.01.2026: State in localStorage persistieren
+  // Speichert goal, logs und status für Offline-Recovery
+  useEffect(() => {
+    // Nur speichern wenn relevante Daten vorhanden
+    if (goal || logs.length > 0) {
+      const stateToSave = {
+        goal,
+        status, // ÄNDERUNG 28.01.2026: Status mitspeichern für Reset-Button
+        logs: logs.slice(-200), // Max 200 Logs speichern
+        timestamp: Date.now()
+      };
+      try {
+        localStorage.setItem('agent_office_state', JSON.stringify(stateToSave));
+      } catch (err) {
+        // localStorage voll oder nicht verfügbar - ignorieren
+        console.warn('[Session] localStorage-Speicherung fehlgeschlagen:', err);
+      }
+    }
+  }, [goal, logs, status]);
+
   // Auto-Scroll bei neuen Logs
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -243,10 +342,21 @@ const App = () => {
   };
 
   // ÄNDERUNG 25.01.2026: Reset-Funktion für Projekt-Neustart
+  // ÄNDERUNG 28.01.2026: localStorage und Session ebenfalls zurücksetzen
   const handleReset = async () => {
     try {
       // Backend zurücksetzen
       await axios.post(`${API_BASE}/reset`);
+
+      // Session zurücksetzen
+      try {
+        await axios.post(`${API_BASE}/session/reset`);
+      } catch (err) {
+        console.warn('[Session] Session-Reset fehlgeschlagen:', err);
+      }
+
+      // localStorage leeren
+      localStorage.removeItem('agent_office_state');
 
       // Frontend States zurücksetzen
       setGoal('');
@@ -669,8 +779,10 @@ const App = () => {
               </div>
             </div>
             {/* ÄNDERUNG 25.01.2026: Log-Ausgabe mit USER/DEBUG Formatierung */}
+            {/* ÄNDERUNG 28.01.2026: Performance-Limit und Null-Filter hinzugefügt */}
             <div className="flex-1 p-3 overflow-y-auto terminal-scroll text-[10px] flex flex-col gap-1">
               {logs
+                .slice(-500)  // Performance: Max 500 Logs anzeigen
                 .filter(l => {
                   // Debug: Alles anzeigen
                   if (outputMode === 'debug') return true;
@@ -707,7 +819,9 @@ const App = () => {
                       </div>
                     </div>
                   );
-                })}
+                })
+                .filter(Boolean)  // Entfernt null-Einträge (leere Zeilen vermeiden)
+              }
               <div ref={logEndRef} />
             </div>
           </div>

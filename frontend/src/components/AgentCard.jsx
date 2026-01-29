@@ -54,6 +54,7 @@ const borderColors = {
 };
 
 // ÄNDERUNG 25.01.2026: Aktive Status-Werte (Agent arbeitet gerade)
+// ÄNDERUNG 28.01.2026: 'Working' hinzugefügt als universeller Arbeitsstatus
 // Nur diese Status lösen den Glow-Effekt aus
 const activeStates = [
   'Status',           // Generischer "arbeitet" Status
@@ -66,6 +67,7 @@ const activeStates = [
   'testing',          // Tester testet
   'reviewing',        // Reviewer prüft
   'designing',        // Designer arbeitet
+  'Working',          // Universeller Arbeitsstatus (neu)
 ];
 
 // ÄNDERUNG 25.01.2026: Status-Mapping für kompakte Anzeige

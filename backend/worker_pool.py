@@ -85,7 +85,7 @@ class WorkerPool:
         self.workers: Dict[str, Worker] = {}
         self._task_queue: asyncio.Queue = asyncio.Queue()
         self._running = False
-        self._worker_tasks: List[asyncio.Task] = []
+        self._worker_tasks: Dict[str, asyncio.Task] = {}  # worker_id -> Task mapping
 
         # Erstelle initiale Worker
         names = self.WORKER_NAMES.get(office, ["Worker"])
@@ -174,8 +174,9 @@ class WorkerPool:
         if self.on_status_change:
             await self._notify_status_change(worker, "task_assigned")
 
-        # Task asynchron ausführen
-        asyncio.create_task(self._execute_task(worker, execute_fn, **kwargs))
+        # Task asynchron ausführen und tracken
+        task = asyncio.create_task(self._execute_task(worker, execute_fn, **kwargs))
+        self._worker_tasks[worker.id] = task
 
         return worker.id
 
@@ -195,6 +196,9 @@ class WorkerPool:
             worker.current_task_description = None
             worker.last_activity = datetime.now()
 
+            # Task aus Tracking entfernen
+            self._worker_tasks.pop(worker.id, None)
+
             if self.on_status_change:
                 await self._notify_status_change(worker, "task_completed", result=result)
 
@@ -203,9 +207,19 @@ class WorkerPool:
 
             return result
 
+        except asyncio.CancelledError:
+            # Task wurde abgebrochen - normal bei reset()
+            worker.status = WorkerStatus.IDLE
+            worker.current_task = None
+            worker.current_task_description = None
+            self._worker_tasks.pop(worker.id, None)
+            raise
         except Exception as e:
             worker.status = WorkerStatus.ERROR
             worker.last_activity = datetime.now()
+
+            # Task aus Tracking entfernen
+            self._worker_tasks.pop(worker.id, None)
 
             if self.on_status_change:
                 await self._notify_status_change(worker, "task_failed", error=str(e))
@@ -256,19 +270,47 @@ class WorkerPool:
         """
         ÄNDERUNG 25.01.2026: Setzt alle Worker auf Idle zurück.
         Wird beim Projekt-Reset aufgerufen.
+        ÄNDERUNG 28.01.2026: Cancelt laufende Tasks um State-Races zu vermeiden.
         """
-        # ÄNDERUNG 25.01.2026: Bug-Fix - iteriere über .values() statt über Dict-Keys
+        # Alle laufenden Tasks canceln
+        tasks_to_cancel = list(self._worker_tasks.values())
+        for task in tasks_to_cancel:
+            task.cancel()
+        
+        # Warten auf Task-Cancellation (async helper wenn nötig)
+        if tasks_to_cancel:
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # Event loop läuft - schedule cancellation handling
+                    asyncio.create_task(self._await_task_cancellations(tasks_to_cancel))
+                else:
+                    # Event loop läuft nicht - direkt awaiten
+                    asyncio.run(asyncio.gather(*tasks_to_cancel, return_exceptions=True))
+            except RuntimeError:
+                # Kein Event Loop verfügbar - Tasks werden beim nächsten Loop-Lauf gecancelt
+                pass
+        
+        # Worker zurücksetzen
         for worker in self.workers.values():
             worker.status = WorkerStatus.IDLE
             worker.current_task = None
             worker.current_task_description = None
             worker.model = None
+        
         # Queue leeren
         while not self._task_queue.empty():
             try:
                 self._task_queue.get_nowait()
             except asyncio.QueueEmpty:
                 break
+        
+        # Task-Tracking leeren
+        self._worker_tasks.clear()
+    
+    async def _await_task_cancellations(self, tasks: List[asyncio.Task]):
+        """Helper um auf Task-Cancellations zu warten."""
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 class OfficeManager:

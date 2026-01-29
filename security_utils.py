@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 """
 Author: rahn
-Datum: 25.01.2026
-Version: 1.1
+Datum: 28.01.2026
+Version: 1.2
 Beschreibung: Security Utilities - Sichere Pfad- und Befehlsoperationen.
               Features: Path Traversal Prevention, Command Injection Prevention, Dateinamen-Sanitization.
               ÄNDERUNG 25.01.2026: Bug-Fix für Duplikat-Dateinamen durch LLM-Fehler.
+              ÄNDERUNG 28.01.2026: Bug-Fix für UnboundLocalError durch lokalen os-Import.
 """
 
 import os
@@ -183,8 +184,24 @@ def sanitize_filename(filename: str) -> str:
             # Normalisiere für Vergleich (ohne trailing _ und lowercase)
             first_base = parts[0].rstrip('_').lower()
             last_base = parts[-1].rstrip('_').lower()
-            # Wenn erster und letzter Teil gleich sind → Duplikat-Fehler
-            if first_base == last_base or first_base.startswith(last_base) or last_base.startswith(first_base):
+            
+            # Strikte Duplikat-Erkennung: Nur wenn beide Teile exakt gleich sind
+            # ODER wenn beide Dateinamen mit Extensions sind und die Basis-Namen (ohne Extension) gleich sind
+            is_duplicate = False
+            
+            if first_base == last_base:
+                # Exakt gleich nach Normalisierung
+                is_duplicate = True
+            else:
+                # Prüfe ob beide Teile Dateinamen mit Extensions sind
+                first_name, first_ext = os.path.splitext(parts[0])
+                last_name, last_ext = os.path.splitext(parts[-1])
+                
+                # Nur als Duplikat wenn beide Extensions haben und Basis-Namen gleich sind
+                if first_ext and last_ext and first_name.rstrip('_').lower() == last_name.rstrip('_').lower():
+                    is_duplicate = True
+            
+            if is_duplicate:
                 # Behalte den saubereren Teil (ohne trailing _)
                 filename = parts[-1] if not parts[-1].endswith('_') else parts[0].rstrip('_')
 

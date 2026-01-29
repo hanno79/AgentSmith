@@ -183,7 +183,7 @@ def _check_basic_content(page) -> ContentValidationResult:
         # Warnungen
         if visible_elems == 0 and text_len > 0:
             result.warnings.append(
-                "Keine semantischen HTML-Elemente gefunden (kein h1, p, div, etc.) - "
+                "Keine semantischen HTML-Elemente (z. B. h1, p) gefunden - "
                 "nur roher Text im Body"
             )
 

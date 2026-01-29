@@ -1,10 +1,11 @@
 /**
  * Author: rahn
  * Datum: 28.01.2026
- * Version: 1.1
+ * Version: 1.2
  * Beschreibung: DependencyOffice - IT-Abteilung des Bueros.
  *               Verwaltet Software-Inventar, Installationen und Vulnerability-Checks.
  *               ÄNDERUNG 28.01.2026: Material Symbols durch Lucide-Icons ersetzt.
+ *               ÄNDERUNG 28.01.2026: Fix für forwardRef-Icon-Rendering (typeof-Check entfernt).
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -55,7 +56,7 @@ function InventoryTreeItem({ label, version, children, icon: IconComponent, stat
                 {/* Icon falls vorhanden */}
                 {IconComponent && (
                     <span className="text-amber-500 flex-shrink-0">
-                        {typeof IconComponent === 'function' ? <IconComponent size={14} /> : IconComponent}
+                        <IconComponent size={14} />
                     </span>
                 )}
 

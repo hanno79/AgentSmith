@@ -382,13 +382,15 @@ class OrchestrationManager:
 
     def _is_rate_limit_error(self, e: Exception) -> bool:
         """
-        Prüft, ob eine Exception ein Rate-Limit-Fehler oder ein API-Fehler ist.
+        Prüft, ob eine Exception ein Rate-Limit-Fehler ist.
+        ÄNDERUNG 28.01.2026: Server-Fehler (500, 503) sind KEINE Rate-Limits mehr!
+        Diese führen nicht mehr zu Modell-Pausierung.
 
         Args:
             e: Die Exception, die geprüft werden soll
 
         Returns:
-            True wenn Status-Code 429/402, Rate-Limit oder OpenRouter-API-Fehler erkannt wird
+            True NUR wenn Status-Code 429/402 oder explizites Rate-Limit erkannt wird
         """
         # Prüfe auf Status-Code (429 oder 402)
         status_code = None
@@ -401,25 +403,43 @@ class OrchestrationManager:
         error_str = str(e).lower()
         rate_limit_pattern = r'\brate[_\s-]?limit\b'
 
-        # ÄNDERUNG 25.01.2026: Erweiterte Erkennung für OpenRouter/API-Fehler
-        # Diese Fehler treten bei Free-Modellen häufig auf und sollten Fallback auslösen
-        openrouter_error_patterns = [
-            'upstream error',
-            'openrouterexception',
-            'openinference',
-            'model endpoint',
-            'apierror',
-            'api error',
-            'service unavailable',
+        # ÄNDERUNG 28.01.2026: Server-Fehler erkennen aber NICHT als Rate-Limit behandeln
+        server_error_patterns = [
             'internal server error',
+            'service unavailable',
             'bad gateway',
-            'gateway timeout'
+            'gateway timeout',
+            '500',
+            '502',
+            '503',
+            '504'
         ]
 
-        is_rate_limit = (status_code in [429, 402]) or bool(re.search(rate_limit_pattern, error_str))
-        is_api_error = any(pattern in error_str for pattern in openrouter_error_patterns)
+        is_server_error = any(pattern in error_str for pattern in server_error_patterns)
 
-        return is_rate_limit or is_api_error
+        if is_server_error:
+            # Server-Fehler: Kurz warten, aber NICHT als Rate-Limit behandeln
+            log_event("System", "Warning",
+                      "Server-Fehler erkannt (kein Rate-Limit) - kurze Pause von 5s")
+            time.sleep(5)  # Kurze Pause bei Server-Fehler
+            return False  # KEIN Rate-Limit - Modell wird NICHT pausiert
+
+        # Nur echte Rate-Limit Patterns (429, 402, "rate limit")
+        is_rate_limit = (status_code in [429, 402]) or bool(re.search(rate_limit_pattern, error_str))
+
+        # ÄNDERUNG 28.01.2026: Upstream-Fehler nur als Rate-Limit wenn sie wiederholt auftreten
+        # Diese sind oft temporär und sollten nicht sofort Fallback auslösen
+        upstream_patterns = [
+            'upstream error',
+            'openrouterexception'
+        ]
+        is_upstream = any(pattern in error_str for pattern in upstream_patterns)
+
+        if is_upstream and not is_rate_limit:
+            log_event("System", "Warning",
+                      "Upstream-Fehler erkannt - wird als Rate-Limit behandelt für Fallback")
+
+        return is_rate_limit or is_upstream
 
     # ÄNDERUNG 24.01.2026: Erkennung für leere/ungültige API-Antworten
     def _is_empty_or_invalid_response(self, response: str) -> bool:
@@ -1491,7 +1511,9 @@ Wenn KEINE kritischen Probleme gefunden: Antworte nur mit "SECURE"
                         security_passed = True  # Erlaube Fortfahren mit Warnung
 
                 # ÄNDERUNG 25.01.2026: Debug-Logging für Break-Entscheidung
+                # ÄNDERUNG 28.01.2026: Erweitert um Datei-Zaehler
                 review_says_ok = review_output.strip().upper().startswith("OK") or review_output.strip().upper() == "OK"
+                file_count = len(created_files) if created_files else 0
                 self._ui_log("Debug", "LoopDecision", json.dumps({
                     "iteration": iteration + 1,
                     "review_output_preview": review_output[:200] if review_output else "",
@@ -1499,15 +1521,21 @@ Wenn KEINE kritischen Probleme gefunden: Antworte nur mit "SECURE"
                     "sandbox_failed": sandbox_failed,
                     "security_passed": security_passed,
                     "security_retry_count": security_retry_count,
-                    "will_break": review_says_ok and not sandbox_failed and security_passed
+                    "created_files_count": file_count,
+                    "has_minimum_files": file_count >= 3,
+                    "will_break": review_says_ok and not sandbox_failed and security_passed and file_count >= 3
                 }, ensure_ascii=False))
 
-                # STRIKTER CHECK: Reviewer OK + Sandbox OK + Security SECURE
+                # STRIKTER CHECK: Reviewer OK + Sandbox OK + Security SECURE + Mindestanzahl Dateien
                 # ÄNDERUNG 25.01.2026: Verbesserte OK-Erkennung - nur wenn Review mit "OK" STARTET
-                if review_says_ok and not sandbox_failed and security_passed:
+                # ÄNDERUNG 28.01.2026: Validiere Datei-Vollstaendigkeit vor Break
+                created_count = len(created_files) if created_files else 0
+                has_minimum_files = created_count >= 3  # Mindestens 3 Dateien fuer ein Projekt
+
+                if review_says_ok and not sandbox_failed and security_passed and has_minimum_files:
                     success = True
                     self._ui_log("Security", "SecurityGate", "✅ Security-Gate bestanden - Code ist sicher.")
-                    self._ui_log("Reviewer", "Status", "Code OK.")
+                    self._ui_log("Reviewer", "Status", f"Code OK - Projekt komplett mit {created_count} Dateien.")
                     # Memory: Zeichne erfolgreiche Iteration auf (geschützt)
                     try:
                         memory_path = os.path.join(self.base_dir, "memory", "global_memory.json")
@@ -1516,6 +1544,13 @@ Wenn KEINE kritischen Probleme gefunden: Antworte nur mit "SECURE"
                     except Exception as mem_err:
                         self._ui_log("Memory", "Error", f"Memory-Operation fehlgeschlagen: {mem_err}")
                     break
+                elif review_says_ok and not has_minimum_files:
+                    # ÄNDERUNG 28.01.2026: Reviewer sagt OK aber zu wenig Dateien - weitermachen
+                    self._ui_log("Orchestrator", "Status", f"Nur {created_count} Dateien erstellt - generiere weitere...")
+                    feedback = f"Bitte weitere Dateien generieren. Bisher nur {created_count} Datei(en). "
+                    feedback += "Ein vollstaendiges Projekt braucht mindestens Backend, Config/Requirements und README oder Tests."
+                    iteration += 1
+                    continue
                 else:
                     # ÄNDERUNG 28.01.2026: Feedback-Logik ohne widersprüchliche Signale
                     # Security-Issues haben PRIORITÄT - nicht mit "OK" kombinieren

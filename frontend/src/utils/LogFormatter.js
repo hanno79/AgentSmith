@@ -1,12 +1,13 @@
 /**
  * Author: rahn
- * Datum: 25.01.2026
- * Version: 1.3
+ * Datum: 28.01.2026
+ * Version: 1.4
  * Beschreibung: Log-Formatierung fuer benutzerfreundliche Ausgabe im Global Output Loop.
  *               Wandelt JSON-Events in Klartext-Zusammenfassungen um.
  *               AENDERUNG 25.01.2026: Researcher zeigt status-basierten Titel.
  *               AENDERUNG 25.01.2026: Text-Truncation mit "..." am Ende.
  *               AENDERUNG 25.01.2026: Researcher ohne Query-Duplikat bei Abschluss.
+ *               AENDERUNG 28.01.2026: Robuste Message-Typen-Behandlung fuer Session-Recovery.
  */
 
 /**
@@ -57,7 +58,7 @@ const formatTechStack = (data) => {
 // Formatiert Code-Generierung
 const formatCodeOutput = (data) => {
   if (!data) return null;
-  const fileCount = data.files?.length || 0;
+  const fileCount = Array.isArray(data.files) && data.files.length > 0 ? data.files.length : 0;
   const iteration = data.iteration || 1;
   const maxIter = data.max_iterations || 3;
 
@@ -222,6 +223,7 @@ const getAgentIcon = (agent) => {
 /**
  * Haupt-Formatierungs-Funktion
  * Wandelt ein Log-Objekt in ein benutzerfreundliches Format um.
+ * AENDERUNG 28.01.2026: Robuste Behandlung von nicht-String messages (Session-Recovery).
  *
  * @param {Object} log - Log-Objekt mit agent, event, message
  * @returns {Object} Formatiertes Objekt mit icon, title, summary, detail
@@ -229,12 +231,31 @@ const getAgentIcon = (agent) => {
 export const formatLogForUser = (log) => {
   const { agent, event, message } = log;
 
-  // Nicht-JSON Nachrichten direkt zurueckgeben
-  if (!message?.startsWith('{')) {
+  // AENDERUNG 28.01.2026: Message zu String konvertieren falls noetig (Session-Recovery)
+  let messageStr = message;
+  if (message === null || message === undefined) {
+    messageStr = '';
+  } else if (typeof message === 'object') {
+    // Objekt zu JSON-String konvertieren
+    try {
+      messageStr = JSON.stringify(message);
+    } catch {
+      messageStr = String(message);
+    }
+  } else if (typeof message !== 'string') {
+    messageStr = String(message);
+  }
+
+  // ÄNDERUNG 28.01.2026: Nicht-JSON Nachrichten - leere überspringen
+  if (!messageStr || !messageStr.startsWith('{')) {
+    // Leere Nachrichten überspringen (verhindert leere </> Zeilen)
+    if (!messageStr || messageStr.trim() === '') {
+      return null;
+    }
     return {
       icon: getAgentIcon(agent),
       title: agent,
-      summary: message,
+      summary: messageStr,
       detail: null
     };
   }
@@ -242,45 +263,72 @@ export const formatLogForUser = (log) => {
   // JSON parsen
   let data = null;
   try {
-    data = JSON.parse(message);
+    data = JSON.parse(messageStr);
   } catch {
     return {
       icon: getAgentIcon(agent),
       title: agent,
-      summary: truncateText(message, 500),
+      summary: truncateText(messageStr, 500),
       detail: null
     };
   }
 
   // Event-spezifische Formatierung
+  let result = null;
   switch (event) {
     case 'TechStackOutput':
-      return formatTechStack(data);
+      result = formatTechStack(data);
+      break;
     case 'CodeOutput':
-      return formatCodeOutput(data);
+      result = formatCodeOutput(data);
+      break;
     case 'ReviewOutput':
-      return formatReview(data);
+      result = formatReview(data);
+      break;
     case 'SecurityOutput':
     case 'SecurityRescanOutput':
-      return formatSecurity(data);
+      result = formatSecurity(data);
+      break;
     case 'ResearchOutput':
-      return formatResearch(data);
+      result = formatResearch(data);
+      break;
     case 'DesignerOutput':
-      return formatDesigner(data);
+      result = formatDesigner(data);
+      break;
     case 'DBDesignerOutput':
-      return formatDBDesigner(data);
+      result = formatDBDesigner(data);
+      break;
     case 'UITestResult':
-      return formatTester(data);
+      result = formatTester(data);
+      break;
     case 'ModelSwitch':
-      return formatModelSwitch(data);
+      result = formatModelSwitch(data);
+      break;
     default:
-      return {
+      result = {
         icon: getAgentIcon(agent),
         title: agent,
-        summary: truncateText(message, 500),
+        summary: truncateText(messageStr, 500),
         detail: null
       };
   }
+
+  // Fallback wenn format-Funktion null zurückgibt
+  if (!result) {
+    return {
+      icon: getAgentIcon(agent),
+      title: agent,
+      summary: truncateText(messageStr, 500),
+      detail: null
+    };
+  }
+
+  // ÄNDERUNG 28.01.2026: Nur zurückgeben wenn summary nicht leer ist
+  if (!result.summary || result.summary.trim() === '') {
+    return null;
+  }
+
+  return result;
 };
 
 export default formatLogForUser;
