@@ -46,6 +46,9 @@ from exceptions import SecurityError
 # ÄNDERUNG 24.01.2026: Import aus zentraler file_utils (REGEL 13 - Single Source of Truth)
 from file_utils import find_html_file
 
+# ÄNDERUNG 29.01.2026: Discovery Session für strukturierte Projektaufnahme
+from discovery_session import DiscoverySession
+
 # CrewAI Imports
 from crewai import Task, Crew
 
@@ -144,15 +147,15 @@ def save_multi_file_output(project_path: str, code_output: str, default_filename
     return created_files
 
 def main():
-    console.print("[bold cyan]🤖 Willkommen zum Multi-Agenten-System v3.1 (Self-Healing & Logs)[/bold cyan]")
-    
+    console.print("[bold cyan]🤖 Willkommen zum Multi-Agenten-System v3.2 (Discovery Session & Self-Healing)[/bold cyan]")
+
     # Konfiguration laden
     try:
         config = load_config()
     except Exception as e:
         console.print(f"[bold red]❌ Fehler beim Laden der config.yaml: {e}[/bold red]")
         return
-    
+
     # Absoluten Pfad verwenden für konsistentes Verhalten
     base_dir = os.path.dirname(os.path.abspath(__file__))
     memory_path = os.path.join(base_dir, "memory", "global_memory.json")
@@ -172,12 +175,62 @@ def main():
     design_concept = "Kein Design-Konzept."
     current_code = ""
     is_first_run = True
+    discovery_briefing = None  # Speichert Discovery Session Ergebnis
+
+    # ÄNDERUNG 29.01.2026: Discovery Session Modus
+    console.print("\n[bold]Wie moechtest du starten?[/bold]")
+    console.print("  [1] Schnellstart - Direkt loslegen")
+    console.print("  [2] Discovery Session - Strukturierte Projektaufnahme (empfohlen)")
+    console.print()
+
+    start_mode = console.input("[bold]Deine Wahl (1 oder 2): [/bold]").strip()
+
+    if start_mode == "2":
+        # Discovery Session starten
+        console.print("\n[bold cyan]Starte Discovery Session...[/bold cyan]\n")
+        try:
+            discovery = DiscoverySession(config=config, memory_path=memory_path)
+            discovery.on_log = lambda agent, event, msg: log_event(agent, event, str(msg)[:500])
+
+            # Meta-Orchestrator fuer Team-Zusammenstellung
+            meta_orchestrator = MetaOrchestratorV2()
+            discovery_briefing = discovery.run(meta_orchestrator=meta_orchestrator)
+
+            # Speichere Briefing
+            briefing_path = os.path.join(base_dir, "projects", "discovery_briefing.md")
+            with open(briefing_path, "w", encoding="utf-8") as f:
+                f.write(discovery.briefing_to_markdown(discovery_briefing))
+            console.print(f"[green]Briefing gespeichert: {briefing_path}[/green]\n")
+
+            # Extrahiere Projektziel aus Briefing
+            user_goal = discovery_briefing.projektziel
+            console.print(f"[bold]Projektziel aus Discovery:[/bold] {user_goal[:100]}...")
+
+            # Tech-Blueprint aus Briefing-Anforderungen
+            tech_reqs = discovery_briefing.technische_anforderungen
+            if tech_reqs.get("sprache"):
+                tech_blueprint["language"] = tech_reqs["sprache"]
+            if tech_reqs.get("deployment"):
+                tech_blueprint["deployment"] = tech_reqs["deployment"]
+
+            log_event("DiscoverySession", "COMPLETE", f"Briefing: {discovery_briefing.project_name}")
+
+        except Exception as e:
+            console.print(f"[yellow]⚠️ Discovery Session uebersprungen: {e}[/yellow]")
+            console.print("[dim]Fallback auf Schnellstart...[/dim]\n")
+            start_mode = "1"
 
     while True:
         try:
             # User Input
-            if is_first_run:
+            if is_first_run and start_mode != "2":
                 user_goal = console.input("[bold blue]Was soll entwickelt werden? [/bold blue]").strip()
+            elif is_first_run and start_mode == "2":
+                # Discovery-Ziel bereits gesetzt, nur bestaetigen
+                if not console.input(f"[bold green]Mit Discovery-Ziel fortfahren? (Enter oder neues Ziel): [/bold green]").strip():
+                    pass  # user_goal bleibt aus Discovery
+                else:
+                    user_goal = console.input("[bold blue]Neues Ziel: [/bold blue]").strip()
             else:
                 console.print("\n[bold green]--------------------------------------------------[/bold green]")
                 user_goal = console.input("[bold green]Was soll als Nächstes geändert werden? (exit zum Beenden): [/bold green]").strip()
@@ -237,7 +290,8 @@ def main():
                         json_match = re.search(r'\{[^{}]*"project_type"[^{}]*\}', techstack_result, re.DOTALL)
                         if json_match:
                             tech_blueprint = json.loads(json_match.group())
-                    except: pass
+                    except (json.JSONDecodeError, AttributeError) as e:
+                        console.print(f"[yellow]⚠️ TechStack Blueprint konnte nicht geparst werden: {e}[/yellow]")
                     
                     with open(os.path.join(project_path, "tech_blueprint.json"), "w", encoding="utf-8") as f:
                         json.dump(tech_blueprint, f, indent=2, ensure_ascii=False)
