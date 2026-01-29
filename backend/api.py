@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 """
 Author: rahn
-Datum: 28.01.2026
-Version: 1.1
+Datum: 29.01.2026
+Version: 1.2
 Beschreibung: FastAPI Backend - REST API und WebSocket-Endpunkte für das Multi-Agent System.
               ÄNDERUNG 28.01.2026: Broadcast Error-Handling und Ping-Pong fuer Verbindungsstabilitaet.
+              ÄNDERUNG 29.01.2026: Discovery Briefing Endpoints fuer Agent-Kontext.
 """
 
 import asyncio
@@ -1280,4 +1281,433 @@ def get_session_status():
         "goal": session_mgr.current_session.get("goal", ""),
         "iteration": session_mgr.current_session.get("iteration", 0),
         "project_id": session_mgr.current_session.get("project_id")
+    }
+
+
+# =============================================================================
+# DISCOVERY SESSION ENDPOINTS
+# ÄNDERUNG 29.01.2026: Briefing-Speicherung für Agent-Kontext
+# =============================================================================
+
+@app.post("/discovery/save-briefing")
+async def save_discovery_briefing(briefing: dict):
+    """
+    Speichert das Discovery-Briefing fuer die aktuelle Session.
+    Das Briefing wird den Agenten als Kontext bereitgestellt.
+
+    Args:
+        briefing: Das Briefing-Objekt aus der Discovery Session
+
+    Returns:
+        Status und Pfad zur gespeicherten Datei
+    """
+    session_mgr = get_session_manager_instance()
+    project_name = briefing.get("projectName", "unnamed_project")
+
+    # Briefing in Session speichern
+    if session_mgr:
+        session_mgr.set_discovery_briefing(briefing)
+
+    # Briefing auch im OrchestrationManager setzen fuer Agent-Kontext
+    manager.set_discovery_briefing(briefing)
+
+    # Als Markdown-Datei speichern
+    briefing_path = None
+    try:
+        projects_dir = os.path.join(os.path.dirname(__file__), "..", "projects")
+        os.makedirs(projects_dir, exist_ok=True)
+        briefing_path = os.path.join(projects_dir, f"{project_name}_briefing.md")
+
+        markdown = _generate_briefing_markdown(briefing)
+        with open(briefing_path, "w", encoding="utf-8") as f:
+            f.write(markdown)
+    except Exception as e:
+        print(f"[WARN] Briefing-Datei konnte nicht gespeichert werden: {e}")
+
+    return {
+        "status": "ok",
+        "project_name": project_name,
+        "path": briefing_path
+    }
+
+
+@app.get("/discovery/briefing")
+def get_discovery_briefing():
+    """
+    Gibt das aktuelle Discovery-Briefing zurueck.
+
+    Returns:
+        Das gespeicherte Briefing oder None
+    """
+    session_mgr = get_session_manager_instance()
+    if session_mgr:
+        return {"briefing": session_mgr.get_discovery_briefing()}
+    return {"briefing": None}
+
+
+def _generate_briefing_markdown(briefing: dict) -> str:
+    """Generiert Markdown aus dem Briefing-Objekt."""
+    tech = briefing.get("techRequirements", {})
+    agents = briefing.get("agents", [])
+    answers = briefing.get("answers", [])
+    open_points = briefing.get("openPoints", [])
+
+    md = f"""# PROJEKTBRIEFING
+
+**Projekt:** {briefing.get("projectName", "Unbenannt")}
+**Datum:** {briefing.get("date", "Unbekannt")}
+**Teilnehmende Agenten:** {", ".join(agents)}
+
+---
+
+## PROJEKTZIEL
+
+{briefing.get("goal", "Kein Ziel definiert")}
+
+---
+
+## TECHNISCHE ANFORDERUNGEN
+
+- **Sprache:** {tech.get("language", "auto")}
+- **Deployment:** {tech.get("deployment", "local")}
+
+---
+
+## ENTSCHEIDUNGEN AUS DISCOVERY
+
+"""
+
+    for answer in answers:
+        if not answer.get("skipped", False):
+            agent = answer.get("agent", "Unbekannt")
+            values = answer.get("selectedValues", [])
+            custom = answer.get("customText", "")
+            if values or custom:
+                md += f"- **{agent}:** {', '.join(values) if values else custom}\n"
+
+    if open_points:
+        md += "\n---\n\n## OFFENE PUNKTE\n\n"
+        for point in open_points:
+            md += f"- {point}\n"
+
+    md += "\n---\n\n*Generiert von AgentSmith Discovery Session*\n"
+    return md
+
+
+# =============================================================================
+# DYNAMISCHE DISCOVERY FRAGEN - LLM-GENERIERT
+# ÄNDERUNG 29.01.2026: Projektspezifische Fragen pro Agent
+# =============================================================================
+
+class DiscoveryQuestionsRequest(BaseModel):
+    """Request für dynamische Fragen-Generierung."""
+    vision: str
+    agents: list
+
+
+# Agenten die KEINE Fragen stellen (technische Details oder Standard-Prozesse)
+SKIP_QUESTION_AGENTS = ["Security", "Tester", "Reviewer"]
+
+# Maximale Fragen pro Agent
+MAX_QUESTIONS_PER_AGENT = {
+    "Coder": 3,
+    "DB-Designer": 3,
+    "Designer": 2,
+    "Researcher": 1,
+    "TechStack": 1
+}
+
+
+async def _generate_agent_questions(agent: str, vision: str) -> dict:
+    """
+    Generiert kundenfreundliche Fragen für einen Agent via LLM.
+
+    Args:
+        agent: Agent-Name (z.B. "Coder", "DB-Designer")
+        vision: Projektbeschreibung vom Benutzer
+
+    Returns:
+        Dict mit agent und questions Array
+    """
+    max_questions = MAX_QUESTIONS_PER_AGENT.get(agent, 2)
+
+    # Agent-spezifische Rollenbeschreibung
+    agent_roles = {
+        "Coder": "Entwickler, der die Features und Funktionalität implementiert",
+        "DB-Designer": "Datenbankexperte, der die Datenstruktur plant",
+        "Designer": "UI/UX Designer, der das Aussehen und die Bedienung gestaltet",
+        "Researcher": "Recherche-Experte für technische Hintergründe",
+        "TechStack": "Technologie-Berater für die Wahl der Werkzeuge"
+    }
+
+    role_desc = agent_roles.get(agent, f"{agent}-Experte")
+
+    prompt = f'''Du bist der {role_desc} in einem Entwicklungsteam.
+Analysiere diese Projektbeschreibung:
+
+"{vision}"
+
+Generiere {max_questions} Fragen um die genauen Anforderungen zu verstehen.
+
+WICHTIG - Formulierung:
+- Verständlich für Nicht-Techniker (KEINE Fachbegriffe!)
+- Nutze konkrete Beispiele zur Verdeutlichung
+- Jede Frage braucht 3-4 Antwortoptionen
+
+BEISPIELE für gute vs. schlechte Fragen:
+SCHLECHT: "Benötigen Sie eine n:m Beziehung?"
+GUT: "Kann ein Benutzer mehrere Listen anlegen, und können Listen mit anderen geteilt werden?"
+
+SCHLECHT: "Soll das Frontend responsiv sein?"
+GUT: "Auf welchen Geräten soll die App funktionieren - nur Computer, auch Handy?"
+
+SCHLECHT: "Welche API-Architektur bevorzugen Sie?"
+GUT: "Soll die App auch offline funktionieren oder nur mit Internetverbindung?"
+
+Antworte NUR mit validem JSON in diesem Format:
+{{
+  "agent": "{agent}",
+  "questions": [
+    {{
+      "id": "eindeutige_id",
+      "question": "Verständliche Frage?",
+      "example": "Konkretes Beispiel zur Verdeutlichung",
+      "options": [
+        {{"text": "Option 1", "value": "opt1"}},
+        {{"text": "Option 2", "value": "opt2"}},
+        {{"text": "Option 3", "value": "opt3"}}
+      ],
+      "allowCustom": true
+    }}
+  ]
+}}'''
+
+    try:
+        # Hole Modell aus Config (verwende orchestrator oder coder Modell)
+        mode = manager.config.get("mode", "test")
+        models = manager.config.get("models", {}).get(mode, {})
+        model = models.get("orchestrator", models.get("coder", "openrouter/meta-llama/llama-3.3-70b-instruct:free"))
+
+        # Extrahiere primäres Modell falls Dict
+        if isinstance(model, dict):
+            model = model.get("primary", str(model))
+
+        # API-Aufruf
+        api_key = os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("Kein API-Key gefunden")
+
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": model.replace("openrouter/", ""),
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.7,
+                "max_tokens": 1500
+            },
+            timeout=30
+        )
+        response.raise_for_status()
+
+        result = response.json()
+        content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+        # JSON aus Antwort extrahieren
+        json_match = re.search(r'\{[\s\S]*\}', content)
+        if json_match:
+            parsed = json.loads(json_match.group())
+            return parsed
+        else:
+            raise ValueError("Kein JSON in LLM-Antwort gefunden")
+
+    except Exception as e:
+        log_event("Discovery", "Warning", f"Fragen-Generierung für {agent} fehlgeschlagen: {e}")
+        # Fallback: Leere Fragen
+        return {"agent": agent, "questions": []}
+
+
+# =============================================================================
+# FRAGEN-DEDUPLIZIERUNG
+# ÄNDERUNG 29.01.2026: Ähnliche Fragen von verschiedenen Agenten zusammenfassen
+# =============================================================================
+
+# Deutsche Stoppwörter für Ähnlichkeitsvergleich
+STOP_WORDS = {
+    "der", "die", "das", "ein", "eine", "einer", "einem", "einen",
+    "soll", "sollen", "werden", "wird", "ist", "sind", "wird",
+    "welche", "welcher", "welches", "wie", "was", "wer",
+    "bei", "mit", "für", "auf", "von", "zu", "zur", "zum",
+    "und", "oder", "aber", "denn", "wenn", "ob", "als",
+    "es", "sie", "er", "wir", "ihr", "du", "ich"
+}
+
+
+def _questions_are_similar(q1: str, q2: str, threshold: float = 0.6) -> bool:
+    """
+    Prüft ob zwei Fragen ähnlich genug sind um zusammengeführt zu werden.
+    Nutzt Jaccard-Ähnlichkeit (Wort-Überlappung).
+
+    Args:
+        q1: Erste Frage
+        q2: Zweite Frage
+        threshold: Mindest-Ähnlichkeit (0.0 - 1.0), Standard 0.6
+
+    Returns:
+        True wenn Fragen ähnlich genug sind
+    """
+    def normalize(text: str) -> set:
+        # Sonderzeichen entfernen, lowercase, in Wörter splitten
+        cleaned = re.sub(r'[^\w\s]', '', text.lower())
+        words = set(cleaned.split())
+        # Stoppwörter entfernen
+        return words - STOP_WORDS
+
+    words1 = normalize(q1)
+    words2 = normalize(q2)
+
+    if not words1 or not words2:
+        return False
+
+    # Jaccard-Ähnlichkeit: |A ∩ B| / |A ∪ B|
+    intersection = len(words1 & words2)
+    union = len(words1 | words2)
+    similarity = intersection / union if union > 0 else 0
+
+    return similarity >= threshold
+
+
+def _merge_options(target_options: list, source_options: list) -> None:
+    """
+    Fügt einzigartige Optionen zur Zielliste hinzu.
+
+    Args:
+        target_options: Zielliste (wird modifiziert)
+        source_options: Quell-Optionen zum Hinzufügen
+    """
+    existing_values = {opt.get("value") for opt in target_options}
+    for opt in source_options:
+        if opt.get("value") not in existing_values:
+            target_options.append(opt)
+            existing_values.add(opt.get("value"))
+
+
+def _deduplicate_questions(all_agent_questions: list) -> list:
+    """
+    Gruppiert ähnliche Fragen von verschiedenen Agenten.
+    Jede Frage wird nur einmal gestellt, aber alle relevanten Agenten zugeordnet.
+
+    Args:
+        all_agent_questions: Liste von {agent: str, questions: [...]}
+
+    Returns:
+        Liste von deduplizierten Fragen mit agents: [...] Array
+    """
+    # 1. Alle Fragen in flache Liste sammeln mit Agent-Info
+    all_questions = []
+    for agent_data in all_agent_questions:
+        agent = agent_data.get("agent", "Unknown")
+        for q in agent_data.get("questions", []):
+            q_copy = q.copy()
+            q_copy["source_agent"] = agent
+            all_questions.append(q_copy)
+
+    if not all_questions:
+        return []
+
+    # 2. Ähnliche Fragen gruppieren
+    merged = []
+    used_indices = set()
+
+    for i, q1 in enumerate(all_questions):
+        if i in used_indices:
+            continue
+
+        # Neue Gruppe starten
+        group = {
+            "id": q1.get("id", f"q_{i}"),
+            "question": q1.get("question", ""),
+            "example": q1.get("example"),
+            "options": list(q1.get("options", [])),  # Kopie erstellen
+            "allowCustom": q1.get("allowCustom", True),
+            "agents": [q1["source_agent"]]
+        }
+        used_indices.add(i)
+
+        # Ähnliche Fragen finden und zusammenführen
+        for j, q2 in enumerate(all_questions):
+            if j in used_indices:
+                continue
+
+            if _questions_are_similar(q1.get("question", ""), q2.get("question", "")):
+                # Agent hinzufügen
+                if q2["source_agent"] not in group["agents"]:
+                    group["agents"].append(q2["source_agent"])
+                # Optionen zusammenführen
+                _merge_options(group["options"], q2.get("options", []))
+                # Beispiel übernehmen wenn besseres vorhanden
+                if not group["example"] and q2.get("example"):
+                    group["example"] = q2["example"]
+                used_indices.add(j)
+
+        merged.append(group)
+
+    log_event("Discovery", "Deduplicate",
+              f"{len(all_questions)} Fragen → {len(merged)} dedupliziert "
+              f"({len(all_questions) - len(merged)} zusammengeführt)")
+
+    return merged
+
+
+@app.post("/discovery/generate-questions")
+async def generate_discovery_questions(request: DiscoveryQuestionsRequest):
+    """
+    LLM generiert projektspezifische Fragen pro Agent.
+
+    Args:
+        vision: Projektbeschreibung
+        agents: Liste der beteiligten Agenten
+
+    Returns:
+        Dict mit questions Array (ein Eintrag pro Agent)
+    """
+    vision = request.vision
+    agents = request.agents
+
+    if not vision or not vision.strip():
+        raise HTTPException(status_code=400, detail="Vision/Projektbeschreibung fehlt")
+
+    if not agents:
+        raise HTTPException(status_code=400, detail="Keine Agenten angegeben")
+
+    all_questions = []
+
+    for agent in agents:
+        # Agenten überspringen die keine Fragen stellen
+        if agent in SKIP_QUESTION_AGENTS:
+            continue
+
+        try:
+            agent_questions = await _generate_agent_questions(agent, vision)
+            if agent_questions.get("questions"):
+                all_questions.append(agent_questions)
+        except Exception as e:
+            log_event("Discovery", "Warning", f"Fragen für {agent} übersprungen: {e}")
+            continue
+
+    # ÄNDERUNG 29.01.2026: Deduplizierung vor Rückgabe
+    # Ähnliche Fragen von verschiedenen Agenten zusammenfassen
+    original_count = sum(len(aq.get("questions", [])) for aq in all_questions)
+    deduplicated = _deduplicate_questions(all_questions)
+
+    return {
+        "status": "ok",
+        "questions": deduplicated,  # Jetzt mit agents: [] statt agent: string
+        "agents_processed": len(all_questions),
+        "questions_original": original_count,
+        "questions_deduplicated": len(deduplicated),
+        "questions_merged": original_count - len(deduplicated)
     }

@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
 Author: rahn
-Datum: 28.01.2026
-Version: 2.0
+Datum: 29.01.2026
+Version: 2.2
 Beschreibung: Orchestration Manager - Backend-Koordination mit LiteLLM Callbacks und Agent-Steuerung.
               ÄNDERUNG 28.01.2026: Library-Manager Integration für Protokollierung aller Agent-Aktionen
               ÄNDERUNG 28.01.2026: Informationsfluss-Reparatur zwischen Agenten:
@@ -10,6 +10,8 @@ Beschreibung: Orchestration Manager - Backend-Koordination mit LiteLLM Callbacks
                                    - Fix 3: Feedback-Logik ohne widersprüchliche OK+Security-Signale
                                    - Fix 4: Basis-Security-Hints für Iteration 1 (proaktive Guidance)
               ÄNDERUNG 25.01.2026: TokenMetrics, OK-Erkennung, OfficeManager, Security-Workflow
+              ÄNDERUNG 29.01.2026: Discovery Briefing Integration fuer Agent-Kontext
+              ÄNDERUNG 29.01.2026: Briefing wird mit Projekt in Library gespeichert
 """
 
 import os
@@ -113,16 +115,16 @@ try:
                     completion_tokens=completion_tokens,
                     project_id=current_project_id
                 )
-                print(f"📊 Budget tracked: {current_agent_name} - {prompt_tokens}+{completion_tokens} tokens")
+                print(f"[BUDGET] {current_agent_name} - {prompt_tokens}+{completion_tokens} tokens")
         except Exception as e:
-            print(f"⚠️ Budget tracking error: {e}")
+            print(f"[WARN] Budget tracking error: {e}")
 
     # Registriere den Callback
     litellm.success_callback = [_budget_tracking_callback]
-    print("✅ Budget tracking callback registered with LiteLLM")
+    print("[OK] Budget tracking callback registered with LiteLLM")
 
 except ImportError:
-    print("⚠️ LiteLLM nicht verfügbar - Budget tracking deaktiviert")
+    print("[WARN] LiteLLM nicht verfuegbar - Budget tracking deaktiviert")
     _current_agent_name_var: contextvars.ContextVar[str] = contextvars.ContextVar('current_agent_name', default="Unknown")
     _current_project_id_var: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar('current_project_id', default=None)
 
@@ -192,6 +194,9 @@ class OrchestrationManager:
         self.security_vulnerabilities = []
         self.force_security_fix = False  # Flag für manuellen Security-Fix via API
 
+        # ÄNDERUNG 29.01.2026: Discovery Briefing für Agent-Kontext
+        self.discovery_briefing: Optional[Dict[str, Any]] = None
+
         # ModelRouter für automatisches Fallback bei Rate Limits
         self.model_router = get_model_router(self.config)
 
@@ -250,6 +255,67 @@ class OrchestrationManager:
                 session_mgr.set_agent_active(session_key, is_active)
         except Exception:
             pass  # Session-Updates sollten nicht den Workflow stoppen
+
+    # =========================================================================
+    # DISCOVERY BRIEFING - ÄNDERUNG 29.01.2026
+    # =========================================================================
+
+    def set_discovery_briefing(self, briefing: Dict[str, Any]) -> None:
+        """
+        Setzt das Discovery-Briefing fuer Agent-Kontext.
+        Das Briefing wird den Agenten als Kontext bereitgestellt.
+
+        Args:
+            briefing: Das Briefing-Objekt aus der Discovery Session
+        """
+        self.discovery_briefing = briefing
+        self._ui_log("System", "DiscoveryBriefing",
+                     f"Briefing aktiviert: {briefing.get('projectName', 'unbenannt')}")
+
+    def get_briefing_context(self) -> str:
+        """
+        Generiert einen Kontext-String aus dem Briefing fuer Agent-System-Prompts.
+
+        Returns:
+            Formatierter Briefing-Kontext oder leerer String
+        """
+        if not self.discovery_briefing:
+            return ""
+
+        b = self.discovery_briefing
+        tech = b.get("techRequirements", {})
+        agents = b.get("agents", [])
+        answers = b.get("answers", [])
+
+        context = f"""
+## PROJEKTBRIEFING (aus Discovery Session)
+
+**Projektziel:** {b.get('goal', 'Nicht definiert')}
+
+**Technische Anforderungen:**
+- Programmiersprache: {tech.get('language', 'auto')}
+- Deployment: {tech.get('deployment', 'local')}
+
+**Beteiligte Agenten:** {', '.join(agents)}
+
+**Wichtige Entscheidungen aus Discovery:**
+"""
+
+        for answer in answers:
+            if not answer.get('skipped', False):
+                agent = answer.get('agent', 'Unbekannt')
+                values = answer.get('selectedValues', [])
+                custom = answer.get('customText', '')
+                if values or custom:
+                    context += f"- {agent}: {', '.join(values) if values else custom}\n"
+
+        open_points = b.get('openPoints', [])
+        if open_points:
+            context += "\n**Offene Punkte (bitte beruecksichtigen):**\n"
+            for point in open_points:
+                context += f"- {point}\n"
+
+        return context
 
     # ÄNDERUNG 25.01.2026: Worker-Status-Callback für WebSocket-Events
     async def _handle_worker_status_change(self, data: Dict[str, Any]):
@@ -690,11 +756,16 @@ class OrchestrationManager:
             self._ui_log("System", "Task Start", f"Goal: {user_goal}")
 
             # ÄNDERUNG 28.01.2026: Projekt in Library starten für Protokollierung
+            # ÄNDERUNG 29.01.2026: Discovery Briefing mit übergeben
             project_id = None
             try:
                 library = get_library_manager()
                 project_name = user_goal[:50] if len(user_goal) > 50 else user_goal
-                library.start_project(name=project_name, goal=user_goal)
+                library.start_project(
+                    name=project_name,
+                    goal=user_goal,
+                    briefing=self.discovery_briefing
+                )
                 project_id = library.current_project.get('project_id')
                 self._ui_log("Library", "ProjectStart", f"Protokollierung gestartet: {project_id}")
             except Exception as lib_err:
@@ -1030,6 +1101,12 @@ class OrchestrationManager:
 
                 # ÄNDERUNG 28.01.2026: Truncation entfernt - Coder braucht vollständiges DB-Schema
                 c_prompt = f"Ziel: {user_goal}\nTech: {self.tech_blueprint}\nDB: {self.database_schema}\n"
+
+                # ÄNDERUNG 29.01.2026: Discovery Briefing Kontext hinzufügen
+                briefing_context = self.get_briefing_context()
+                if briefing_context:
+                    c_prompt += f"\n{briefing_context}\n"
+
                 if not self.is_first_run: c_prompt += f"\nAlt-Code:\n{self.current_code}\n"
                 if feedback: c_prompt += f"\nKorrektur: {feedback}\n"
 

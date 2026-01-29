@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-01-28T21:37:42.514787",
+  "last_updated": "2026-01-29T10:16:39.973236",
   "python": {
     "version": "3.12.9",
     "packages": [
@@ -801,6 +801,11 @@
       {
         "name": "pbs-installer",
         "version": "2025.10.31",
+        "status": "installed"
+      },
+      {
+        "name": "pdfkit",
+        "version": "1.0.0",
         "status": "installed"
       },
       {

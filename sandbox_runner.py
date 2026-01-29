@@ -169,7 +169,8 @@ def validate_project_references(project_path: str) -> str:
                     src = match.group(1)
                     # Prüfe auf absolute URLs mit urllib.parse
                     parsed = urlparse(src)
-                    if parsed.scheme in ('http', 'https', 'data', 'blob') or src.startswith('//'):
+                    # ÄNDERUNG 29.01.2026: javascript:-URLs als externe Referenzen behandeln
+                    if parsed.scheme in ('http', 'https', 'data', 'blob', 'javascript') or src.startswith('//') or src.lower().startswith('javascript:'):
                         continue  # Externe URLs überspringen
                     ref_path = os.path.join(os.path.dirname(filepath), src)
                     if not os.path.exists(ref_path):
@@ -180,7 +181,8 @@ def validate_project_references(project_path: str) -> str:
                     href = match.group(1)
                     # Prüfe auf absolute URLs mit urllib.parse
                     parsed = urlparse(href)
-                    if parsed.scheme in ('http', 'https', 'data', 'blob') or href.startswith('//'):
+                    # ÄNDERUNG 29.01.2026: javascript:-URLs als externe Referenzen behandeln
+                    if parsed.scheme in ('http', 'https', 'data', 'blob', 'javascript') or href.startswith('//') or href.lower().startswith('javascript:'):
                         continue  # Externe URLs überspringen
                     ref_path = os.path.join(os.path.dirname(filepath), href)
                     if not os.path.exists(ref_path):

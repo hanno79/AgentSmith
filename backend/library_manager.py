@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 """
 Author: rahn
-Datum: 28.01.2026
-Version: 1.0
+Datum: 29.01.2026
+Version: 1.1
 Beschreibung: Library Manager - Zentrale Protokoll- und Archivverwaltung.
               Speichert alle Agent-Kommunikationen und Projektverläufe.
+              ÄNDERUNG 29.01.2026: Discovery Briefing wird mit Projekten gespeichert.
 """
 
 import os
@@ -74,23 +75,26 @@ class LibraryManager:
                 self.current_project["save_error_timestamp"] = datetime.now().isoformat()
                 raise
 
-    def start_project(self, name: str, goal: str) -> str:
+    def start_project(self, name: str, goal: str, briefing: Optional[Dict[str, Any]] = None) -> str:
         """
         Startet ein neues Projekt und erstellt einen Protokoll-Eintrag.
 
         Args:
             name: Projektname
             goal: Projektziel/Prompt
+            briefing: Optional - Discovery Briefing Daten
 
         Returns:
             Projekt-ID
         """
         project_id = f"proj_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}_{uuid.uuid4().hex[:6]}"
 
+        # ÄNDERUNG 29.01.2026: Discovery Briefing wird mit Projekt gespeichert
         self.current_project = {
             "project_id": project_id,
             "name": name,
             "goal": goal,
+            "briefing": briefing,
             "started_at": datetime.now().isoformat(),
             "completed_at": None,
             "status": "running",
@@ -263,10 +267,12 @@ class LibraryManager:
                     with open(filepath, 'r', encoding='utf-8') as f:
                         project = json.load(f)
                         # Nur Metadaten, nicht alle Einträge
+                        # ÄNDERUNG 29.01.2026: Discovery Briefing inkludieren
                         projects.append({
                             "project_id": project.get("project_id"),
                             "name": project.get("name"),
                             "goal": project.get("goal", "")[:200],
+                            "briefing": project.get("briefing"),
                             "started_at": project.get("started_at"),
                             "completed_at": project.get("completed_at"),
                             "status": project.get("status"),

@@ -277,15 +277,16 @@ class WorkerPool:
         for task in tasks_to_cancel:
             task.cancel()
         
+        # ÄNDERUNG 29.01.2026: asyncio.get_running_loop() statt get_event_loop verwenden
         # Warten auf Task-Cancellation (async helper wenn nötig)
         if tasks_to_cancel:
             try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
+                try:
+                    asyncio.get_running_loop()
                     # Event loop läuft - schedule cancellation handling
                     asyncio.create_task(self._await_task_cancellations(tasks_to_cancel))
-                else:
-                    # Event loop läuft nicht - direkt awaiten
+                except RuntimeError:
+                    # Kein laufender Event Loop - direkt awaiten
                     asyncio.run(asyncio.gather(*tasks_to_cancel, return_exceptions=True))
             except RuntimeError:
                 # Kein Event Loop verfügbar - Tasks werden beim nächsten Loop-Lauf gecancelt

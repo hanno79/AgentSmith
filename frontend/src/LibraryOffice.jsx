@@ -1,14 +1,15 @@
 /**
  * Author: rahn
- * Datum: 28.01.2026
- * Version: 1.1
+ * Datum: 29.01.2026
+ * Version: 1.2
  * Beschreibung: Library Office - Archiv- und Protokollverwaltung für alle Projekte.
  *               Design: Warme Bibliotheks-Ästhetik mit Aktenschrank-Metapher.
  *               ÄNDERUNG 28.01.2026: Refaktoriert - ProtocolFeed und ProjectDetail extrahiert.
+ *               ÄNDERUNG 29.01.2026: Resizable Panels - Trennlinie zwischen Projekt-Details und Protokoll verschiebbar.
  *               WICHTIG: Keine Dummy-Daten - nur echte Werte aus der Datenbank.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { API_BASE } from './constants/config';
 import {
@@ -20,7 +21,8 @@ import {
   Loader2,
   FolderOpen,
   Hash,
-  Users
+  Users,
+  GripHorizontal
 } from 'lucide-react';
 
 // Extrahierte Komponenten
@@ -51,12 +53,44 @@ const LibraryOffice = ({
   const [activeTab, setActiveTab] = useState('current');
   const [entries, setEntries] = useState([]);
 
+  // ÄNDERUNG 29.01.2026: Resizable Panels für bessere Lesbarkeit
+  const [topPanelHeight, setTopPanelHeight] = useState(40); // 40% für Projekt-Details
+  const [isDragging, setIsDragging] = useState(false);
+  const containerRef = useRef(null);
+
   // Daten vom Backend laden
   useEffect(() => {
     fetchData();
     const interval = setInterval(fetchData, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  // ÄNDERUNG 29.01.2026: Resizer-Logik für Panel-Größenänderung
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (!isDragging || !containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const newHeight = ((e.clientY - rect.top) / rect.height) * 100;
+      // Min 15%, Max 85% für bessere Usability
+      setTopPanelHeight(Math.min(Math.max(newHeight, 15), 85));
+    };
+
+    const handleMouseUp = () => setIsDragging(false);
+
+    if (isDragging) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'ns-resize';
+      document.body.style.userSelect = 'none';
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isDragging]);
 
   const fetchData = async () => {
     try {
@@ -337,10 +371,41 @@ const LibraryOffice = ({
           </div>
         </aside>
 
-        {/* Main Content - Reading Desk */}
-        <main className="flex-1 flex flex-col min-w-0 z-10" style={{ backgroundColor: COLORS.backgroundDark }}>
-          <ProjectDetail project={activeProject} />
-          <ProtocolFeed entries={entries} />
+        {/* Main Content - Reading Desk mit Resizable Panels */}
+        <main
+          ref={containerRef}
+          className="flex-1 flex flex-col min-w-0 z-10"
+          style={{ backgroundColor: COLORS.backgroundDark }}
+        >
+          {/* Top Panel: Projekt-Details */}
+          <div
+            className="overflow-auto"
+            style={{ height: `${topPanelHeight}%` }}
+          >
+            <ProjectDetail project={activeProject} />
+          </div>
+
+          {/* Resizer Bar - ÄNDERUNG 29.01.2026 */}
+          <div
+            onMouseDown={(e) => {
+              e.preventDefault();
+              setIsDragging(true);
+            }}
+            className={`h-2 flex-shrink-0 flex items-center justify-center cursor-ns-resize transition-colors ${
+              isDragging ? 'bg-amber-600' : 'bg-amber-900/30 hover:bg-amber-700/50'
+            }`}
+            style={{ borderTop: `1px solid ${COLORS.glassBorder}`, borderBottom: `1px solid ${COLORS.glassBorder}` }}
+          >
+            <GripHorizontal size={16} className={`${isDragging ? 'text-amber-200' : 'text-amber-700'}`} />
+          </div>
+
+          {/* Bottom Panel: Protokoll-Feed */}
+          <div
+            className="overflow-auto flex-1"
+            style={{ height: `${100 - topPanelHeight}%` }}
+          >
+            <ProtocolFeed entries={entries} />
+          </div>
         </main>
       </div>
     </div>

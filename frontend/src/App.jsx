@@ -1,7 +1,7 @@
 /**
  * Author: rahn
- * Datum: 28.01.2026
- * Version: 1.10
+ * Datum: 29.01.2026
+ * Version: 1.11
  * Beschreibung: App Hauptkomponente - Zentrale UI mit WebSocket-Verbindung und Agenten-Steuerung.
  *               Refaktoriert: WebSocket, Config, AgentCard und NavigationHeader extrahiert.
  *               ÄNDERUNG 25.01.2026: Token-Metriken Props für CoderOffice hinzugefügt.
@@ -10,6 +10,7 @@
  *               ÄNDERUNG 25.01.2026: Einheitliche Lucide-Icons mit Farbcodierung im Global Output Loop.
  *               ÄNDERUNG 28.01.2026: LibraryOffice für Protokoll und Archiv hinzugefügt.
  *               ÄNDERUNG 28.01.2026: Session-Persistenz - State-Recovery nach Browser-Refresh.
+ *               ÄNDERUNG 29.01.2026: Discovery Briefing an Backend senden für Agent-Kontext.
  */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -86,6 +87,8 @@ const App = () => {
 
   // Mission Control State
   const [goal, setGoal] = useState('');
+  // ÄNDERUNG 29.01.2026: Discovery Briefing für Agent-Kontext speichern
+  const [discoveryBriefing, setDiscoveryBriefing] = useState(null);
   const [logs, setLogs] = useState([]);
   const [status, setStatus] = useState('Idle');
   // ÄNDERUNG 25.01.2026: Toggle für Global Output Loop Ansicht
@@ -572,8 +575,19 @@ const App = () => {
     return (
       <DiscoveryOffice
         onBack={() => setCurrentRoom('mission-control')}
-        onComplete={(briefing) => {
-          console.log('Discovery completed:', briefing);
+        onComplete={async (briefing) => {
+          // ÄNDERUNG 29.01.2026: Briefing speichern und an Backend senden
+          setDiscoveryBriefing(briefing);
+          setGoal(briefing.goal || '');
+
+          // An Backend senden für Agent-Kontext
+          try {
+            await axios.post(`${API_BASE}/discovery/save-briefing`, briefing);
+            console.log('Discovery Briefing gespeichert:', briefing.projectName);
+          } catch (e) {
+            console.error('Briefing speichern fehlgeschlagen:', e);
+          }
+
           setCurrentRoom('mission-control');
         }}
         logs={logs}

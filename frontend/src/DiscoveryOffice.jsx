@@ -1,14 +1,20 @@
 /**
  * Author: rahn / Claude
  * Datum: 29.01.2026
- * Version: 1.0
+ * Version: 1.3
  * Beschreibung: Discovery Office - Strukturierte Projektaufnahme mit Guided Choice System.
  *               Implementiert interaktive Fragen mit vorgeschlagenen Antwortoptionen.
+ *
+ * ÄNDERUNG 29.01.2026 v1.1: Fehlende Agenten-Fragen für Data Researcher, Designer und Security hinzugefügt.
+ * ÄNDERUNG 29.01.2026 v1.2: Dynamische LLM-generierte Fragen pro Agent (projektspezifisch).
+ * ÄNDERUNG 29.01.2026 v1.3: Multi-Agent Support nach Backend-Deduplizierung.
+ *                           Fragen mit agents: [] Array statt verschachtelter Struktur.
  */
 
 import React, { useState, useEffect } from 'react';
 import { useOfficeCommon } from './hooks/useOfficeCommon';
 import { motion, AnimatePresence } from 'framer-motion';
+import DynamicQuestionCard from './components/DynamicQuestionCard';
 import {
   ArrowLeft,
   ArrowRight,
@@ -27,13 +33,18 @@ import {
 } from 'lucide-react';
 
 // Phasen der Discovery Session
+// ÄNDERUNG 29.01.2026: Neue Phase DYNAMIC_QUESTIONS für LLM-generierte Fragen
 const PHASES = {
   VISION: 'vision',
   TEAM_SETUP: 'team_setup',
+  DYNAMIC_QUESTIONS: 'dynamic_questions',
   GUIDED_QA: 'guided_qa',
   SUMMARY: 'summary',
   BRIEFING: 'briefing'
 };
+
+// API Base URL
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 // Agenten-Farben
 const AGENT_COLORS = {
@@ -64,9 +75,15 @@ const DiscoveryOffice = ({
   const [openPoints, setOpenPoints] = useState([]);
   const [briefing, setBriefing] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('');
 
   // Fragen pro Agent (vereinfachte Version für Frontend)
   const [agentQuestions, setAgentQuestions] = useState({});
+
+  // ÄNDERUNG 29.01.2026 v1.3: State für dynamische LLM-Fragen (flache Struktur nach Deduplizierung)
+  // Backend liefert jetzt: [{id, question, agents: [...], options, ...}, ...]
+  const [dynamicQuestions, setDynamicQuestions] = useState([]);
+  const [currentDynamicIndex, setCurrentDynamicIndex] = useState(0);
 
   // Vordefinierte Fragen (wird später vom Backend geladen)
   const defaultQuestions = {
@@ -142,6 +159,75 @@ const DiscoveryOffice = ({
           { text: 'Kein fester Termin', value: 'flexible', recommended: false }
         ]
       }
+    ],
+    // ÄNDERUNG 29.01.2026: Fehlende Agenten-Fragen hinzugefügt
+    'Data Researcher': [
+      {
+        id: 'researcher_sources',
+        question: 'Welche Datenquellen sollen verwendet werden?',
+        options: [
+          { text: 'Interne Datenbanken', value: 'internal_db', recommended: true, reason: 'Direkter Zugriff' },
+          { text: 'Externe APIs', value: 'external_api', recommended: false },
+          { text: 'Dateien (CSV, Excel, JSON)', value: 'files', recommended: false },
+          { text: 'Web Scraping', value: 'scraping', recommended: false }
+        ],
+        multiple: true,
+        allowCustom: true
+      },
+      {
+        id: 'researcher_volume',
+        question: 'Welches Datenvolumen wird erwartet?',
+        options: [
+          { text: 'Klein (< 10.000 Datensätze)', value: 'small', recommended: true },
+          { text: 'Mittel (10.000 - 1 Million)', value: 'medium', recommended: false },
+          { text: 'Groß (> 1 Million)', value: 'large', recommended: false },
+          { text: 'Noch unklar', value: 'unknown', recommended: false }
+        ]
+      }
+    ],
+    'Designer': [
+      {
+        id: 'designer_style',
+        question: 'Welchen Designstil bevorzugst du?',
+        options: [
+          { text: 'Modern / Minimalistisch', value: 'modern', recommended: true, reason: 'Zeitgemäß und übersichtlich' },
+          { text: 'Klassisch / Business', value: 'business', recommended: false },
+          { text: 'Verspielt / Kreativ', value: 'creative', recommended: false },
+          { text: 'Kein spezieller Stil', value: 'auto', recommended: false }
+        ]
+      },
+      {
+        id: 'designer_responsive',
+        question: 'Welche Geräte sollen unterstützt werden?',
+        options: [
+          { text: 'Nur Desktop', value: 'desktop', recommended: false },
+          { text: 'Desktop + Tablet', value: 'desktop_tablet', recommended: false },
+          { text: 'Alle Geräte (Responsive)', value: 'responsive', recommended: true, reason: 'Maximale Reichweite' },
+          { text: 'Mobile First', value: 'mobile_first', recommended: false }
+        ]
+      }
+    ],
+    'Security': [
+      {
+        id: 'security_auth',
+        question: 'Welche Authentifizierung wird benötigt?',
+        options: [
+          { text: 'Keine (öffentliche Anwendung)', value: 'none', recommended: false },
+          { text: 'Einfache Anmeldung (Benutzername/Passwort)', value: 'basic', recommended: true },
+          { text: 'OAuth / Social Login', value: 'oauth', recommended: false },
+          { text: 'Enterprise SSO', value: 'sso', recommended: false }
+        ]
+      },
+      {
+        id: 'security_data',
+        question: 'Welche Daten-Sensitivität liegt vor?',
+        options: [
+          { text: 'Öffentliche Daten', value: 'public', recommended: false },
+          { text: 'Interne Daten', value: 'internal', recommended: true },
+          { text: 'Personenbezogene Daten (DSGVO)', value: 'personal', recommended: false },
+          { text: 'Hochsensible Daten', value: 'sensitive', recommended: false }
+        ]
+      }
     ]
   };
 
@@ -170,9 +256,85 @@ const DiscoveryOffice = ({
     }, 1000);
   };
 
-  // Phase 2: Team bestätigen und zu Fragen übergehen
-  const handleTeamConfirm = () => {
-    if (selectedAgents.length > 0) {
+  // Phase 2: Team bestätigen und dynamische Fragen laden
+  // ÄNDERUNG 29.01.2026: API-Call für LLM-generierte Fragen
+  const handleTeamConfirm = async () => {
+    if (selectedAgents.length === 0) return;
+
+    setIsLoading(true);
+    setLoadingMessage('Agenten analysieren dein Projekt...');
+
+    try {
+      // Dynamische Fragen vom Backend holen
+      const response = await fetch(`${API_BASE}/discovery/generate-questions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vision, agents: selectedAgents })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+
+        if (data.questions && data.questions.length > 0) {
+          // ÄNDERUNG 29.01.2026 v1.3: Dynamische Fragen sind jetzt flach (dedupliziert)
+          // Format: [{id, question, agents: [...], options, ...}, ...]
+          setDynamicQuestions(data.questions);
+          setCurrentDynamicIndex(0);
+          setPhase(PHASES.DYNAMIC_QUESTIONS);
+        } else {
+          // Keine dynamischen Fragen -> direkt zu statischen Fragen
+          setCurrentAgent(selectedAgents[0]);
+          setCurrentQuestionIndex(0);
+          setPhase(PHASES.GUIDED_QA);
+        }
+      } else {
+        // API-Fehler -> Fallback zu statischen Fragen
+        console.warn('Dynamische Fragen konnten nicht geladen werden, verwende statische Fragen');
+        setCurrentAgent(selectedAgents[0]);
+        setCurrentQuestionIndex(0);
+        setPhase(PHASES.GUIDED_QA);
+      }
+    } catch (error) {
+      console.error('Fehler beim Laden der dynamischen Fragen:', error);
+      // Fallback zu statischen Fragen
+      setCurrentAgent(selectedAgents[0]);
+      setCurrentQuestionIndex(0);
+      setPhase(PHASES.GUIDED_QA);
+    } finally {
+      setIsLoading(false);
+      setLoadingMessage('');
+    }
+  };
+
+  // Dynamische Frage beantworten
+  // ÄNDERUNG 29.01.2026 v1.3: Vereinfachte Logik für flache Fragen-Struktur
+  const handleDynamicAnswer = (answer) => {
+    // Antwort speichern (mit agents Array für Multi-Agent Support)
+    if (!answer.skipped) {
+      setAnswers(prev => [...prev, {
+        ...answer,
+        questionId: answer.questionId,
+        // ÄNDERUNG 29.01.2026 v1.3: agents Array statt einzelnem agent
+        agents: answer.agents || [answer.agent || 'Unknown'],
+        // Für Abwärtskompatibilität: Erster Agent als Fallback
+        agent: (answer.agents && answer.agents[0]) || answer.agent || 'Unknown',
+        selectedValues: answer.selectedValues || [],
+        customText: answer.customText || '',
+        timestamp: new Date().toISOString(),
+        isDynamic: true
+      }]);
+    } else {
+      // Übersprungene Frage als offener Punkt
+      const agentNames = (answer.agents || [answer.agent]).join(', ');
+      setOpenPoints(prev => [...prev, `${agentNames}: ${answer.question || 'Frage übersprungen'}`]);
+    }
+
+    // ÄNDERUNG 29.01.2026 v1.3: Einfache Index-Navigation durch flaches Array
+    if (currentDynamicIndex < dynamicQuestions.length - 1) {
+      // Nächste Frage
+      setCurrentDynamicIndex(prev => prev + 1);
+    } else {
+      // Alle dynamischen Fragen beantwortet -> zu statischen Fragen
       setCurrentAgent(selectedAgents[0]);
       setCurrentQuestionIndex(0);
       setPhase(PHASES.GUIDED_QA);
@@ -437,11 +599,13 @@ ${b.openPoints.length > 0 ? b.openPoints.map(p => `- ${p}`).join('\n') : '- Kein
   };
 
   // Progress Bar
+  // ÄNDERUNG 29.01.2026: DYNAMIC_QUESTIONS Phase hinzugefügt
   const ProgressBar = () => {
     const phases = [
       { key: PHASES.VISION, label: 'Vision', icon: Lightbulb },
       { key: PHASES.TEAM_SETUP, label: 'Team', icon: Users },
-      { key: PHASES.GUIDED_QA, label: 'Fragen', icon: MessageSquare },
+      { key: PHASES.DYNAMIC_QUESTIONS, label: 'Projekt-Fragen', icon: MessageSquare },
+      { key: PHASES.GUIDED_QA, label: 'Tech-Fragen', icon: MessageSquare },
       { key: PHASES.SUMMARY, label: 'Zusammenfassung', icon: CheckCircle },
       { key: PHASES.BRIEFING, label: 'Briefing', icon: FileText }
     ];
@@ -581,15 +745,47 @@ ${b.openPoints.length > 0 ? b.openPoints.map(p => `- ${p}`).join('\n') : '- Kein
 
               <button
                 onClick={handleTeamConfirm}
-                className="w-full py-3 rounded-lg font-semibold bg-green-600 hover:bg-green-500 text-white flex items-center justify-center gap-2"
+                disabled={isLoading}
+                className={`w-full py-3 rounded-lg font-semibold flex items-center justify-center gap-2 ${
+                  isLoading
+                    ? 'bg-slate-600 text-slate-400 cursor-not-allowed'
+                    : 'bg-green-600 hover:bg-green-500 text-white'
+                }`}
               >
-                Mit diesem Team starten
-                <ArrowRight size={18} />
+                {isLoading ? (
+                  <>
+                    <RefreshCw size={18} className="animate-spin" />
+                    {loadingMessage || 'Lade Fragen...'}
+                  </>
+                ) : (
+                  <>
+                    Mit diesem Team starten
+                    <ArrowRight size={18} />
+                  </>
+                )}
               </button>
             </motion.div>
           )}
 
-          {/* Phase 3: Guided Questions */}
+          {/* Phase 2.5: Dynamische LLM-Fragen */}
+          {/* ÄNDERUNG 29.01.2026 v1.3: Flache Fragen-Struktur nach Deduplizierung */}
+          {phase === PHASES.DYNAMIC_QUESTIONS && dynamicQuestions.length > 0 && (
+            <motion.div
+              key={`dynamic-${currentDynamicIndex}`}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            >
+              <DynamicQuestionCard
+                question={dynamicQuestions[currentDynamicIndex]}
+                currentIndex={currentDynamicIndex}
+                totalQuestions={dynamicQuestions.length}
+                onAnswer={handleDynamicAnswer}
+              />
+            </motion.div>
+          )}
+
+          {/* Phase 3: Guided Questions (statisch) */}
           {phase === PHASES.GUIDED_QA && currentAgent && (
             <motion.div
               key={`qa-${currentAgent}-${currentQuestionIndex}`}
