@@ -47,6 +47,7 @@ import DBDesignerOffice from './DBDesignerOffice';
 import LibraryOffice from './LibraryOffice';
 import ExternalBureauOffice from './ExternalBureauOffice';
 import DependencyOffice from './DependencyOffice';
+import DiscoveryOffice from './DiscoveryOffice';  // ÄNDERUNG 29.01.2026: Discovery Session
 import AgentCard from './components/AgentCard';
 import NavigationHeader from './components/NavigationHeader';
 import useWebSocket from './hooks/useWebSocket';
@@ -562,6 +563,20 @@ const App = () => {
     return (
       <DependencyOffice
         onBack={() => setCurrentRoom('mission-control')}
+      />
+    );
+  }
+
+  // ÄNDERUNG 29.01.2026: Discovery Session für strukturierte Projektaufnahme
+  if (currentRoom === 'discovery') {
+    return (
+      <DiscoveryOffice
+        onBack={() => setCurrentRoom('mission-control')}
+        onComplete={(briefing) => {
+          console.log('Discovery completed:', briefing);
+          setCurrentRoom('mission-control');
+        }}
+        logs={logs}
       />
     );
   }

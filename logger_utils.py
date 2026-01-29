@@ -7,9 +7,28 @@ Beschreibung: Logger Utilities - JSON-basiertes Event-Logging für die Agenten-C
 """
 
 import json
+import logging
 from datetime import datetime
+from logging.handlers import RotatingFileHandler
 
 LOGFILE = "crew_log.jsonl"
+
+# Configure rotating file handler to prevent unbounded log growth
+_logger = logging.getLogger("crew_logger")
+_logger.setLevel(logging.INFO)
+
+# Only add handler if not already added (prevents duplicate handlers on re-import)
+if not _logger.handlers:
+    _handler = RotatingFileHandler(
+        LOGFILE,
+        maxBytes=10 * 1024 * 1024,  # 10MB
+        backupCount=5,
+        encoding="utf-8"
+    )
+    _handler.setLevel(logging.INFO)
+    # Use a simple formatter that just outputs the message (for JSONL format)
+    _handler.setFormatter(logging.Formatter("%(message)s"))
+    _logger.addHandler(_handler)
 
 def log_event(agent_name: str, action: str, content: str):
     """Schreibt einen Logeintrag mit Zeitstempel in crew_log.jsonl."""
@@ -24,8 +43,7 @@ def log_event(agent_name: str, action: str, content: str):
         "content": content.strip()[:5000], # Limit content length
     }
     try:
-        with open(LOGFILE, "a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        _logger.info(json.dumps(entry, ensure_ascii=False))
     except Exception as e:
         print(f"❌ LOG ERROR: {e}")
     

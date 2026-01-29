@@ -9,14 +9,19 @@ Beschreibung: FastAPI Backend - REST API und WebSocket-Endpunkte für das Multi-
 
 import asyncio
 import os
+import re
 import yaml
 import sys
 from datetime import datetime, timedelta
 import requests
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, BackgroundTasks, HTTPException, Query
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, BackgroundTasks, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel
 from typing import Optional
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from .orchestration_manager import OrchestrationManager
 import json
 try:
@@ -39,6 +44,11 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Rate Limiting Setup
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -46,6 +56,23 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# Security Headers Middleware - adds security headers to all responses
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+        # Note: HSTS should only be added in production with HTTPS
+        # response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)
 
 manager = OrchestrationManager()
 
@@ -62,7 +89,10 @@ class ConnectionManager:
         self.active_connections.append(websocket)
 
     def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
+        try:
+            self.active_connections.remove(websocket)
+        except ValueError:
+            pass  # Already disconnected
 
     async def broadcast(self, message: str):
         """Broadcast mit Error-Handling - entfernt tote Verbindungen."""
@@ -88,8 +118,9 @@ class TaskRequest(BaseModel):
     goal: str
 
 @app.post("/run")
-async def run_agent_task(request: TaskRequest, background_tasks: BackgroundTasks):
-    print(f"Received /run request for goal: {request.goal}")
+@limiter.limit("10/minute")
+async def run_agent_task(request: Request, task_request: TaskRequest, background_tasks: BackgroundTasks):
+    print(f"Received /run request for goal: {task_request.goal}")
     # Haupt-Event-Loop einfangen
     loop = asyncio.get_running_loop()
     
@@ -107,9 +138,9 @@ async def run_agent_task(request: TaskRequest, background_tasks: BackgroundTasks
             asyncio.run_coroutine_threadsafe(ws_manager.broadcast(json.dumps(payload, ensure_ascii=False)), loop)
 
         manager.on_log = ui_callback
-        background_tasks.add_task(manager.run_task, request.goal)
+        background_tasks.add_task(manager.run_task, task_request.goal)
         print("Task added to background.")
-        return {"status": "started", "goal": request.goal}
+        return {"status": "started", "goal": task_request.goal}
     except Exception as e:
         import traceback
         print(f"ERROR in /run: {e}")
@@ -378,7 +409,8 @@ def clear_rate_limits():
 
 # ÄNDERUNG 24.01.2026: Security-Feedback Endpoint für Deploy Patches Button
 @app.post("/security-feedback")
-def trigger_security_fix():
+@limiter.limit("60/minute")
+def trigger_security_fix(request: Request):
     """
     Markiert Security-Issues als 'must fix' für die nächste Coder-Iteration.
     Wird vom 'Deploy Patches' Button im Frontend aufgerufen.
@@ -408,7 +440,8 @@ def get_security_status():
 
 # ÄNDERUNG 25.01.2026: Reset-Endpunkt für Projekt-Neustart
 @app.post("/reset")
-async def reset_project():
+@limiter.limit("60/minute")
+async def reset_project(request: Request):
     """
     Setzt das aktuelle Projekt komplett zurück.
     Ermöglicht einen Neustart ohne Server-Neustart.
@@ -740,6 +773,17 @@ def get_project(project_id: str):
 # ÄNDERUNG 28.01.2026: Protokoll- und Archiv-System
 # =====================================================================
 
+def sanitize_search_query(query: str, max_length: int = 200) -> str:
+    """Sanitize search query to prevent injection attacks."""
+    if not query:
+        return ""
+    # Limit length
+    query = query[:max_length]
+    # Remove potentially dangerous characters (keep alphanumeric, spaces, common punctuation)
+    query = re.sub(r'[^\w\s\-_.,!?]', '', query)
+    # Strip whitespace
+    return query.strip()
+
 @app.get("/library/current")
 def get_current_project_protocol():
     """Gibt das aktuelle Projekt-Protokoll zurück."""
@@ -791,8 +835,13 @@ def search_archives(q: str, limit: int = 20):
         q: Suchbegriff
         limit: Maximale Ergebnisse
     """
+    # Sanitize search query to prevent injection attacks
+    sanitized_query = sanitize_search_query(q)
+    if not sanitized_query:
+        return {"status": "ok", "results": [], "count": 0}
+
     library = get_library_manager()
-    results = library.search_archives(q, limit=limit)
+    results = library.search_archives(sanitized_query, limit=limit)
     return {"status": "ok", "results": results, "count": len(results)}
 
 
@@ -1008,7 +1057,8 @@ class InstallRequest(BaseModel):
 
 
 @app.post("/dependencies/install")
-def install_dependencies(request: InstallRequest):
+@limiter.limit("5/minute")
+def install_dependencies(request: Request, install_request: InstallRequest):
     """
     Fuehrt einen Installationsbefehl aus.
 
@@ -1020,7 +1070,7 @@ def install_dependencies(request: InstallRequest):
     if not agent:
         raise HTTPException(status_code=503, detail="Dependency Agent nicht verfuegbar")
 
-    result = agent.install_dependencies(request.install_command, request.project_path)
+    result = agent.install_dependencies(install_request.install_command, install_request.project_path)
     return result
 
 
@@ -1031,7 +1081,8 @@ class SinglePackageRequest(BaseModel):
 
 
 @app.post("/dependencies/install-package")
-def install_single_package(request: SinglePackageRequest):
+@limiter.limit("5/minute")
+def install_single_package(request: Request, package_request: SinglePackageRequest):
     """
     Installiert ein einzelnes Paket.
 
@@ -1044,7 +1095,7 @@ def install_single_package(request: SinglePackageRequest):
     if not agent:
         raise HTTPException(status_code=503, detail="Dependency Agent nicht verfuegbar")
 
-    result = agent.install_single_package(request.name, request.package_type, request.version)
+    result = agent.install_single_package(package_request.name, package_request.package_type, package_request.version)
     return result
 
 

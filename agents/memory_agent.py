@@ -10,8 +10,45 @@ Beschreibung: Memory Agent - Verwaltet Projekt- und Langzeiterinnerungen.
 import os
 import json
 import re
+import base64
 from datetime import datetime
 from typing import Any, Dict, List, Optional, TypedDict, Union
+
+# Check if encryption is enabled
+MEMORY_ENCRYPTION_ENABLED = os.getenv("MEMORY_ENCRYPTION_ENABLED", "false").lower() == "true"
+MEMORY_ENCRYPTION_KEY = os.getenv("MEMORY_ENCRYPTION_KEY", None)
+
+
+def _get_fernet() -> Optional['Fernet']:
+    """Get Fernet instance if encryption is enabled and key is set."""
+    if not MEMORY_ENCRYPTION_ENABLED or not MEMORY_ENCRYPTION_KEY:
+        return None
+    try:
+        from cryptography.fernet import Fernet
+        # Ensure key is properly formatted (base64 32-byte key)
+        key = MEMORY_ENCRYPTION_KEY.encode() if isinstance(MEMORY_ENCRYPTION_KEY, str) else MEMORY_ENCRYPTION_KEY
+        return Fernet(key)
+    except Exception:
+        return None
+
+
+def _encrypt_data(data: str) -> str:
+    """Encrypt data if encryption is enabled."""
+    fernet = _get_fernet()
+    if fernet:
+        encrypted = fernet.encrypt(data.encode())
+        return f"ENCRYPTED:{base64.b64encode(encrypted).decode()}"
+    return data
+
+
+def _decrypt_data(data: str) -> str:
+    """Decrypt data if it's encrypted."""
+    if data.startswith("ENCRYPTED:"):
+        fernet = _get_fernet()
+        if fernet:
+            encrypted = base64.b64decode(data[10:])
+            return fernet.decrypt(encrypted).decode()
+    return data
 
 
 class MemoryEntry(TypedDict):
@@ -40,20 +77,26 @@ class MemoryData(TypedDict):
 
 
 def load_memory(memory_path: str) -> MemoryData:
-    """Lädt bestehendes Memory oder erstellt ein leeres."""
+    """Lädt bestehendes Memory oder erstellt ein leeres. Supports encrypted files."""
     if os.path.exists(memory_path):
         with open(memory_path, "r", encoding="utf-8") as f:
-            return json.load(f)
+            content = f.read()
+        # Decrypt if encrypted, otherwise parse as-is (backwards compatible)
+        decrypted_content = _decrypt_data(content)
+        return json.loads(decrypted_content)
     return {"history": [], "lessons": []}
 
 
 def save_memory(memory_path: str, memory_data: MemoryData) -> None:
-    """Speichert das Memory dauerhaft als JSON."""
+    """Speichert das Memory dauerhaft als JSON. Encrypts if encryption is enabled."""
     dirpath = os.path.dirname(memory_path)
     if dirpath:
         os.makedirs(dirpath, exist_ok=True)
+    json_content = json.dumps(memory_data, indent=2, ensure_ascii=False)
+    # Encrypt if encryption is enabled
+    encrypted_content = _encrypt_data(json_content)
     with open(memory_path, "w", encoding="utf-8") as f:
-        json.dump(memory_data, f, indent=2, ensure_ascii=False)
+        f.write(encrypted_content)
 
 
 def update_memory(
@@ -89,7 +132,10 @@ def get_lessons_for_prompt(memory_path: str, tech_stack: str = None) -> str:
 
     try:
         with open(memory_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
+            content = f.read()
+        # Decrypt if encrypted, otherwise parse as-is (backwards compatible)
+        decrypted_content = _decrypt_data(content)
+        data = json.loads(decrypted_content)
     except Exception:
         return ""
 
@@ -127,7 +173,10 @@ def learn_from_error(memory_path: str, error_msg: str, tags: List[str]) -> str:
 
         if os.path.exists(memory_path):
             with open(memory_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
+                content = f.read()
+            # Decrypt if encrypted, otherwise parse as-is (backwards compatible)
+            decrypted_content = _decrypt_data(content)
+            data = json.loads(decrypted_content)
         else:
             data = {"lessons": [], "history": []}
 
@@ -291,7 +340,10 @@ def is_duplicate_lesson(memory_path: str, error_pattern: Optional[Union[str, re.
 
     try:
         with open(memory_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
+            content = f.read()
+        # Decrypt if encrypted, otherwise parse as-is (backwards compatible)
+        decrypted_content = _decrypt_data(content)
+        data = json.loads(decrypted_content)
     except Exception:
         return False
 
