@@ -1,14 +1,19 @@
 """
 Author: rahn
-Datum: 29.01.2026
-Version: 1.0
+Datum: 30.01.2026
+Version: 1.3
 Beschreibung: Schritt-Funktionen fuer den DevLoop.
+              ÄNDERUNG 30.01.2026: HELP_NEEDED Events bei kritischen Security-Issues und fehlenden Tests.
+              ÄNDERUNG 30.01.2026: Fix - Unit-Test HELP_NEEDED wird IMMER geprüft (auch bei Security-Issues).
+              AENDERUNG 31.01.2026: hash_error() fuer Fehler-Modell-Historie.
 """
 
 import os
+import re
 import json
 import base64
 import time
+import hashlib
 import traceback
 from datetime import datetime
 from typing import Dict, Any, List, Tuple
@@ -33,13 +38,346 @@ from .orchestration_helpers import (
     is_server_error,
     is_litellm_internal_error,
     is_empty_or_invalid_response,
+    is_empty_response_error,  # ÄNDERUNG 30.01.2026: Leere LLM-Antworten erkennen
+    is_model_unavailable_error,  # ÄNDERUNG 30.01.2026: 404-Fehler erkennen
     create_human_readable_verdict,
-    extract_vulnerabilities
+    extract_vulnerabilities,
+    truncate_review_output  # ÄNDERUNG 31.01.2026: Review-Output Truncation gegen Wiederholungen
 )
 # ÄNDERUNG 29.01.2026: Heartbeat für stabile WebSocket-Verbindung
 from .heartbeat_utils import run_with_heartbeat
+# ÄNDERUNG 30.01.2026: HELP_NEEDED Events gemäß Kommunikationsprotokoll
+from .agent_message import create_help_needed
+# ÄNDERUNG 30.01.2026: Test-Generator für Free-Tier-Modelle die Unit-Tests ignorieren
+from agents.test_generator_agent import create_test_generator, create_test_generation_task, extract_test_files
+from backend.test_templates import create_fallback_tests
 
 # ÄNDERUNG 29.01.2026: Dev-Loop Schritte aus OrchestrationManager ausgelagert
+
+
+# =========================================================================
+# AENDERUNG 31.01.2026: Error-Hashing fuer Fehler-Modell-Historie
+# =========================================================================
+
+def hash_error(error_content: str) -> str:
+    """
+    Erstellt einen stabilen Hash aus einem Fehler-Inhalt fuer den Vergleich.
+
+    Normalisiert den Fehler-Text um zu erkennen, ob es sich um denselben
+    Fehlertyp handelt, auch wenn Zeilennummern, Timestamps oder Pfade variieren.
+
+    Args:
+        error_content: Der Fehler-Text (z.B. Sandbox-Output, Feedback)
+
+    Returns:
+        12-stelliger Hash-String zur eindeutigen Fehler-Identifikation
+    """
+    if not error_content:
+        return ""
+
+    # Normalisiere: Entferne variable Teile
+    normalized = error_content
+
+    # Zeilennummern entfernen (line 5, Zeile 12, etc.)
+    normalized = re.sub(r'[Ll]ine \d+', 'line X', normalized)
+    normalized = re.sub(r'[Zz]eile \d+', 'Zeile X', normalized)
+
+    # Timestamps entfernen (2026-01-31, 12:34:56)
+    normalized = re.sub(r'\d{4}-\d{2}-\d{2}', 'DATE', normalized)
+    normalized = re.sub(r'\d{2}:\d{2}:\d{2}', 'TIME', normalized)
+
+    # Windows/Unix-Pfade entfernen
+    normalized = re.sub(r'[A-Z]:\\[^\s\'"]+', 'PATH', normalized)
+    normalized = re.sub(r'/[a-zA-Z0-9_/.-]+', 'PATH', normalized)
+
+    # Iterations-Nummern entfernen
+    normalized = re.sub(r'[Ii]teration \d+', 'Iteration X', normalized)
+
+    # Whitespace normalisieren
+    normalized = ' '.join(normalized.split())
+
+    # Nur erste 500 Zeichen fuer stabilen Hash (groessere Aenderungen = anderer Fehler)
+    hash_input = normalized[:500].lower()
+
+    return hashlib.md5(hash_input.encode('utf-8', errors='ignore')).hexdigest()[:12]
+
+
+# =========================================================================
+# ÄNDERUNG 31.01.2026: Projekt-Typ-aware Sandbox-Check
+# =========================================================================
+
+import ast
+
+
+def run_sandbox_for_project(code: str, tech_blueprint: dict) -> str:
+    """
+    Führt Syntax-Check durch, berücksichtigt den Projekt-Typ aus dem Blueprint.
+
+    WICHTIG: Bei Python-Projekten wird NUR Python-Syntax geprüft.
+    JavaScript-Checks werden nur bei JavaScript-Projekten durchgeführt.
+
+    Dies verhindert falsche "JavaScript-Syntaxfehler" bei:
+    - Qt Style Sheets (.qss)
+    - CSS-Dateien
+    - Python-Code mit Braces (z.B. Dict-Literale)
+
+    Args:
+        code: Der zu validierende Code
+        tech_blueprint: Blueprint mit Projekt-Typ und Sprache
+
+    Returns:
+        Validierungsergebnis als String (✅ oder ❌)
+    """
+    language = tech_blueprint.get("language", "").lower()
+    project_type = tech_blueprint.get("project_type", "").lower()
+
+    # Python-Projekte: NUR Python-Syntax prüfen
+    if language == "python" or any(pt in project_type for pt in [
+        "python", "flask", "fastapi", "django", "tkinter", "pyqt", "pyside", "desktop"
+    ]):
+        try:
+            # AST-Parsing ist sicher und schnell
+            ast.parse(code)
+            return "✅ Python-Syntaxprüfung bestanden (AST)."
+        except SyntaxError as se:
+            return f"❌ Python-Syntaxfehler in Zeile {se.lineno}:\n{str(se)}"
+        except Exception as e:
+            return f"❌ Python-Prüfung fehlgeschlagen:\n{str(e)}"
+
+    # JavaScript/TypeScript-Projekte: Original run_sandbox nutzen
+    if language in ["javascript", "typescript"] or any(pt in project_type for pt in [
+        "nodejs", "express", "react", "vue", "angular", "electron"
+    ]):
+        return run_sandbox(code)
+
+    # HTML-Projekte: Original run_sandbox für HTML-Prüfung
+    if language == "html" or "static_html" in project_type:
+        return run_sandbox(code)
+
+    # Fallback: Für unbekannte Sprachen nur minimale Prüfung
+    if code and code.strip():
+        return "✅ Code vorhanden (keine spezifische Syntax-Prüfung für diese Sprache)."
+    else:
+        return "❌ Kein Code vorhanden."
+
+
+# =========================================================================
+# ÄNDERUNG 31.01.2026: Truncation Detection für abgeschnittene LLM-Outputs
+# =========================================================================
+
+
+class TruncationError(Exception):
+    """
+    Wird geworfen wenn LLM-Output abgeschnitten wurde.
+
+    Ermöglicht dem DevLoop, automatisch auf ein anderes Modell zu wechseln
+    wenn Free-Tier-Modelle lange Outputs abschneiden.
+    """
+    def __init__(self, message: str, truncated_files: List[str] = None):
+        super().__init__(message)
+        self.truncated_files = truncated_files or []
+
+
+def _is_python_file_complete(content: str, filename: str) -> Tuple[bool, str]:
+    """
+    Prüft ob eine Python-Datei syntaktisch vollständig ist.
+
+    Verwendet ast.parse() um Syntax-Fehler zu erkennen, die auf
+    abgeschnittenen Output hinweisen (z.B. offene Klammern, unvollständige Strings).
+
+    Args:
+        content: Der Dateiinhalt
+        filename: Der Dateiname (für Logging)
+
+    Returns:
+        Tuple (is_complete, reason): True wenn vollständig, sonst False mit Grund
+    """
+    if not filename.endswith('.py'):
+        return True, "Keine Python-Datei"
+
+    if not content or not content.strip():
+        return False, "Datei ist leer"
+
+    try:
+        ast.parse(content)
+        return True, "Syntax OK"
+    except SyntaxError as e:
+        # Typische Truncation-Indikatoren
+        content_stripped = content.rstrip()
+
+        # Endet mit offenem Konstrukt?
+        truncation_endings = ('(', '[', '{', ',', ':', '=', 'def ', 'class ',
+                              'if ', 'elif ', 'else:', 'for ', 'while ', 'try:',
+                              'except', 'with ', 'import ', 'from ')
+
+        if any(content_stripped.endswith(ending) for ending in truncation_endings):
+            return False, f"Endet mit offenem Konstrukt: ...{content_stripped[-30:]}"
+
+        # Unvollständiger String?
+        error_msg = str(e).lower()
+        if 'unterminated string' in error_msg or 'eof in multi-line' in error_msg:
+            return False, f"Unvollständiger String: {error_msg}"
+
+        # 'unexpected EOF' ist ein starker Truncation-Indikator
+        if 'unexpected eof' in error_msg or 'expected an indented block' in error_msg:
+            return False, f"Unerwartetes Dateiende: {error_msg}"
+
+        # Andere Syntax-Fehler könnten echte Bugs sein, nicht Truncation
+        # Aber wenn die Datei in der Mitte eines Statements endet, ist es wahrscheinlich Truncation
+        if len(content) > 100 and not content_stripped.endswith(('\n', ')', ']', '}', '"""', "'''")):
+            return False, f"Endet nicht mit gültigem Abschluss: {error_msg}"
+
+        # Echter Syntax-Fehler, keine Truncation
+        return True, f"Syntax-Fehler (kein Truncation): {error_msg}"
+
+
+def _check_for_truncation(files_dict: Dict[str, str]) -> List[Tuple[str, str]]:
+    """
+    Prüft alle Dateien auf Truncation.
+
+    Args:
+        files_dict: Dict mit Dateiname → Inhalt
+
+    Returns:
+        Liste von (filename, reason) Tupeln für abgeschnittene Dateien
+    """
+    truncated = []
+    for filename, content in files_dict.items():
+        is_complete, reason = _is_python_file_complete(content, filename)
+        if not is_complete:
+            truncated.append((filename, reason))
+    return truncated
+
+
+# =========================================================================
+# ÄNDERUNG 30.01.2026: Test-Generierung für Free-Tier-Modelle
+# =========================================================================
+
+def run_test_generator(manager, code_files: Dict[str, str], iteration: int) -> bool:
+    """
+    Führt den Test-Generator Agent aus wenn keine Tests vorhanden sind.
+
+    Args:
+        manager: OrchestrationManager Instanz
+        code_files: Dict mit Dateiname → Inhalt
+        iteration: Aktuelle Iteration
+
+    Returns:
+        True wenn Tests erstellt wurden
+    """
+    manager._ui_log("TestGenerator", "Status", "Starte Test-Generierung...")
+
+    try:
+        # Erstelle Test-Generator Agent
+        test_agent = create_test_generator(
+            manager.config,
+            manager.project_rules,
+            router=manager.model_router
+        )
+
+        # Erstelle Task
+        task = create_test_generation_task(
+            test_agent,
+            code_files,
+            manager.tech_blueprint.get("project_type", "python_script"),
+            manager.tech_blueprint
+        )
+
+        # Führe Task aus
+        from crewai import Crew
+        crew = Crew(agents=[test_agent], tasks=[task], verbose=True)
+        result = crew.kickoff()
+
+        # Parse Output und erstelle Dateien
+        result_str = str(result)
+        if result_str and "### FILENAME:" in result_str:
+            test_files = extract_test_files(result_str)
+            if test_files:
+                # Speichere Test-Dateien
+                for filename, content in test_files.items():
+                    full_path = os.path.join(manager.project_path, filename)
+                    os.makedirs(os.path.dirname(full_path), exist_ok=True)
+                    with open(full_path, "w", encoding="utf-8") as f:
+                        f.write(content)
+
+                manager._ui_log("TestGenerator", "Result",
+                    f"Tests erstellt: {', '.join(test_files.keys())}")
+                return True
+
+        # Agent hat keine Tests erstellt → Fallback
+        manager._ui_log("TestGenerator", "Warning",
+            "Agent hat keine Tests erstellt, verwende Templates...")
+        return False
+
+    except Exception as e:
+        manager._ui_log("TestGenerator", "Error", f"Test-Generator fehlgeschlagen: {e}")
+        return False
+
+
+def ensure_tests_exist(manager, iteration: int) -> bool:
+    """
+    Stellt sicher dass Unit-Tests existieren.
+    Ruft Test-Generator auf wenn nötig, dann Fallback zu Templates.
+
+    Diese Funktion löst das Problem dass Free-Tier-Modelle (xiaomi, qwen, etc.)
+    die Anweisung zum Erstellen von Unit-Tests ignorieren.
+
+    Args:
+        manager: OrchestrationManager Instanz
+        iteration: Aktuelle Iteration
+
+    Returns:
+        True wenn Tests existieren (oder erstellt wurden)
+    """
+    tests_dir = os.path.join(manager.project_path, "tests")
+
+    # Prüfe ob Tests existieren
+    if os.path.exists(tests_dir):
+        test_files = [f for f in os.listdir(tests_dir) if f.startswith("test_") and f.endswith(".py")]
+        if test_files:
+            manager._ui_log("Tester", "Info", f"Tests vorhanden: {len(test_files)} Dateien")
+            return True
+
+    # Auch Root-Level test_*.py prüfen
+    root_test_files = [f for f in os.listdir(manager.project_path)
+                       if f.startswith("test_") and f.endswith(".py")]
+    if root_test_files:
+        manager._ui_log("Tester", "Info", f"Tests im Root: {len(root_test_files)} Dateien")
+        return True
+
+    manager._ui_log("Tester", "Warning", "Keine Unit-Tests gefunden, starte Test-Generierung...")
+
+    # Sammle vorhandene Code-Dateien
+    code_files = {}
+    for filename in os.listdir(manager.project_path):
+        if filename.endswith(".py") and not filename.startswith("test_"):
+            filepath = os.path.join(manager.project_path, filename)
+            try:
+                with open(filepath, "r", encoding="utf-8") as f:
+                    code_files[filename] = f.read()
+            except Exception as e:
+                manager._ui_log("TestGenerator", "Warning", f"Konnte {filename} nicht lesen: {e}")
+
+    if not code_files:
+        manager._ui_log("TestGenerator", "Warning", "Keine Python-Dateien zum Testen gefunden")
+        return False
+
+    # Versuch 1: Test-Generator Agent (nur bei Iteration > 1 um nicht jeden Run zu verlangsamen)
+    if iteration > 0:
+        if run_test_generator(manager, code_files, iteration):
+            return True
+
+    # Versuch 2: Template-basierte Tests
+    manager._ui_log("Tester", "Info", "Verwende Template-Tests als Fallback...")
+    project_type = manager.tech_blueprint.get("project_type", "python_script")
+    created = create_fallback_tests(manager.project_path, project_type)
+
+    if created:
+        manager._ui_log("Tester", "Result", f"Template-Tests erstellt: {', '.join(created)}")
+        return True
+    else:
+        manager._ui_log("Tester", "Error", "Keine passenden Test-Templates gefunden")
+        return False
 
 
 def build_coder_prompt(manager, user_goal: str, feedback: str, iteration: int) -> str:
@@ -143,7 +481,8 @@ def run_coder_task(manager, project_rules: Dict[str, Any], c_prompt: str, agent_
     """
     task_coder = Task(description=c_prompt, expected_output="Code", agent=agent_coder)
     MAX_CODER_RETRIES = 6  # Erhöht: 2 Versuche pro Modell x 3 Modelle
-    CODER_TIMEOUT_SECONDS = 300  # 5 Minuten Timeout
+    # ÄNDERUNG 30.01.2026: Timeout aus globaler Config
+    CODER_TIMEOUT_SECONDS = manager.config.get("agent_timeout_seconds", 300)
     # ÄNDERUNG 29.01.2026: Modellwechsel erst nach X gleichen Fehlern
     ERRORS_BEFORE_MODEL_SWITCH = 2
     current_code = ""
@@ -265,13 +604,113 @@ def run_coder_task(manager, project_rules: Dict[str, Any], c_prompt: str, agent_
     return current_code, agent_coder
 
 
+# =========================================================================
+# ÄNDERUNG 31.01.2026: Unicode-Sanitization gegen Free-Tier LLM Emoji-Output
+# =========================================================================
+
+def _sanitize_unicode(content: str) -> str:
+    """
+    Entfernt/ersetzt problematische Unicode-Zeichen die Python-Syntaxfehler verursachen.
+
+    ÄNDERUNG 31.01.2026: Defense in Depth gegen Free-Tier LLM Unicode-Output.
+    ERWEITERUNG 31.01.2026: Zusaetzliche Zeichen nach Live-Monitoring hinzugefuegt.
+
+    Problem: Modelle wie xiaomi/mimo-v2-flash:free generieren:
+    - Unsichtbare Variation Selectors (U+FE0F) die Python-Syntax brechen
+    - "Smart" Zeichen (Typografie) die wie ASCII aussehen aber ungueltig sind
+
+    GRUPPE 1 - Unsichtbare Zeichen (werden entfernt):
+    - U+FE0F: Emoji Variation Selector-16
+    - U+FE0E: Text Variation Selector-15
+    - U+200B: Zero Width Space
+    - U+200C: Zero Width Non-Joiner
+    - U+200D: Zero Width Joiner
+    - U+FEFF: Byte Order Mark
+
+    GRUPPE 2 - Smart-Zeichen (werden durch ASCII ersetzt):
+    - U+2011: Non-Breaking Hyphen -> -
+    - U+2013: En Dash -> -
+    - U+2014: Em Dash -> --
+    - U+2018/U+2019: Smart Single Quotes -> '
+    - U+201C/U+201D: Smart Double Quotes -> "
+    - U+2026: Horizontal Ellipsis -> ...
+    - U+00A0: Non-Breaking Space -> Space
+
+    Args:
+        content: Der zu bereinigende Code-String
+
+    Returns:
+        Bereinigter Code ohne problematische Unicode-Zeichen
+    """
+    # Gruppe 1: Komplett entfernen (unsichtbar)
+    invisible_chars = [
+        '\uFE0F',  # Emoji Variation Selector-16
+        '\uFE0E',  # Text Variation Selector-15
+        '\u200B',  # Zero Width Space
+        '\u200C',  # Zero Width Non-Joiner
+        '\u200D',  # Zero Width Joiner
+        '\uFEFF',  # Byte Order Mark
+    ]
+    for char in invisible_chars:
+        content = content.replace(char, '')
+
+    # Gruppe 2: Ersetzen durch ASCII-Aequivalent
+    replacements = {
+        '\u2011': '-',    # Non-Breaking Hyphen
+        '\u2013': '-',    # En Dash
+        '\u2014': '--',   # Em Dash
+        '\u2018': "'",    # Left Single Quotation Mark
+        '\u2019': "'",    # Right Single Quotation Mark (Apostroph)
+        '\u201C': '"',    # Left Double Quotation Mark
+        '\u201D': '"',    # Right Double Quotation Mark
+        '\u2026': '...',  # Horizontal Ellipsis
+        '\u00A0': ' ',    # Non-Breaking Space
+    }
+    for unicode_char, ascii_char in replacements.items():
+        content = content.replace(unicode_char, ascii_char)
+
+    return content
+
+
 def save_coder_output(manager, current_code: str, output_path: str, iteration: int, max_retries: int) -> List[str]:
     """
     Speichert Coder-Output und sendet UI-Events.
+    ÄNDERUNG 31.01.2026: Truncation-Detection für abgeschnittene LLM-Outputs.
+    ÄNDERUNG 31.01.2026: Unicode-Sanitization vor Datei-Speicherung.
     """
+    # ÄNDERUNG 31.01.2026: Unicode-Sanitization vor Datei-Speicherung
+    # Entfernt unsichtbare Zeichen (U+FE0F etc.) die Python-Syntax brechen
+    sanitized_code = _sanitize_unicode(current_code)
+
     def_file = os.path.basename(output_path)
-    created_files = save_multi_file_output(manager.project_path, current_code, def_file)
+    created_files = save_multi_file_output(manager.project_path, sanitized_code, def_file)
     manager._ui_log("Coder", "Files", f"Created: {', '.join(created_files)}")
+
+    # ÄNDERUNG 31.01.2026: Truncation-Detection
+    # Prüfe ob Python-Dateien vollständig sind (nicht abgeschnitten)
+    try:
+        files_to_check = {}
+        for filename in created_files:
+            if filename.endswith('.py'):
+                filepath = os.path.join(manager.project_path, filename)
+                if os.path.exists(filepath):
+                    with open(filepath, 'r', encoding='utf-8') as f:
+                        files_to_check[filename] = f.read()
+
+        truncated_files = _check_for_truncation(files_to_check)
+        if truncated_files:
+            truncated_names = [f[0] for f in truncated_files]
+            truncation_details = "; ".join([f"{f[0]}: {f[1]}" for f in truncated_files])
+            manager._ui_log("Coder", "TruncationWarning", json.dumps({
+                "truncated_files": truncated_names,
+                "details": truncation_details,
+                "iteration": iteration + 1,
+                "action": "model_switch_recommended"
+            }, ensure_ascii=False))
+            manager._ui_log("Coder", "Warning",
+                f"⚠️ Abgeschnittene Dateien erkannt: {', '.join(truncated_names)}")
+    except Exception as trunc_err:
+        manager._ui_log("Coder", "Warning", f"Truncation-Check fehlgeschlagen: {trunc_err}")
 
     current_model = manager.model_router.get_model("coder") if manager.model_router else "unknown"
     manager._ui_log("Coder", "CodeOutput", json.dumps({
@@ -311,8 +750,10 @@ def run_sandbox_and_tests(
 ) -> Tuple[str, bool, Dict[str, Any], Dict[str, Any], str]:
     """
     Fuehrt Sandbox, Unit-Tests und UI-Tests aus.
+    ÄNDERUNG 31.01.2026: Projekt-Typ-aware Sandbox-Check - keine JS-Checks bei Python-Projekten.
     """
-    sandbox_result = run_sandbox(current_code)
+    # ÄNDERUNG 31.01.2026: Nutze Projekt-Typ-aware Sandbox statt generischem run_sandbox()
+    sandbox_result = run_sandbox_for_project(current_code, manager.tech_blueprint)
     manager._ui_log("Sandbox", "Result", sandbox_result)
     sandbox_failed = sandbox_result.startswith("❌")
 
@@ -356,6 +797,11 @@ def run_sandbox_and_tests(
     try:
         manager._ui_log("UnitTest", "Status", "Führe Unit-Tests durch...")
         manager._update_worker_status("tester", "working", "Unit-Tests...", "pytest/jest")
+
+        # ÄNDERUNG 30.01.2026: Stelle sicher dass Tests existieren bevor wir sie ausführen
+        # (Free-Tier-Modelle ignorieren oft die Anweisung zum Erstellen von Unit-Tests)
+        ensure_tests_exist(manager, iteration)
+
         unit_test_result = run_unit_tests(manager.project_path, manager.tech_blueprint)
         manager._ui_log("UnitTest", "Result", json.dumps({
             "status": unit_test_result.get("status"),
@@ -468,8 +914,8 @@ def run_review(
     manager._update_worker_status("reviewer", "working", "Prüfe Code...", manager.model_router.get_model("reviewer") if manager.model_router else "")
 
     MAX_REVIEW_RETRIES = 6  # Erhöht: 2 Versuche pro Modell x 3 Modelle
-    # ÄNDERUNG 29.01.2026: Timeout von 120s auf 300s erhöht für langsame Modelle
-    REVIEWER_TIMEOUT_SECONDS = 300
+    # ÄNDERUNG 30.01.2026: Timeout aus globaler Config
+    REVIEWER_TIMEOUT_SECONDS = manager.config.get("agent_timeout_seconds", 300)
     # ÄNDERUNG 29.01.2026: Modellwechsel erst nach X gleichen Fehlern
     ERRORS_BEFORE_MODEL_SWITCH = 2
     review_output = None
@@ -569,6 +1015,10 @@ def run_review(
         review_output = "FEHLER: Alle Review-Modelle haben versagt. Bitte prüfe die API-Verbindung und Modell-Verfügbarkeit."
         manager._ui_log("Reviewer", "AllModelsFailed", "Kein Modell konnte eine gültige Antwort liefern.")
 
+    # ÄNDERUNG 31.01.2026: Review-Output Truncation gegen Wiederholungsschleifen
+    # Einige LLMs (z.B. llama-3.3-70b-instruct) wiederholen Saetze in langen Outputs
+    review_output = truncate_review_output(review_output, max_length=3000)
+
     reviewer_model = manager.model_router.get_model("reviewer") if manager.model_router else "unknown"
     review_verdict = "OK" if "OK" in review_output.upper() and not sandbox_failed else "FEEDBACK"
     is_approved = review_verdict == "OK" and not sandbox_failed
@@ -595,13 +1045,16 @@ def run_review(
 def run_security_rescan(manager, project_rules: Dict[str, Any], current_code: str, iteration: int) -> Tuple[bool, List[Dict[str, Any]]]:
     """
     Fuehrt Security-Rescan fuer den generierten Code aus.
+    ÄNDERUNG 30.01.2026: Retry/Fallback bei 404/Rate-Limit Fehlern hinzugefügt.
     """
     security_passed = True
     security_rescan_vulns = []
+    MAX_SECURITY_RETRIES = 3
+    # ÄNDERUNG 30.01.2026: Timeout aus globaler Config
+    SECURITY_TIMEOUT = manager.config.get("agent_timeout_seconds", 300)
 
     if manager.agent_security and current_code:
         manager._ui_log("Security", "RescanStart", f"Prüfe generierten Code (Iteration {iteration + 1})...")
-        manager._update_worker_status("security", "working", f"Security-Scan Iteration {iteration + 1}", manager.model_router.get_model("security") if manager.model_router else "")
 
         security_rescan_prompt = f"""Prüfe diesen Code auf Sicherheitsprobleme:
 
@@ -626,51 +1079,82 @@ WICHTIG:
 Wenn KEINE kritischen Probleme gefunden: Antworte nur mit "SECURE"
 """
 
-        task_security_rescan = Task(
-            description=security_rescan_prompt,
-            expected_output="SECURE oder VULNERABILITY-Liste",
-            agent=manager.agent_security
-        )
+        # ÄNDERUNG 30.01.2026: Retry-Schleife mit Fallback bei 404/Rate-Limit
+        for security_attempt in range(MAX_SECURITY_RETRIES):
+            current_security_model = manager.model_router.get_model("security") if manager.model_router else "unknown"
+            manager._update_worker_status("security", "working",
+                f"Security-Scan (Versuch {security_attempt + 1}/{MAX_SECURITY_RETRIES})",
+                current_security_model)
 
-        try:
-            # ÄNDERUNG 29.01.2026: Heartbeat-Wrapper für stabile WebSocket-Verbindung
-            security_rescan_result = run_with_heartbeat(
-                func=lambda: str(task_security_rescan.execute_sync()),
-                ui_log_callback=manager._ui_log,
-                agent_name="Security",
-                task_description=f"Security-Scan (Iteration {iteration + 1})",
-                heartbeat_interval=15,
-                # ÄNDERUNG 29.01.2026: Timeout von 180s auf 300s erhöht für langsame Modelle
-                timeout_seconds=300
-            )
-            security_rescan_vulns = extract_vulnerabilities(security_rescan_result)
-            manager.security_vulnerabilities = security_rescan_vulns
+            # Neuen Agent mit aktuellem Modell erstellen
+            agent_security = init_agents(
+                manager.config,
+                project_rules,
+                router=manager.model_router,
+                include=["security"]
+            ).get("security")
 
-            security_passed = not security_rescan_vulns or all(
-                v.get('severity') == 'low' for v in security_rescan_vulns
+            task_security_rescan = Task(
+                description=security_rescan_prompt,
+                expected_output="SECURE oder VULNERABILITY-Liste",
+                agent=agent_security
             )
 
-            security_rescan_model = manager.model_router.get_model("security") if manager.model_router else "unknown"
-            rescan_status = "SECURE" if security_passed else "VULNERABLE"
+            try:
+                security_rescan_result = run_with_heartbeat(
+                    func=lambda: str(task_security_rescan.execute_sync()),
+                    ui_log_callback=manager._ui_log,
+                    agent_name="Security",
+                    task_description=f"Security-Scan (Versuch {security_attempt + 1}/{MAX_SECURITY_RETRIES})",
+                    heartbeat_interval=15,
+                    timeout_seconds=SECURITY_TIMEOUT
+                )
+                security_rescan_vulns = extract_vulnerabilities(security_rescan_result)
+                manager.security_vulnerabilities = security_rescan_vulns
 
-            manager._ui_log("Security", "SecurityRescanOutput", json.dumps({
-                "vulnerabilities": security_rescan_vulns,
-                "overall_status": rescan_status,
-                "scan_type": "code_scan",
-                "iteration": iteration + 1,
-                "blocking": not security_passed,
-                "model": security_rescan_model,
-                "timestamp": datetime.now().isoformat()
-            }, ensure_ascii=False))
+                security_passed = not security_rescan_vulns or all(
+                    v.get('severity') == 'low' for v in security_rescan_vulns
+                )
 
-            manager._ui_log("Security", "RescanResult", f"Code-Scan: {rescan_status} ({len(security_rescan_vulns)} Findings)")
-            manager._update_worker_status("security", "idle")
-        except Exception as sec_err:
-            manager._ui_log("Security", "Error", f"Security-Rescan fehlgeschlagen: {sec_err}")
-            manager._ui_log("Security", "Error", "Security-Rescan wird als FEHLGESCHLAGEN gewertet.")
-            manager._update_worker_status("security", "idle")
-            # ÄNDERUNG 29.01.2026: Fail-Closed bei Security-Fehlern
-            security_passed = False
+                rescan_status = "SECURE" if security_passed else "VULNERABLE"
+
+                manager._ui_log("Security", "SecurityRescanOutput", json.dumps({
+                    "vulnerabilities": security_rescan_vulns,
+                    "overall_status": rescan_status,
+                    "scan_type": "code_scan",
+                    "iteration": iteration + 1,
+                    "blocking": not security_passed,
+                    "model": current_security_model,
+                    "timestamp": datetime.now().isoformat()
+                }, ensure_ascii=False))
+
+                manager._ui_log("Security", "RescanResult", f"Code-Scan: {rescan_status} ({len(security_rescan_vulns)} Findings)")
+                manager._update_worker_status("security", "idle")
+                break  # Erfolg - Schleife verlassen
+
+            except Exception as sec_err:
+                # ÄNDERUNG 30.01.2026: Retry bei 404/Rate-Limit/Leere Antwort mit Fallback-Modell
+                should_retry = (
+                    is_rate_limit_error(sec_err) or
+                    is_model_unavailable_error(sec_err) or
+                    is_empty_response_error(sec_err)
+                )
+                if should_retry:
+                    error_type = "Rate-Limit" if is_rate_limit_error(sec_err) else \
+                                 "404/Nicht verfügbar" if is_model_unavailable_error(sec_err) else \
+                                 "Leere Antwort"
+                    manager._ui_log("Security", "Warning",
+                        f"Security-Modell {current_security_model} {error_type} (Versuch {security_attempt + 1}/{MAX_SECURITY_RETRIES})")
+                    manager.model_router.mark_rate_limited_sync(current_security_model)
+                    if security_attempt < MAX_SECURITY_RETRIES - 1:
+                        manager._ui_log("Security", "Info", "Wechsle zu Fallback-Modell...")
+                        continue  # Nächster Versuch mit Fallback
+
+                manager._ui_log("Security", "Error", f"Security-Rescan fehlgeschlagen: {sec_err}")
+                manager._update_worker_status("security", "idle")
+                # Fail-Closed bei Security-Fehlern
+                security_passed = False
+                break
 
     return security_passed, security_rescan_vulns
 
@@ -678,6 +1162,7 @@ Wenn KEINE kritischen Probleme gefunden: Antworte nur mit "SECURE"
 def build_feedback(
     manager,
     review_output: str,
+    review_verdict: str,  # ÄNDERUNG 31.01.2026: review_verdict hinzugefügt
     sandbox_failed: bool,
     sandbox_result: str,
     test_summary: str,
@@ -687,6 +1172,9 @@ def build_feedback(
 ) -> str:
     """
     Erstellt Feedback fuer den naechsten Coder-Iterationen.
+
+    Args:
+        review_verdict: "OK" oder "FEEDBACK" - das Urteil des Reviewers
     """
     feedback = ""
     if not security_passed and security_rescan_vulns:
@@ -699,9 +1187,45 @@ def build_feedback(
         feedback += "WICHTIG: Implementiere die Lösungsvorschläge (→ LÖSUNG) für JEDE Vulnerability!\n"
         feedback += "Der Code wird erst akzeptiert wenn alle Security-Issues behoben sind.\n"
         manager._ui_log("Security", "BlockingIssues", f"❌ {len(security_rescan_vulns)} Vulnerabilities blockieren Abschluss")
+
+        # ÄNDERUNG 30.01.2026: HELP_NEEDED bei kritischen Security-Vulnerabilities
+        critical_vulns = [v for v in security_rescan_vulns if v.get('severity', '').lower() in ('critical', 'high')]
+        if critical_vulns:
+            help_msg = create_help_needed(
+                agent="Security",
+                reason="critical_vulnerabilities",
+                context={
+                    "count": len(critical_vulns),
+                    "total_vulns": len(security_rescan_vulns),
+                    "vulnerabilities": critical_vulns[:5],  # Max 5 für UI
+                    "iteration": getattr(manager, '_current_iteration', 0)
+                },
+                action_required="security_review_required",
+                priority="critical" if any(v.get('severity', '').lower() == 'critical' for v in critical_vulns) else "high"
+            )
+            manager._ui_log(*help_msg.to_legacy())
+
+        # ÄNDERUNG 30.01.2026: NICHT sofort returnen! Unit-Test-HELP_NEEDED muss IMMER geprüft werden
+        # Prüfe Unit-Tests auch bei Security-Issues (für HELP_NEEDED Event)
+        unit_tests = test_result.get("unit_tests", {})
+        if unit_tests.get("status") == "SKIP":
+            # HELP_NEEDED Event senden (auch wenn Security-Issues vorliegen)
+            help_msg = create_help_needed(
+                agent="Tester",
+                reason="no_unit_tests",
+                context={
+                    "expected_files": ["tests/test_*.py"],
+                    "project_type": manager.tech_blueprint.get("project_type", "unknown"),
+                    "iteration": getattr(manager, '_current_iteration', 0)
+                },
+                action_required="create_test_files",
+                priority="normal"
+            )
+            manager._ui_log(*help_msg.to_legacy())
+
         return feedback
 
-    # ÄNDERUNG 29.01.2026: Unit-Test-Skip ins Feedback aufnehmen
+    # ÄNDERUNG 29.01.2026: Unit-Test-Skip ins Feedback aufnehmen (wenn KEINE Security-Issues)
     unit_tests = test_result.get("unit_tests", {})
     if unit_tests.get("status") == "SKIP":
         skip_feedback = "\n🧪 UNIT-TESTS FEHLEN:\n"
@@ -710,13 +1234,57 @@ def build_feedback(
         skip_feedback += "- Datei: tests/test_<modulname>.py (für pytest)\n"
         skip_feedback += "- Mindestens 3 Test-Cases pro Funktion (normal, edge-case, error-case)\n"
         skip_feedback += "- Format: ### FILENAME: tests/test_<modulname>.py\n\n"
+
+        # ÄNDERUNG 30.01.2026: HELP_NEEDED bei fehlenden Unit-Tests (nicht blockierend)
+        help_msg = create_help_needed(
+            agent="Tester",
+            reason="no_unit_tests",
+            context={
+                "expected_files": ["tests/test_*.py"],
+                "project_type": manager.tech_blueprint.get("project_type", "unknown"),
+                "iteration": getattr(manager, '_current_iteration', 0)
+            },
+            action_required="create_test_files",
+            priority="normal"  # Nicht blockierend, nur Warnung
+        )
+        manager._ui_log(*help_msg.to_legacy())
+
         if not sandbox_failed:
             return skip_feedback
 
     if sandbox_failed:
-        feedback = "KRITISCHER FEHLER: Die Sandbox oder der Tester hat Fehler gemeldet.\n"
-        feedback += "Bitte analysiere die Fehlermeldungen und behebe sie:\n\n"
+        # ÄNDERUNG 31.01.2026: Test-Fehler nach Typ differenzieren
+        # Gibt dem Coder spezifischere Anleitung je nach Fehlerart
+        unit_tests = test_result.get("unit_tests", {})
+        ui_tests = test_result.get("ui_tests", {})
+        sandbox_lower = sandbox_result.lower()
+
+        # Fehlertyp erkennen und spezifische Meldung generieren
+        if any(err in sandbox_lower for err in ["syntaxerror", "indentationerror", "invalid syntax", "unexpected indent"]):
+            feedback = "SYNTAX-FEHLER: Der Code enthaelt Syntaxfehler.\n"
+            feedback += "Bitte pruefe die Einrueckung und Syntax sorgfaeltig:\n\n"
+        elif any(err in sandbox_lower for err in ["nameerror", "attributeerror", "typeerror", "importerror", "modulenotfounderror"]):
+            feedback = "LAUFZEIT-FEHLER: Der Code hat Referenz- oder Typfehler.\n"
+            feedback += "Bitte pruefe Variablennamen, Importe und Typen:\n\n"
+        elif unit_tests.get("status") == "FAIL":
+            feedback = "UNIT-TEST-FEHLER: Die Unit-Tests sind fehlgeschlagen.\n"
+            feedback += "Bitte analysiere die Testausgabe und behebe die Fehler:\n\n"
+        elif ui_tests.get("status") in ["FAIL", "ERROR"]:
+            feedback = "UI-TEST-FEHLER: Die UI-Tests haben Probleme erkannt.\n"
+            feedback += "Bitte pruefe die Benutzeroberflaeche und Rendering:\n\n"
+        else:
+            feedback = "FEHLER: Die Sandbox oder der Tester hat Probleme gemeldet.\n"
+            feedback += "Bitte analysiere die Fehlermeldungen und behebe sie:\n\n"
+
         feedback += f"SANDBOX:\n{sandbox_result}\n\n"
+
+        # ÄNDERUNG 31.01.2026: Reviewer-Analyse immer einbauen wenn vorhanden
+        # Der Reviewer identifiziert oft die Lösung (z.B. Unicode-Ersetzung),
+        # diese muss dem Coder auch bei Sandbox-Fehlern mitgeteilt werden
+        if review_output and len(review_output.strip()) > 50:
+            # Kürzen um Tokenverbrauch zu begrenzen, aber Essenz behalten
+            reviewer_analysis = review_output[:2000]
+            feedback += f"REVIEWER-ANALYSE:\n{reviewer_analysis}\n\n"
 
         # Unit-Test-Skip auch bei Sandbox-Fehler erwähnen
         if unit_tests.get("status") == "SKIP":
@@ -765,17 +1333,59 @@ def handle_model_switch(
     model_attempt: int,
     max_model_attempts: int,
     feedback: str,
-    iteration: int
+    iteration: int,
+    sandbox_result: str = "",
+    sandbox_failed: bool = False
 ) -> Tuple[str, int, List[str], str]:
     """
     Fuehrt Modellwechsel-Logik aus und passt Feedback an.
+
+    AENDERUNG 31.01.2026: Nutzt Fehler-Modell-Historie um Ping-Pong zu vermeiden.
+    Wenn ein Modell denselben Fehler nicht beheben kann, wird das naechste
+    unversuchte Modell gewaehlt statt zurueck zum ersten zu wechseln.
+
+    Args:
+        manager: OrchestrationManager
+        project_rules: Projekt-Regeln
+        current_coder_model: Aktuelles Coder-Modell
+        models_used: Liste der bisher verwendeten Modelle
+        failed_attempts_history: Historie fehlgeschlagener Versuche
+        model_attempt: Aktueller Versuch mit diesem Modell
+        max_model_attempts: Max Versuche pro Modell
+        feedback: Bisheriges Feedback
+        iteration: Aktuelle Iteration
+        sandbox_result: Sandbox-Ausgabe (fuer Error-Hash)
+        sandbox_failed: Ob Sandbox fehlgeschlagen ist
+
+    Returns:
+        Tuple: (neues_modell, reset_attempt, models_used, angepasstes_feedback)
     """
     if model_attempt < max_model_attempts:
         return current_coder_model, model_attempt, models_used, feedback
 
     old_model = current_coder_model
-    manager.model_router.mark_rate_limited_sync(current_coder_model)
-    current_coder_model = manager.model_router.get_model("coder")
+
+    # AENDERUNG 31.01.2026: Berechne Error-Hash fuer Fehler-Modell-Historie
+    error_hash = ""
+    if sandbox_failed and sandbox_result:
+        error_hash = hash_error(feedback + sandbox_result)
+
+    if error_hash:
+        # Markiere dass dieses Modell diesen Fehler versucht hat
+        manager.model_router.mark_error_tried(error_hash, old_model)
+        # Hole naechstes Modell das diesen Fehler NICHT versucht hat
+        current_coder_model = manager.model_router.get_model_for_error("coder", error_hash)
+
+        manager._ui_log("Coder", "ErrorHistory", json.dumps({
+            "error_hash": error_hash,
+            "old_model": old_model,
+            "new_model": current_coder_model,
+            "tried_models": list(manager.model_router.error_model_history.get(error_hash, set()))
+        }, ensure_ascii=False))
+    else:
+        # Fallback auf Rate-Limit-basiertes Switching (kein spezifischer Fehler)
+        manager.model_router.mark_rate_limited_sync(current_coder_model)
+        current_coder_model = manager.model_router.get_model("coder")
 
     if current_coder_model != old_model:
         models_used.append(current_coder_model)
@@ -793,19 +1403,20 @@ def handle_model_switch(
             "reason": "max_attempts_reached",
             "attempt": max_model_attempts,
             "models_used": models_used,
-            "failed_attempts": len(failed_attempts_history)
+            "failed_attempts": len(failed_attempts_history),
+            "error_hash": error_hash if error_hash else "none"
         }, ensure_ascii=False))
 
         history_summary = "\n".join([
             f"- Modell '{a['model']}' (Iteration {a['iteration']}): {a['feedback'][:200]}"
             for a in failed_attempts_history[-3:]
         ])
-        feedback += f"\n\n🔄 MODELLWECHSEL: Das vorherige Modell ({old_model}) konnte dieses Problem nicht lösen.\n"
-        feedback += f"BISHERIGE VERSUCHE (diese Ansätze haben NICHT funktioniert):\n{history_summary}\n"
-        feedback += "\nWICHTIG: Versuche einen VÖLLIG ANDEREN Ansatz! Was bisher versucht wurde, funktioniert nicht!\n"
+        feedback += f"\n\n🔄 MODELLWECHSEL: Das vorherige Modell ({old_model}) konnte dieses Problem nicht loesen.\n"
+        feedback += f"BISHERIGE VERSUCHE (diese Ansaetze haben NICHT funktioniert):\n{history_summary}\n"
+        feedback += "\nWICHTIG: Versuche einen VOELLIG ANDEREN Ansatz! Was bisher versucht wurde, funktioniert nicht!\n"
 
-        manager._ui_log("Coder", "Status", f"🔄 Modellwechsel: {old_model} → {current_coder_model} (Versuch {len(models_used)})")
+        manager._ui_log("Coder", "Status", f"🔄 Modellwechsel: {old_model} -> {current_coder_model} (Versuch {len(models_used)})")
     else:
-        manager._ui_log("Coder", "Warning", f"⚠️ Kein weiteres Modell verfügbar - fahre mit {current_coder_model} fort")
+        manager._ui_log("Coder", "Warning", f"Kein weiteres Modell verfuegbar - fahre mit {current_coder_model} fort")
 
     return current_coder_model, model_attempt, models_used, feedback

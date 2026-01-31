@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 """
 Author: rahn
-Datum: 29.01.2026
-Version: 2.2
+Datum: 31.01.2026
+Version: 2.4
 Beschreibung: Orchestration Manager - Backend-Koordination mit LiteLLM Callbacks und Agent-Steuerung.
+              ÄNDERUNG 31.01.2026: HELP_NEEDED Handler mit automatischem Test-Generator und Priorisierung.
+              ÄNDERUNG 30.01.2026: AgentMessage + HELP_NEEDED Events gemäß Kommunikationsprotokoll.
               ÄNDERUNG 28.01.2026: Library-Manager Integration für Protokollierung aller Agent-Aktionen
               ÄNDERUNG 28.01.2026: Informationsfluss-Reparatur zwischen Agenten:
                                    - Fix 1: Regex-Pattern für VULNERABILITY|FIX|SEVERITY korrigiert
@@ -91,11 +93,17 @@ from .orchestration_helpers import (
     extract_tables_from_schema,
     extract_design_data,
     is_model_unavailable_error,
-    is_rate_limit_error
+    is_rate_limit_error,
+    is_empty_response_error  # ÄNDERUNG 30.01.2026: Erkennt leere LLM-Antworten (deepseek-r1 Bug)
 )
 from .dev_loop import DevLoop
 from .library_manager import get_library_manager
 from .session_manager import get_session_manager
+# ÄNDERUNG 30.01.2026: Quality Gate und Documentation Service für Qualitätskontrolle
+from .quality_gate import QualityGate
+# ÄNDERUNG 30.01.2026: AgentMessage für formale Kommunikation gemäß Protokoll
+from .agent_message import AgentMessage, create_help_needed
+from .documentation_service import DocumentationService
 
 from crewai import Task
 
@@ -104,24 +112,31 @@ from file_utils import find_html_file, find_python_entry
 
 # =====================================================================
 # LiteLLM Callback für Budget-Tracking
+# ÄNDERUNG 30.01.2026: Thread-Safe globals statt ContextVar für korrektes Tracking
 # =====================================================================
+import threading
+
+# Thread-Safe globale Variablen für Budget-Tracking
+_budget_tracking_lock = threading.Lock()
+_current_agent_name = "Unknown"
+_current_project_id = None
+
 try:
     import litellm
-
-    # Context-local Variablen für Thread/Async-Sicherheit
-    _current_agent_name_var: contextvars.ContextVar[str] = contextvars.ContextVar('current_agent_name', default="Unknown")
-    _current_project_id_var: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar('current_project_id', default=None)
 
     def _budget_tracking_callback(kwargs, completion_response, start_time, end_time):
         """
         LiteLLM success callback - erfasst Token-Nutzung nach jedem API-Call.
+        ÄNDERUNG 30.01.2026: Thread-Safe Zugriff auf globale Variablen.
         """
+        global _current_agent_name, _current_project_id
         try:
             tracker = get_budget_tracker()
-            
-            # Lese aus Context-Variablen
-            current_agent_name = _current_agent_name_var.get("Unknown")
-            current_project_id = _current_project_id_var.get(None)
+
+            # Thread-Safe Lesen der aktuellen Werte
+            with _budget_tracking_lock:
+                current_agent_name = _current_agent_name
+                current_project_id = _current_project_id
 
             # Extrahiere Token-Usage aus der Response
             usage = getattr(completion_response, 'usage', None)
@@ -139,29 +154,34 @@ try:
                     project_id=current_project_id
                 )
                 logger.debug(
-                    "_budget_tracking_callback: %s - %s+%s Tokens (Modell: %s)",
+                    "_budget_tracking_callback: %s - %s+%s Tokens (Modell: %s, Projekt: %s)",
                     current_agent_name,
                     prompt_tokens,
                     completion_tokens,
-                    model
+                    model,
+                    current_project_id
                 )
         except Exception as e:
             logger.exception("_budget_tracking_callback: Fehler beim Budget-Tracking: %s", e)
 
     # Registriere den Callback
     litellm.success_callback = [_budget_tracking_callback]
-    logger.info("litellm.success_callback: Budget-Tracking Callback erfolgreich registriert")
+    logger.info("litellm.success_callback: Budget-Tracking Callback erfolgreich registriert (Thread-Safe)")
 
 except ImportError:
     logger.warning("litellm.success_callback: LiteLLM nicht verfuegbar - Budget-Tracking deaktiviert")
-    _current_agent_name_var: contextvars.ContextVar[str] = contextvars.ContextVar('current_agent_name', default="Unknown")
-    _current_project_id_var: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar('current_project_id', default=None)
+
 
 def set_current_agent(agent_name: str, project_id: str = None):
-    """Setzt den aktuellen Agenten für Budget-Tracking."""
-    _current_agent_name_var.set(agent_name)
-    if project_id is not None:
-        _current_project_id_var.set(project_id)
+    """
+    Setzt den aktuellen Agenten für Budget-Tracking (Thread-Safe).
+    ÄNDERUNG 30.01.2026: Nutzt globale Variablen mit Lock statt ContextVar.
+    """
+    global _current_agent_name, _current_project_id
+    with _budget_tracking_lock:
+        _current_agent_name = agent_name
+        if project_id is not None:
+            _current_project_id = project_id
 
 
 def run_with_timeout(func, timeout_seconds: int = 60):
@@ -202,6 +222,178 @@ def run_with_timeout(func, timeout_seconds: int = 60):
 
 # ÄNDERUNG 29.01.2026: Import aus separatem Modul um zirkuläre Imports zu vermeiden
 from .heartbeat_utils import run_with_heartbeat
+
+
+# =====================================================================
+# ÄNDERUNG 30.01.2026: Hilfsfunktionen für intelligenten TechStack-Fallback
+# Respektiert Benutzer-Vorgaben und fällt nicht blind auf static_html zurück
+# =====================================================================
+
+def _repair_json(text: str) -> str:
+    """
+    Versucht ungültiges JSON zu reparieren.
+    ÄNDERUNG 30.01.2026: Erweitert um mehr Fälle (Comments, Trailing Commas, etc.)
+
+    Behandelt häufige LLM-Fehler:
+    - Single quotes statt double quotes
+    - Trailing commas
+    - JavaScript-style comments
+    """
+    # 1. JavaScript-Comments entfernen (// und /* */)
+    text = re.sub(r'//.*?$', '', text, flags=re.MULTILINE)
+    text = re.sub(r'/\*.*?\*/', '', text, flags=re.DOTALL)
+
+    # 2. Single quotes durch double quotes ersetzen
+    # Pattern für 'key': oder : 'value'
+    text = re.sub(r"'([^']*)'(\s*:)", r'"\1"\2', text)
+    text = re.sub(r":\s*'([^']*)'(\s*[,}\]])", r': "\1"\2', text)
+
+    # 3. Trailing commas entfernen (vor } oder ])
+    text = re.sub(r',(\s*[}\]])', r'\1', text)
+
+    return text
+
+
+def _extract_user_requirements(user_goal: str) -> dict:
+    """
+    Extrahiert ALLE erkennbaren Anforderungen aus dem Benutzer-Goal.
+    ÄNDERUNG 30.01.2026: Erweitert um mehr Keywords (Datenbanken, Sprachen, Frameworks).
+
+    Benutzer-Vorgaben dürfen NICHT ignoriert werden!
+    """
+    goal_lower = user_goal.lower()
+    requirements = {}
+
+    # Datenbank-Vorgaben (erweitert)
+    db_keywords = {
+        "sqlite": "sqlite", "postgres": "postgres", "postgresql": "postgres",
+        "mysql": "mysql", "mariadb": "mysql", "mongodb": "mongodb", "mongo": "mongodb",
+        "redis": "redis", "elasticsearch": "elasticsearch", "neo4j": "neo4j",
+        "datenbank": "generic_db", "database": "generic_db"
+    }
+    for keyword, db_type in db_keywords.items():
+        if keyword in goal_lower:
+            requirements["database"] = db_type
+            break
+
+    # Sprach-Vorgaben (erweitert)
+    lang_keywords = {
+        "python": "python", "javascript": "javascript", "typescript": "javascript",
+        "node": "javascript", "java": "java", "kotlin": "kotlin",
+        "go": "go", "golang": "go", "rust": "rust", "c++": "cpp", "c#": "csharp"
+    }
+    for keyword, lang in lang_keywords.items():
+        if keyword in goal_lower:
+            requirements["language"] = lang
+            break
+
+    # Framework-Vorgaben (NEU)
+    framework_keywords = {
+        "flask": "flask", "fastapi": "fastapi", "django": "django",
+        "express": "express", "react": "react", "vue": "vue", "angular": "angular",
+        "tkinter": "tkinter", "pyqt": "pyqt", "electron": "electron"
+    }
+    for keyword, fw in framework_keywords.items():
+        if keyword in goal_lower:
+            requirements["framework"] = fw
+            break
+
+    # UI-Typ (NEU)
+    if any(kw in goal_lower for kw in ["desktop", "fenster", "gui"]):
+        requirements["ui_type"] = "desktop"
+    elif any(kw in goal_lower for kw in ["webapp", "website", "webseite", "browser"]):
+        requirements["ui_type"] = "webapp"
+    elif any(kw in goal_lower for kw in ["api", "rest", "endpoint", "backend"]):
+        requirements["ui_type"] = "api"
+    elif any(kw in goal_lower for kw in ["cli", "kommandozeile", "terminal", "console"]):
+        requirements["ui_type"] = "cli"
+
+    return requirements
+
+
+def _infer_blueprint_from_requirements(user_goal: str) -> dict:
+    """
+    Erstellt einen Fallback-Blueprint basierend auf erkannten Benutzer-Anforderungen.
+    ÄNDERUNG 30.01.2026: Framework-basierte Erkennung hat Vorrang.
+
+    Priorität: Framework > UI-Typ > Datenbank > Sprache > Default
+    """
+    reqs = _extract_user_requirements(user_goal)
+    blueprint = {}
+
+    # PRIORITÄT 1: Framework hat Vorrang (wenn explizit genannt)
+    if reqs.get("framework"):
+        fw = reqs["framework"]
+        if fw == "flask":
+            blueprint = {"project_type": "flask_app", "app_type": "webapp", "test_strategy": "playwright",
+                         "language": "python", "requires_server": True, "server_port": 5000}
+        elif fw == "fastapi":
+            blueprint = {"project_type": "fastapi_app", "app_type": "api", "test_strategy": "pytest_only",
+                         "language": "python", "requires_server": True, "server_port": 8000}
+        elif fw == "django":
+            blueprint = {"project_type": "django_app", "app_type": "webapp", "test_strategy": "playwright",
+                         "language": "python", "requires_server": True, "server_port": 8000}
+        elif fw == "tkinter":
+            blueprint = {"project_type": "tkinter_desktop", "app_type": "desktop", "test_strategy": "pyautogui",
+                         "language": "python", "requires_server": False}
+        elif fw == "pyqt":
+            blueprint = {"project_type": "pyqt_desktop", "app_type": "desktop", "test_strategy": "pyautogui",
+                         "language": "python", "requires_server": False}
+        elif fw == "express":
+            blueprint = {"project_type": "nodejs_express", "app_type": "webapp", "test_strategy": "playwright",
+                         "language": "javascript", "requires_server": True, "server_port": 3000}
+        elif fw == "electron":
+            blueprint = {"project_type": "electron_desktop", "app_type": "desktop", "test_strategy": "pyautogui",
+                         "language": "javascript", "requires_server": False}
+        elif fw in ("react", "vue", "angular"):
+            blueprint = {"project_type": f"{fw}_spa", "app_type": "webapp", "test_strategy": "playwright",
+                         "language": "javascript", "requires_server": True, "server_port": 3000}
+
+    # PRIORITÄT 2: UI-Typ als nächstes
+    elif reqs.get("ui_type") == "desktop":
+        blueprint = {"project_type": "tkinter_desktop", "app_type": "desktop", "test_strategy": "pyautogui",
+                     "language": "python", "requires_server": False}
+    elif reqs.get("ui_type") == "api":
+        blueprint = {"project_type": "fastapi_app", "app_type": "api", "test_strategy": "pytest_only",
+                     "language": "python", "requires_server": True, "server_port": 8000}
+    elif reqs.get("ui_type") == "webapp":
+        blueprint = {"project_type": "flask_app", "app_type": "webapp", "test_strategy": "playwright",
+                     "language": "python", "requires_server": True, "server_port": 5000}
+    elif reqs.get("ui_type") == "cli":
+        blueprint = {"project_type": "python_cli", "app_type": "cli", "test_strategy": "cli_test",
+                     "language": "python", "requires_server": False}
+
+    # PRIORITÄT 3: Datenbank ohne UI → Python Script
+    elif reqs.get("database"):
+        blueprint = {"project_type": "python_script", "app_type": "cli", "test_strategy": "pytest_only",
+                     "language": "python", "requires_server": False}
+
+    # PRIORITÄT 4: Sprache bekannt aber nichts anderes
+    elif reqs.get("language") == "javascript":
+        blueprint = {"project_type": "nodejs_app", "app_type": "webapp", "test_strategy": "playwright",
+                     "language": "javascript", "requires_server": True, "server_port": 3000}
+    elif reqs.get("language") == "python":
+        blueprint = {"project_type": "python_script", "app_type": "cli", "test_strategy": "pytest_only",
+                     "language": "python", "requires_server": False}
+    elif reqs.get("language") == "go":
+        blueprint = {"project_type": "go_app", "app_type": "cli", "test_strategy": "pytest_only",
+                     "language": "go", "requires_server": False}
+
+    # PRIORITÄT 5: Absoluter Fallback - nur wenn wirklich NICHTS erkannt
+    else:
+        blueprint = {"project_type": "static_html", "app_type": "webapp", "test_strategy": "playwright",
+                     "language": "html", "requires_server": False}
+
+    # Erkannte Anforderungen ERZWINGEN (überschreibt Default-Werte)
+    if reqs.get("database"):
+        blueprint["database"] = reqs["database"]
+    if reqs.get("language") and "language" not in blueprint:
+        blueprint["language"] = reqs["language"]
+
+    # Begründung für Transparenz
+    blueprint["reasoning"] = f"FALLBACK basierend auf Benutzer-Anforderungen: {reqs}"
+
+    return blueprint
 
 
 class OrchestrationManager:
@@ -280,14 +472,219 @@ class OrchestrationManager:
             session_mgr.add_log(agent, event, message)
 
             # Agent-Status aktualisieren wenn relevant
-            if event in ("Status", "Working", "Result", "Complete", "Error"):
+            # ÄNDERUNG 30.01.2026: HELP_NEEDED als spezieller Status
+            if event in ("Status", "Working", "Result", "Complete", "Error", "HELP_NEEDED"):
                 agent_lower = agent.lower().replace("-", "").replace(" ", "")
                 # ÄNDERUNG 28.01.2026: Session-Key ueber Mapping aufloesen
                 session_key = AGENT_TO_SESSION_KEY.get(agent, agent_lower)
                 is_active = event in ("Status", "Working")
+                is_blocked = event == "HELP_NEEDED"
                 session_mgr.set_agent_active(session_key, is_active)
+                # ÄNDERUNG 30.01.2026: Blocked-Status für HELP_NEEDED
+                if is_blocked:
+                    session_mgr.set_agent_blocked(session_key, True, message)
         except Exception:
             pass  # Session-Updates sollten nicht den Workflow stoppen
+
+    # ÄNDERUNG 30.01.2026: Helper für HELP_NEEDED Events gemäß Kommunikationsprotokoll
+    def _log_help_needed(self, agent: str, reason: str, context: dict = None, action_required: str = "manual_review"):
+        """
+        Sendet ein HELP_NEEDED Event wenn ein Agent Unterstützung benötigt.
+
+        Args:
+            agent: Der blockierte Agent
+            reason: Grund der Blockierung (z.B. "critical_vulnerabilities")
+            context: Zusätzliche Kontext-Informationen
+            action_required: Erforderliche Aktion (z.B. "security_review_required")
+        """
+        project_id = os.path.basename(self.project_path) if self.project_path else None
+        help_msg = create_help_needed(
+            agent=agent,
+            reason=reason,
+            context=context,
+            action_required=action_required,
+            project_id=project_id
+        )
+        # Sende über bestehenden _ui_log Kanal
+        self._ui_log(*help_msg.to_legacy())
+
+    # =========================================================================
+    # HELP_NEEDED HANDLER - ÄNDERUNG 31.01.2026
+    # =========================================================================
+
+    def _handle_help_needed_events(self, iteration: int) -> Dict[str, Any]:
+        """
+        Zentraler HELP_NEEDED Handler - verarbeitet blockierte Agents.
+
+        Stufe 1: Automatische Hilfs-Agenten starten
+        Stufe 2: Priorisierung und Konsens-Mechanismus
+
+        Args:
+            iteration: Aktuelle DevLoop-Iteration
+
+        Returns:
+            Dict mit Status und durchgefuehrten Aktionen
+        """
+        session_mgr = get_session_manager()
+        blocked_agents = session_mgr.get_blocked_agents()
+
+        if not blocked_agents:
+            return {"status": "no_blocks", "actions": []}
+
+        self._ui_log("HelpHandler", "Status",
+                     f"Verarbeite {len(blocked_agents)} blockierte Agents...")
+
+        # STUFE 2: Priorisierung - Critical zuerst
+        priority_order = {"critical": 0, "high": 1, "normal": 2, "low": 3}
+        sorted_agents = sorted(
+            blocked_agents.items(),
+            key=lambda x: priority_order.get(x[1].get("priority", "normal"), 2)
+        )
+
+        actions_taken = []
+
+        for agent_name, block_info in sorted_agents:
+            reason_str = block_info.get("reason", "{}")
+
+            try:
+                reason_data = json.loads(reason_str)
+                action_required = reason_data.get("action_required", "")
+            except (json.JSONDecodeError, TypeError):
+                action_required = ""
+
+            # STUFE 1: Automatische Aktionen basierend auf action_required
+            if action_required == "create_test_files":
+                # Test-Generator automatisch starten
+                self._ui_log("HelpHandler", "Action",
+                            "Starte Test-Generator fuer fehlende Unit-Tests...")
+                success = self._run_automatic_test_generator(iteration)
+                actions_taken.append({
+                    "agent": agent_name,
+                    "action": "test_generator",
+                    "success": success
+                })
+                if success:
+                    session_mgr.clear_agent_blocked(agent_name)
+                    self._ui_log("HelpHandler", "Success",
+                                f"Test-Generator hat Tests erstellt - {agent_name} Blockade aufgehoben")
+
+            elif action_required == "security_review_required":
+                # Bei kritischen Security Issues: Warnung + Eskalation an Coder
+                self._ui_log("HelpHandler", "Warning",
+                            "Kritische Security-Issues - Coder muss in naechster Iteration fixen")
+                actions_taken.append({
+                    "agent": agent_name,
+                    "action": "escalate_to_coder",
+                    "success": True  # Eskalation ist erfolgreich
+                })
+                # NICHT clear_agent_blocked - bleibt blockiert bis gefixt
+
+            else:
+                # Unbekannte Aktion - nur loggen
+                self._ui_log("HelpHandler", "Info",
+                            f"Unbekannte Aktion fuer {agent_name}: {action_required}")
+                actions_taken.append({
+                    "agent": agent_name,
+                    "action": "unknown",
+                    "success": False
+                })
+
+        return {
+            "status": "processed",
+            "blocked_count": len(blocked_agents),
+            "actions": actions_taken
+        }
+
+    def _run_automatic_test_generator(self, iteration: int) -> bool:
+        """
+        Startet den Test-Generator Agent automatisch.
+
+        Args:
+            iteration: Aktuelle Iteration (fuer Logging)
+
+        Returns:
+            True wenn Tests erfolgreich erstellt wurden
+        """
+        try:
+            from agents.test_generator_agent import (
+                create_test_generator,
+                create_test_generation_task,
+                extract_test_files
+            )
+            from backend.test_templates import create_fallback_tests
+
+            # Sammle vorhandene Code-Dateien
+            code_files = {}
+            if self.project_path and os.path.exists(self.project_path):
+                for filename in os.listdir(self.project_path):
+                    if filename.endswith(".py") and not filename.startswith("test_"):
+                        filepath = os.path.join(self.project_path, filename)
+                        try:
+                            with open(filepath, "r", encoding="utf-8") as f:
+                                code_files[filename] = f.read()
+                        except Exception as e:
+                            self._ui_log("HelpHandler", "Warning", f"Datei nicht lesbar: {filename}")
+
+            if not code_files:
+                self._ui_log("HelpHandler", "Warning", "Keine Python-Dateien zum Testen gefunden")
+                # Fallback zu Templates trotzdem versuchen
+                project_type = self.tech_blueprint.get("project_type", "python_script") if self.tech_blueprint else "python_script"
+                created = create_fallback_tests(self.project_path, project_type)
+                return len(created) > 0
+
+            # Erstelle Test-Generator Agent
+            test_agent = create_test_generator(
+                self.config,
+                self.project_rules,
+                router=self.model_router
+            )
+
+            task = create_test_generation_task(
+                test_agent,
+                code_files,
+                self.tech_blueprint.get("project_type", "python_script") if self.tech_blueprint else "python_script",
+                self.tech_blueprint or {}
+            )
+
+            # Fuehre Task aus
+            from crewai import Crew
+            crew = Crew(agents=[test_agent], tasks=[task], verbose=True)
+            result = crew.kickoff()
+
+            # Parse und speichere Tests
+            result_str = str(result) if result else ""
+            if result_str and "### FILENAME:" in result_str:
+                test_files = extract_test_files(result_str)
+
+                for filepath, content in test_files.items():
+                    full_path = os.path.join(self.project_path, filepath)
+                    os.makedirs(os.path.dirname(full_path), exist_ok=True)
+                    with open(full_path, "w", encoding="utf-8") as f:
+                        f.write(content)
+
+                self._ui_log("HelpHandler", "Result",
+                            f"Test-Generator hat {len(test_files)} Dateien erstellt")
+                return len(test_files) > 0
+
+            # Fallback: Template-Tests
+            self._ui_log("HelpHandler", "Info", "Verwende Template-Tests als Fallback")
+            project_type = self.tech_blueprint.get("project_type", "python_script") if self.tech_blueprint else "python_script"
+            created = create_fallback_tests(self.project_path, project_type)
+            return len(created) > 0
+
+        except Exception as e:
+            self._ui_log("HelpHandler", "Error", f"Test-Generator fehlgeschlagen: {e}")
+            # Letzter Fallback: Templates
+            try:
+                from backend.test_templates import create_fallback_tests
+                project_type = self.tech_blueprint.get("project_type", "python_script") if self.tech_blueprint else "python_script"
+                created = create_fallback_tests(self.project_path, project_type)
+                if created:
+                    self._ui_log("HelpHandler", "Info", f"Template-Fallback erstellt: {created}")
+                    return True
+            except Exception:
+                pass
+            return False
 
     # =========================================================================
     # DISCOVERY BRIEFING - ÄNDERUNG 29.01.2026
@@ -381,6 +778,152 @@ class OrchestrationManager:
             agent_name = agent_names.get(data.get("office"), "System")
             self.on_log(agent_name, "WorkerStatus", json.dumps(data, ensure_ascii=False))
 
+    # ÄNDERUNG 30.01.2026: Einfache README-Generierung ohne LLM (schneller, kostengünstiger)
+    def _generate_simple_readme(self, context: str) -> str:
+        """
+        Generiert eine einfache README.md basierend auf dem Kontext.
+        Verwendet kein LLM, sondern Template-basierte Generierung.
+
+        Args:
+            context: Der vom DocumentationService generierte Kontext
+
+        Returns:
+            README-Inhalt als String
+        """
+        ts = self.tech_blueprint
+        project_name = os.path.basename(self.project_path) if self.project_path else "Projekt"
+
+        # Basis-Template
+        readme_parts = [
+            f"# {project_name}",
+            "",
+            f"**Generiert von AgentSmith Multi-Agent System**",
+            f"*Erstellt am: {datetime.now().strftime('%d.%m.%Y %H:%M')}*",
+            "",
+            "## Beschreibung",
+            "",
+        ]
+
+        # Briefing-Ziel wenn vorhanden
+        if self.discovery_briefing and self.discovery_briefing.get("projectGoal"):
+            readme_parts.append(self.discovery_briefing["projectGoal"])
+        elif hasattr(self, 'doc_service') and self.doc_service.data.get("goal"):
+            readme_parts.append(self.doc_service.data["goal"])
+        else:
+            readme_parts.append("*Keine Beschreibung verfügbar.*")
+
+        readme_parts.extend(["", "## Technische Details", ""])
+
+        # TechStack-Details
+        readme_parts.append(f"- **Projekttyp:** {ts.get('project_type', 'unbekannt')}")
+        readme_parts.append(f"- **Sprache:** {ts.get('language', 'unbekannt')}")
+        if ts.get("database"):
+            readme_parts.append(f"- **Datenbank:** {ts['database']}")
+        if ts.get("requires_server"):
+            readme_parts.append(f"- **Server-Port:** {ts.get('server_port', 'nicht definiert')}")
+
+        # Installation
+        if ts.get("install_command"):
+            readme_parts.extend([
+                "",
+                "## Installation",
+                "",
+                "```bash",
+                ts["install_command"],
+                "```",
+            ])
+
+        # Start
+        if ts.get("run_command"):
+            readme_parts.extend([
+                "",
+                "## Starten",
+                "",
+                "```bash",
+                ts["run_command"],
+                "```",
+            ])
+
+        # Windows-Batch falls vorhanden
+        if self.project_path and os.path.exists(os.path.join(self.project_path, "run.bat")):
+            readme_parts.extend([
+                "",
+                "Oder unter Windows:",
+                "",
+                "```batch",
+                "run.bat",
+                "```",
+            ])
+
+        # Lizenz-Hinweis
+        readme_parts.extend([
+            "",
+            "## Lizenz",
+            "",
+            "Erstellt mit AgentSmith - Multi-Agent Development System",
+            "",
+            "---",
+            f"*Auto-generiert am {datetime.now().strftime('%d.%m.%Y')}*"
+        ])
+
+        return "\n".join(readme_parts)
+
+    # ÄNDERUNG 31.01.2026: Echter Documentation Manager Agent für bessere README-Qualität
+    def _generate_readme_with_agent(self, context: str) -> str:
+        """
+        Generiert README.md mit dem echten Documentation Manager Agent.
+        Nutzt LLM für intelligente, kontextbezogene Dokumentation.
+
+        Args:
+            context: Der vom DocumentationService generierte Kontext
+
+        Returns:
+            README-Inhalt als String
+        """
+        from agents.documentation_manager_agent import (
+            create_documentation_manager,
+            get_readme_task_description
+        )
+        from backend.agent_factory import init_agents
+
+        try:
+            # Agent erstellen
+            agents = init_agents(
+                self.config,
+                self.project_rules,
+                router=self.model_router,
+                include=["documentation_manager"]
+            )
+            doc_agent = agents.get("documentation_manager")
+
+            if not doc_agent:
+                self._ui_log("DocumentationManager", "Warning",
+                             "Agent konnte nicht erstellt werden, verwende Template")
+                return self._generate_simple_readme(context)
+
+            # Task erstellen und ausführen
+            task_description = get_readme_task_description(context)
+            doc_task = Task(
+                description=task_description,
+                expected_output="README.md Inhalt in Markdown",
+                agent=doc_agent
+            )
+
+            self._ui_log("DocumentationManager", "Status", "LLM generiert README.md...")
+            self._update_worker_status("documentation_manager", "working", "README-Generierung")
+
+            readme_content = str(doc_task.execute_sync())
+
+            self._update_worker_status("documentation_manager", "idle")
+            self._ui_log("DocumentationManager", "Status", "README.md erfolgreich generiert")
+
+            return readme_content
+
+        except Exception as agent_err:
+            self._ui_log("DocumentationManager", "Warning",
+                         f"Agent-Generierung fehlgeschlagen: {agent_err}, verwende Template")
+            return self._generate_simple_readme(context)
+
     def _update_worker_status(self, office: str, worker_status: str, task_description: str = None, model: str = None):
         """
         Synchrone Helper-Methode zum Aktualisieren des Worker-Status.
@@ -472,101 +1015,154 @@ class OrchestrationManager:
             if self.project_path:
                 project_id = os.path.basename(self.project_path)
 
-            # 🔎 RESEARCH PHASE (Nur beim ersten Mal) - Mit Timeout um Hängen zu verhindern
+            # ÄNDERUNG 30.01.2026: Globaler Agent-Timeout aus Config
+            AGENT_TIMEOUT = self.config.get("agent_timeout_seconds", 300)
+
+            # 🔎 RESEARCH PHASE (Nur beim ersten Mal) - Mit Timeout und Retry-Schleife
+            # ÄNDERUNG 30.01.2026: Retry-Schleife für Fallback bei 404/Rate-Limit Fehlern
             start_context = ""
             research_query = ""
             research_result = ""
+            MAX_RESEARCHER_RETRIES = 3
             if self.is_first_run:
                 # Research-Timeout aus Config lesen (in Minuten), in Sekunden umrechnen
                 timeout_minutes = self.config.get("research_timeout_minutes", 5)
                 RESEARCH_TIMEOUT_SECONDS = timeout_minutes * 60
                 research_query = f"Suche technische Details für: {user_goal}"
-                research_model = self.model_router.get_model("researcher") if self.model_router else "unknown"
 
-                # ResearchOutput Event: Status "searching"
-                self._ui_log("Researcher", "ResearchOutput", json.dumps({
-                    "query": research_query,
-                    "result": "",
-                    "status": "searching",
-                    "model": research_model,
-                    "timeout_seconds": RESEARCH_TIMEOUT_SECONDS
-                }, ensure_ascii=False))
+                for researcher_attempt in range(MAX_RESEARCHER_RETRIES):
+                    # Hole Modell bei jedem Versuch neu (ermöglicht Fallback)
+                    research_model = self.model_router.get_model("researcher") if self.model_router else "unknown"
 
+                    # ResearchOutput Event: Status "searching"
+                    self._ui_log("Researcher", "ResearchOutput", json.dumps({
+                        "query": research_query,
+                        "result": "",
+                        "status": "searching",
+                        "model": research_model,
+                        "timeout_seconds": RESEARCH_TIMEOUT_SECONDS,
+                        "attempt": researcher_attempt + 1,
+                        "max_attempts": MAX_RESEARCHER_RETRIES
+                    }, ensure_ascii=False))
+
+                    try:
+                        self._ui_log("Researcher", "Status", f"Sucht Kontext... (max. {RESEARCH_TIMEOUT_SECONDS}s, Versuch {researcher_attempt + 1}/{MAX_RESEARCHER_RETRIES})")
+                        set_current_agent("Researcher", project_id)  # Budget-Tracking
+                        # ÄNDERUNG 25.01.2026: Worker-Status auf "working" setzen
+                        self._update_worker_status("researcher", "working", f"Recherche: {research_query[:50]}...", research_model)
+                        res_agent = create_researcher(self.config, self.config.get("templates", {}).get("webapp", {}), router=self.model_router)
+                        res_task = Task(
+                            description=research_query,
+                            expected_output="Zusammenfassung.",
+                            agent=res_agent
+                        )
+                        # ÄNDERUNG 29.01.2026: Heartbeat-Wrapper für stabile WebSocket-Verbindung
+                        research_result = run_with_heartbeat(
+                            func=lambda: str(res_task.execute_sync()),
+                            ui_log_callback=self._ui_log,
+                            agent_name="Researcher",
+                            task_description="Recherche-Phase",
+                            heartbeat_interval=15,
+                            timeout_seconds=RESEARCH_TIMEOUT_SECONDS
+                        )
+                        start_context = f"\n\nRecherche-Ergebnisse:\n{research_result}"
+                        self._ui_log("Researcher", "Result", "Recherche abgeschlossen.")
+                        # ÄNDERUNG 25.01.2026: Worker-Status auf "idle" setzen
+                        self._update_worker_status("researcher", "idle")
+
+                        # ResearchOutput Event: Status "completed"
+                        self._ui_log("Researcher", "ResearchOutput", json.dumps({
+                            "query": research_query,
+                            "result": research_result[:2000],  # Limit für UI
+                            "status": "completed",
+                            "model": research_model,
+                            "timeout_seconds": RESEARCH_TIMEOUT_SECONDS
+                        }, ensure_ascii=False))
+                        break  # Erfolg - Schleife verlassen
+
+                    except TimeoutError as te:
+                        self._ui_log("Researcher", "Timeout", f"Recherche abgebrochen: {te}")
+                        # ÄNDERUNG 25.01.2026: Worker-Status auf "idle" setzen (auch bei Timeout)
+                        self._update_worker_status("researcher", "idle")
+                        start_context = ""  # Ohne Recherche-Kontext fortfahren
+
+                        # ResearchOutput Event: Status "timeout"
+                        self._ui_log("Researcher", "ResearchOutput", json.dumps({
+                            "query": research_query,
+                            "result": "",
+                            "status": "timeout",
+                            "model": research_model,
+                            "error": str(te)
+                        }, ensure_ascii=False))
+                        break  # Timeout - kein Retry sinnvoll
+
+                    except Exception as e:
+                        # ÄNDERUNG 30.01.2026: Retry bei 404/Model-Unavailable/Empty-Response mit Fallback
+                        if is_model_unavailable_error(e) or is_rate_limit_error(e) or is_empty_response_error(e):
+                            self._ui_log("Researcher", "Warning", f"Modell {research_model} nicht verfügbar (Versuch {researcher_attempt + 1}/{MAX_RESEARCHER_RETRIES}): {str(e)[:80]}")
+                            self.model_router.mark_rate_limited_sync(research_model)
+                            self._update_worker_status("researcher", "idle")
+
+                            if researcher_attempt < MAX_RESEARCHER_RETRIES - 1:
+                                self._ui_log("Researcher", "Info", "Wechsle zu Fallback-Modell...")
+                                continue  # Nächster Versuch mit Fallback-Modell
+                            else:
+                                self._ui_log("Researcher", "Error", f"Recherche nach {MAX_RESEARCHER_RETRIES} Versuchen fehlgeschlagen")
+                        else:
+                            self._ui_log("Researcher", "Error", f"Recherche fehlgeschlagen: {e}")
+
+                        # ÄNDERUNG 25.01.2026: Worker-Status auf "idle" setzen (auch bei Fehler)
+                        self._update_worker_status("researcher", "idle")
+                        start_context = ""  # Ohne Recherche-Kontext fortfahren
+
+                        # ResearchOutput Event: Status "error"
+                        self._ui_log("Researcher", "ResearchOutput", json.dumps({
+                            "query": research_query,
+                            "result": "",
+                            "status": "error",
+                            "model": research_model,
+                            "error": str(e),
+                            "attempt": researcher_attempt + 1
+                        }, ensure_ascii=False))
+                        break  # Anderer Fehler - kein Retry
+
+            # 🧠 META-ORCHESTRATOR mit Retry
+            # ÄNDERUNG 30.01.2026: Retry-Logik bei 404/Rate-Limit Fehlern
+            MAX_META_RETRIES = 3
+            plan_data = None
+            for meta_attempt in range(MAX_META_RETRIES):
+                current_meta_model = self.model_router.get_model("meta_orchestrator") if self.model_router else "unknown"
                 try:
-                    self._ui_log("Researcher", "Status", f"Sucht Kontext... (max. {RESEARCH_TIMEOUT_SECONDS}s)")
-                    set_current_agent("Researcher", project_id)  # Budget-Tracking
-                    # ÄNDERUNG 25.01.2026: Worker-Status auf "working" setzen
-                    self._update_worker_status("researcher", "working", f"Recherche: {research_query[:50]}...", research_model)
-                    res_agent = create_researcher(self.config, self.config.get("templates", {}).get("webapp", {}), router=self.model_router)
-                    res_task = Task(
-                        description=research_query,
-                        expected_output="Zusammenfassung.",
-                        agent=res_agent
-                    )
-                    # ÄNDERUNG 29.01.2026: Heartbeat-Wrapper für stabile WebSocket-Verbindung
-                    research_result = run_with_heartbeat(
-                        func=lambda: str(res_task.execute_sync()),
-                        ui_log_callback=self._ui_log,
-                        agent_name="Researcher",
-                        task_description="Recherche-Phase",
-                        heartbeat_interval=15,
-                        timeout_seconds=RESEARCH_TIMEOUT_SECONDS
-                    )
-                    start_context = f"\n\nRecherche-Ergebnisse:\n{research_result}"
-                    self._ui_log("Researcher", "Result", "Recherche abgeschlossen.")
-                    # ÄNDERUNG 25.01.2026: Worker-Status auf "idle" setzen
-                    self._update_worker_status("researcher", "idle")
+                    self._ui_log("Orchestrator", "Status", f"Analysiere Intent (Versuch {meta_attempt + 1}/{MAX_META_RETRIES})...")
+                    set_current_agent("Meta-Orchestrator", project_id)  # Budget-Tracking
+                    meta_orchestrator = MetaOrchestratorV2()
+                    plan_data = meta_orchestrator.orchestrate(user_goal + start_context)
+                    self._ui_log("Orchestrator", "Analysis", json.dumps(plan_data["analysis"], ensure_ascii=False))
+                    break  # Erfolg
+                except Exception as meta_err:
+                    # ÄNDERUNG 30.01.2026: Auch leere Antworten als Retry-Fall behandeln
+                    if is_model_unavailable_error(meta_err) or is_rate_limit_error(meta_err) or is_empty_response_error(meta_err):
+                        self._ui_log("Orchestrator", "Warning",
+                            f"Meta-Modell {current_meta_model} nicht verfügbar (Versuch {meta_attempt + 1}/{MAX_META_RETRIES})")
+                        self.model_router.mark_rate_limited_sync(current_meta_model)
+                        if meta_attempt < MAX_META_RETRIES - 1:
+                            continue  # Nächster Versuch mit Fallback
+                    self._ui_log("Orchestrator", "Error", f"Meta-Orchestrator Fehler: {str(meta_err)[:200]}")
+                    raise meta_err
 
-                    # ResearchOutput Event: Status "completed"
-                    self._ui_log("Researcher", "ResearchOutput", json.dumps({
-                        "query": research_query,
-                        "result": research_result[:2000],  # Limit für UI
-                        "status": "completed",
-                        "model": research_model,
-                        "timeout_seconds": RESEARCH_TIMEOUT_SECONDS
-                    }, ensure_ascii=False))
-
-                except TimeoutError as te:
-                    self._ui_log("Researcher", "Timeout", f"Recherche abgebrochen: {te}")
-                    # ÄNDERUNG 25.01.2026: Worker-Status auf "idle" setzen (auch bei Timeout)
-                    self._update_worker_status("researcher", "idle")
-                    start_context = ""  # Ohne Recherche-Kontext fortfahren
-
-                    # ResearchOutput Event: Status "timeout"
-                    self._ui_log("Researcher", "ResearchOutput", json.dumps({
-                        "query": research_query,
-                        "result": "",
-                        "status": "timeout",
-                        "model": research_model,
-                        "error": str(te)
-                    }, ensure_ascii=False))
-
-                except Exception as e:
-                    # ÄNDERUNG 29.01.2026: 404/Model-Unavailable behandeln
-                    if is_model_unavailable_error(e) or is_rate_limit_error(e):
-                        self._ui_log("Researcher", "Warning", f"Recherche-Modell nicht verfügbar: {str(e)[:100]}")
-                        self.model_router.mark_rate_limited_sync(research_model)
-                    else:
-                        self._ui_log("Researcher", "Error", f"Recherche fehlgeschlagen: {e}")
-                    # ÄNDERUNG 25.01.2026: Worker-Status auf "idle" setzen (auch bei Fehler)
-                    self._update_worker_status("researcher", "idle")
-                    start_context = ""  # Ohne Recherche-Kontext fortfahren
-
-                    # ResearchOutput Event: Status "error"
-                    self._ui_log("Researcher", "ResearchOutput", json.dumps({
-                        "query": research_query,
-                        "result": "",
-                        "status": "error",
-                        "model": research_model,
-                        "error": str(e)
-                    }, ensure_ascii=False))
-
-            # 🧠 META-ORCHESTRATOR
-            self._ui_log("Orchestrator", "Status", "Analysiere Intent...")
-            set_current_agent("Meta-Orchestrator", project_id)  # Budget-Tracking
-            meta_orchestrator = MetaOrchestratorV2()
-            plan_data = meta_orchestrator.orchestrate(user_goal + start_context)
-            self._ui_log("Orchestrator", "Analysis", json.dumps(plan_data["analysis"], ensure_ascii=False))
+            if not plan_data:
+                # ÄNDERUNG 30.01.2026: HELP_NEEDED Event bevor RuntimeError
+                self._log_help_needed(
+                    agent="Orchestrator",
+                    reason="no_orchestration_plan",
+                    context={
+                        "user_goal": user_goal[:200],
+                        "attempts": MAX_META_RETRIES,
+                        "research_available": bool(start_context)
+                    },
+                    action_required="clarify_requirements"
+                )
+                raise RuntimeError("Meta-Orchestrator konnte keinen Plan erstellen nach allen Versuchen")
 
             # 📦 PROJEKTSTRUKTUR (Nur beim ersten Mal)
             if self.is_first_run:
@@ -575,9 +1171,18 @@ class OrchestrationManager:
                 # Absoluten Pfad verwenden für konsistentes Verhalten
                 self.project_path = os.path.join(self.base_dir, "projects", project_name)
                 os.makedirs(self.project_path, exist_ok=True)
-                
+
+                # ÄNDERUNG 31.01.2026: Standard-Projektstruktur automatisch erstellen
+                # Diese Ordner sind den Agenten bekannt und sollten entsprechend genutzt werden
+                STANDARD_PROJECT_DIRS = ["tests", "docs", "src", "assets"]
+                for dir_name in STANDARD_PROJECT_DIRS:
+                    os.makedirs(os.path.join(self.project_path, dir_name), exist_ok=True)
+                self._ui_log("System", "ProjectStructure", f"Standard-Ordner erstellt: {', '.join(STANDARD_PROJECT_DIRS)}")
+
                 # Aktualisiere project_id nach Projekt-Erstellung
                 project_id = project_name
+                # ÄNDERUNG 30.01.2026: Project-ID sofort für Budget-Tracking setzen
+                set_current_agent("System", project_id)
 
                 # 🛠️ TECHSTACK
                 base_project_rules = self.config.get("templates", {}).get("webapp", {})
@@ -611,31 +1216,66 @@ class OrchestrationManager:
                                 agent_name="TechStack",
                                 task_description="Tech-Stack Analyse",
                                 heartbeat_interval=15,
-                                timeout_seconds=180
+                                # ÄNDERUNG 30.01.2026: Timeout aus globaler Config
+                                timeout_seconds=AGENT_TIMEOUT
                             )
                             break  # Erfolg - Schleife verlassen
                         except Exception as ts_error:
-                            # Bei 404/Model-Unavailable oder Rate-Limit: Modell wechseln
-                            if is_model_unavailable_error(ts_error) or is_rate_limit_error(ts_error):
+                            # ÄNDERUNG 30.01.2026: Auch leere Antworten als Retry-Fall (deepseek-r1 Bug)
+                            if is_model_unavailable_error(ts_error) or is_rate_limit_error(ts_error) or is_empty_response_error(ts_error):
                                 self._ui_log("TechStack", "Warning",
-                                    f"Modell {current_techstack_model} nicht verfügbar (Versuch {techstack_attempt + 1}/{MAX_TECHSTACK_RETRIES}), wechsle zu Fallback...")
+                                    f"Modell {current_techstack_model} nicht verfügbar/leer (Versuch {techstack_attempt + 1}/{MAX_TECHSTACK_RETRIES}), wechsle zu Fallback...")
                                 self.model_router.mark_rate_limited_sync(current_techstack_model)
                                 if techstack_attempt == MAX_TECHSTACK_RETRIES - 1:
-                                    # Alle Versuche fehlgeschlagen - Fallback auf static_html
-                                    self._ui_log("TechStack", "Error", "Alle TechStack-Modelle nicht verfügbar, verwende Fallback")
-                                    techstack_result = '{"project_type": "static_html", "language": "html"}'
+                                    # Alle Versuche fehlgeschlagen - intelligenter Fallback basierend auf user_goal
+                                    fallback_blueprint = _infer_blueprint_from_requirements(user_goal)
+                                    self._ui_log("TechStack", "Error",
+                                        f"Alle TechStack-Modelle nicht verfügbar, verwende requirement-basierten Fallback: {fallback_blueprint['project_type']}")
+                                    techstack_result = json.dumps(fallback_blueprint)
                                 continue
                             else:
                                 # Anderer Fehler - weiterleiten
                                 raise ts_error
+                    # ÄNDERUNG 30.01.2026: Robusteres JSON-Parsing mit intelligenter Fallback-Logik
+                    # Respektiert Benutzer-Vorgaben und fällt nicht blind auf static_html zurück
                     try:
-                        json_match = re.search(r'\{[^{}]*"project_type"[^{}]*\}', techstack_result, re.DOTALL)
-                        if json_match:
-                            self.tech_blueprint = json.loads(json_match.group())
+                        json_text = None
+
+                        # Schritt 1: JSON aus Markdown Code-Block extrahieren
+                        code_block_match = re.search(r'```(?:json)?\s*(\{[\s\S]*?\})\s*```', techstack_result)
+                        if code_block_match:
+                            json_text = code_block_match.group(1)
+
+                        # Schritt 2: Falls kein Code-Block, einfaches JSON-Regex (double quotes)
+                        if not json_text:
+                            json_match = re.search(r'\{[^{}]*"project_type"[^{}]*\}', techstack_result, re.DOTALL)
+                            if json_match:
+                                json_text = json_match.group()
+
+                        # Schritt 3: Falls immer noch nichts, versuche single-quotes Variante
+                        if not json_text:
+                            single_quote_match = re.search(r"\{[^{}]*'project_type'[^{}]*\}", techstack_result, re.DOTALL)
+                            if single_quote_match:
+                                json_text = _repair_json(single_quote_match.group())
+                                self._ui_log("TechArchitect", "Info", "JSON mit single quotes erkannt, repariere...")
+
+                        # Schritt 4: JSON parsen
+                        if json_text:
+                            try:
+                                self.tech_blueprint = json.loads(json_text)
+                            except json.JSONDecodeError:
+                                # Versuche JSON zu reparieren (single quotes etc.)
+                                repaired = _repair_json(json_text)
+                                self.tech_blueprint = json.loads(repaired)
+                                self._ui_log("TechArchitect", "Info", "JSON erfolgreich repariert")
+                        else:
+                            raise ValueError("Kein JSON gefunden in TechStack-Antwort")
+
                     except (json.JSONDecodeError, KeyError, ValueError) as e:
-                        # Spezifische Exception-Behandlung für JSON-Parsing-Fehler
-                        self.tech_blueprint = {"project_type": "static_html"}
-                        self._ui_log("TechArchitect", "Warning", f"Blueprint-Parsing fehlgeschlagen, verwende Fallback: {e}")
+                        # INTELLIGENTER FALLBACK: Analysiere user_goal statt blind static_html
+                        self.tech_blueprint = _infer_blueprint_from_requirements(user_goal)
+                        self._ui_log("TechArchitect", "Warning",
+                            f"Blueprint-Parsing fehlgeschlagen ({e}), verwende requirement-basierten Fallback: {self.tech_blueprint['project_type']}")
                     
                     self._ui_log("TechArchitect", "Blueprint", json.dumps(self.tech_blueprint, ensure_ascii=False))
                     # ÄNDERUNG 25.01.2026: Worker-Status auf "idle" setzen
@@ -657,6 +1297,29 @@ class OrchestrationManager:
 
                     with open(os.path.join(self.project_path, "tech_blueprint.json"), "w", encoding="utf-8") as f:
                         json.dump(self.tech_blueprint, f, indent=2, ensure_ascii=False)
+
+                    # ÄNDERUNG 30.01.2026: Quality Gate Validierung nach TechStack
+                    # Als Instanzvariable speichern für Schema/Design/Code Validierungen
+                    self.quality_gate = QualityGate(user_goal, self.discovery_briefing)
+                    ts_validation = self.quality_gate.validate_techstack(self.tech_blueprint)
+                    self._ui_log("QualityGate", "TechStackValidation", json.dumps({
+                        "step": "TechStack",
+                        "passed": ts_validation.passed,
+                        "score": ts_validation.score,
+                        "issues": ts_validation.issues,
+                        "warnings": ts_validation.warnings,
+                        "requirements": self.quality_gate.get_requirements_summary()
+                    }, ensure_ascii=False))
+
+                    if not ts_validation.passed:
+                        self._ui_log("QualityGate", "Warning",
+                            f"TechStack-Blueprint verletzt Benutzer-Anforderungen: {', '.join(ts_validation.issues)}")
+
+                # ÄNDERUNG 30.01.2026: Documentation Service initialisieren
+                self.doc_service = DocumentationService(self.project_path)
+                self.doc_service.collect_goal(user_goal)
+                self.doc_service.collect_briefing(self.discovery_briefing or {})
+                self.doc_service.collect_techstack(self.tech_blueprint)
 
                 # Output-Pfad deduction
                 run_cmd = self.tech_blueprint.get("run_command", "")
@@ -780,13 +1443,15 @@ class OrchestrationManager:
                                     agent_name="DB-Designer",
                                     task_description="Datenbank-Schema Erstellung",
                                     heartbeat_interval=15,
-                                    timeout_seconds=180
+                                    # ÄNDERUNG 30.01.2026: Timeout aus globaler Config
+                                    timeout_seconds=AGENT_TIMEOUT
                                 )
                                 break  # Erfolg
                         except Exception as db_error:
-                            if is_model_unavailable_error(db_error) or is_rate_limit_error(db_error):
+                            # ÄNDERUNG 30.01.2026: Auch leere Antworten als Retry-Fall
+                            if is_model_unavailable_error(db_error) or is_rate_limit_error(db_error) or is_empty_response_error(db_error):
                                 self._ui_log("DBDesigner", "Warning",
-                                    f"Modell {current_db_model} nicht verfügbar (Versuch {db_attempt + 1}/{MAX_DB_RETRIES}), wechsle...")
+                                    f"Modell {current_db_model} nicht verfügbar/leer (Versuch {db_attempt + 1}/{MAX_DB_RETRIES}), wechsle...")
                                 self.model_router.mark_rate_limited_sync(current_db_model)
                                 if db_attempt == MAX_DB_RETRIES - 1:
                                     self._ui_log("DBDesigner", "Error", "Alle DB-Modelle nicht verfügbar, überspringe Schema")
@@ -807,6 +1472,28 @@ class OrchestrationManager:
                         "tables": extract_tables_from_schema(self.database_schema) if self.database_schema else [],
                         "timestamp": datetime.now().isoformat()
                     }, ensure_ascii=False))
+
+                    # ÄNDERUNG 30.01.2026: Quality Gate - Schema Validierung
+                    if self.database_schema and hasattr(self, 'quality_gate'):
+                        schema_validation = self.quality_gate.validate_schema(
+                            self.database_schema, self.tech_blueprint
+                        )
+                        self._ui_log("QualityGate", "SchemaValidation", json.dumps({
+                            "step": "DBSchema",
+                            "passed": schema_validation.passed,
+                            "score": schema_validation.score,
+                            "issues": schema_validation.issues,
+                            "warnings": schema_validation.warnings
+                        }, ensure_ascii=False))
+                        # Sammle Schema für Dokumentation
+                        if hasattr(self, 'doc_service') and self.doc_service:
+                            self.doc_service.collect_schema(self.database_schema)
+                            self.doc_service.collect_quality_validation("DBSchema", {
+                                "passed": schema_validation.passed,
+                                "score": schema_validation.score,
+                                "issues": schema_validation.issues,
+                                "warnings": schema_validation.warnings
+                            })
 
                 if "designer" in plan_data["plan"]:
                     self._ui_log("Designer", "Status", "Erstelle Design-Konzept...")
@@ -839,13 +1526,15 @@ class OrchestrationManager:
                                     agent_name="Designer",
                                     task_description="UI/UX Design",
                                     heartbeat_interval=15,
-                                    timeout_seconds=180
+                                    # ÄNDERUNG 30.01.2026: Timeout aus globaler Config
+                                    timeout_seconds=AGENT_TIMEOUT
                                 )
                                 break  # Erfolg
                         except Exception as des_error:
-                            if is_model_unavailable_error(des_error) or is_rate_limit_error(des_error):
+                            # ÄNDERUNG 30.01.2026: Auch leere Antworten als Retry-Fall
+                            if is_model_unavailable_error(des_error) or is_rate_limit_error(des_error) or is_empty_response_error(des_error):
                                 self._ui_log("Designer", "Warning",
-                                    f"Modell {current_design_model} nicht verfügbar (Versuch {design_attempt + 1}/{MAX_DESIGN_RETRIES}), wechsle...")
+                                    f"Modell {current_design_model} nicht verfügbar/leer (Versuch {design_attempt + 1}/{MAX_DESIGN_RETRIES}), wechsle...")
                                 self.model_router.mark_rate_limited_sync(current_design_model)
                                 if design_attempt == MAX_DESIGN_RETRIES - 1:
                                     self._ui_log("Designer", "Error", "Alle Design-Modelle nicht verfügbar, überspringe Design")
@@ -873,6 +1562,28 @@ class OrchestrationManager:
                             "model": designer_model,
                             "timestamp": datetime.now().isoformat()
                         }, ensure_ascii=False))
+
+                        # ÄNDERUNG 30.01.2026: Quality Gate - Design Validierung
+                        if hasattr(self, 'quality_gate'):
+                            design_validation = self.quality_gate.validate_design(
+                                self.design_concept, self.tech_blueprint
+                            )
+                            self._ui_log("QualityGate", "DesignValidation", json.dumps({
+                                "step": "Design",
+                                "passed": design_validation.passed,
+                                "score": design_validation.score,
+                                "issues": design_validation.issues,
+                                "warnings": design_validation.warnings
+                            }, ensure_ascii=False))
+                            # Sammle Design für Dokumentation
+                            if hasattr(self, 'doc_service') and self.doc_service:
+                                self.doc_service.collect_design(self.design_concept)
+                                self.doc_service.collect_quality_validation("Design", {
+                                    "passed": design_validation.passed,
+                                    "score": design_validation.score,
+                                    "issues": design_validation.issues,
+                                    "warnings": design_validation.warnings
+                                })
 
                 # ÄNDERUNG 25.01.2026: Initial-Security-Scan auf Anforderungen ENTFERNT
                 # Security-Analyse erfolgt jetzt NUR im DEV LOOP nach Code-Generierung (Re-Scan)
@@ -912,6 +1623,33 @@ class OrchestrationManager:
             self.is_first_run = False
             if success:
                 self._ui_log("System", "Success", "Projekt erfolgreich erstellt/geändert.")
+
+                # ÄNDERUNG 30.01.2026: Dokumentation generieren bei Erfolg
+                try:
+                    if hasattr(self, 'doc_service') and self.doc_service:
+                        self._ui_log("DocumentationManager", "Status", "Generiere Projekt-Dokumentation...")
+                        # README Kontext vorbereiten
+                        readme_context = self.doc_service.generate_readme_context()
+
+                        # ÄNDERUNG 31.01.2026: Echter Documentation Manager Agent für bessere Qualität
+                        readme_content = self._generate_readme_with_agent(readme_context)
+                        readme_path = self.doc_service.save_readme(readme_content)
+                        if readme_path:
+                            self._ui_log("DocumentationManager", "Result", f"README.md erstellt: {readme_path}")
+
+                        # CHANGELOG aus Iterations-Daten
+                        changelog_path = self.doc_service.save_changelog()
+                        if changelog_path:
+                            self._ui_log("DocumentationManager", "Result", f"CHANGELOG.md erstellt: {changelog_path}")
+
+                        self._ui_log("DocumentationManager", "DocumentationComplete", json.dumps({
+                            "readme": readme_path or "",
+                            "changelog": changelog_path or "",
+                            "summary": self.doc_service.get_summary()
+                        }, ensure_ascii=False))
+                except Exception as doc_err:
+                    self._ui_log("DocumentationManager", "Warning", f"Dokumentations-Generierung fehlgeschlagen: {doc_err}")
+
                 # ÄNDERUNG 28.01.2026: Projekt in Library als erfolgreich abschließen
                 try:
                     library = get_library_manager()

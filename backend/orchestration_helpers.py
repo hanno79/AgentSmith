@@ -179,6 +179,31 @@ def is_model_unavailable_error(error: Exception) -> bool:
     return any(pattern in error_str for pattern in unavailable_patterns)
 
 
+# ÄNDERUNG 30.01.2026: Leere LLM-Antworten erkennen für Retry-Logik
+def is_empty_response_error(error: Exception) -> bool:
+    """
+    Prüft ob ein Fehler auf eine leere LLM-Antwort hinweist.
+    Diese Fehler sollten zu einem Retry mit Fallback-Modell führen.
+
+    Args:
+        error: Die aufgetretene Exception
+
+    Returns:
+        True wenn die Antwort leer/None war
+    """
+    error_str = str(error).lower()
+    empty_patterns = [
+        'none or empty',
+        'empty response',
+        'invalid response from llm',
+        'no response',
+        'null response',
+        'response is none',
+        'empty content'
+    ]
+    return any(pattern in error_str for pattern in empty_patterns)
+
+
 def extract_vulnerabilities(security_result: str) -> List[Dict[str, Any]]:
     """
     Extrahiert Vulnerabilities UND Lösungsvorschläge aus dem Security-Agent Output.
@@ -433,3 +458,69 @@ def is_empty_or_invalid_response(response: str) -> bool:
     ]
     response_lower = response.lower()
     return any(pattern in response_lower for pattern in invalid_patterns)
+
+
+# ÄNDERUNG 31.01.2026: Unicode-Sanitizing für Code-Output
+def sanitize_unicode_hyphens(code: str) -> str:
+    """
+    Ersetzt Unicode-Hyphens durch ASCII-Hyphens.
+
+    Einige LLM-Modelle (z.B. mimo-v2-flash) verwenden Unicode-Hyphens
+    (U+2011 Non-Breaking Hyphen) statt ASCII-Hyphens (U+002D).
+    Python akzeptiert diese nicht in Kommentaren/Code.
+
+    Args:
+        code: Der zu bereinigende Code-String
+
+    Returns:
+        Code mit ersetzten Unicode-Hyphens
+    """
+    if not code:
+        return code
+
+    problematic_chars = {
+        '\u2011': '-',  # Non-Breaking Hyphen
+        '\u2010': '-',  # Hyphen
+        '\u2012': '-',  # Figure Dash
+        '\u2013': '-',  # En Dash
+        '\u2014': '-',  # Em Dash
+        '\u2212': '-',  # Minus Sign
+    }
+    for char, replacement in problematic_chars.items():
+        code = code.replace(char, replacement)
+    return code
+
+
+# ÄNDERUNG 31.01.2026: Review-Output Truncation gegen Wiederholungen
+def truncate_review_output(review_output: str, max_length: int = 3000) -> str:
+    """
+    Kuerzt Review-Output und entfernt Wiederholungen.
+
+    Einige LLM-Modelle (z.B. llama-3.3-70b-instruct) geraten bei
+    langen Outputs in Wiederholungsschleifen. Diese Funktion
+    dedupliziert Zeilen und kuerzt auf max_length.
+
+    Args:
+        review_output: Der Review-Text
+        max_length: Maximale Laenge des Outputs
+
+    Returns:
+        Gekuerzter und deduplizierter Review-Text
+    """
+    if not review_output or len(review_output) <= max_length:
+        return review_output
+
+    # Finde Wiederholungen (einfache Heuristik)
+    lines = review_output.split('\n')
+    seen = set()
+    unique_lines = []
+    for line in lines:
+        line_key = line.strip()[:100]  # Erste 100 Zeichen als Key
+        if line_key and line_key not in seen:
+            seen.add(line_key)
+            unique_lines.append(line)
+
+    result = '\n'.join(unique_lines)
+    if len(result) > max_length:
+        return result[:max_length] + "\n[... gekuerzt]"
+    return result

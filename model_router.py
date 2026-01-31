@@ -2,15 +2,16 @@
 """
 Author: rahn
 Datum: 24.01.2026
-Version: 1.0
+Version: 1.1
 Beschreibung: Model Router - Intelligentes Model-Routing mit Fallback bei Rate Limits.
               Automatisches Umschalten auf alternative Modelle bei temporärer Blockierung.
+              AENDERUNG 31.01.2026: Fehler-Modell-Historie zur Vermeidung von Ping-Pong-Wechseln.
 """
 
 import time
 import asyncio
 import threading
-from typing import Dict, List, Optional, Any, Callable
+from typing import Dict, List, Optional, Any, Callable, Set
 from logger_utils import log_event
 
 
@@ -41,6 +42,8 @@ class ModelRouter:
         # ÄNDERUNG 28.01.2026: Exponentieller Backoff und Endlosschleifen-Schutz
         self.model_failure_count: Dict[str, int] = {}  # model -> failure count für exponentiellen Backoff
         self.all_paused_count: int = 0  # Zähler für "alle pausiert" Situationen
+        # AENDERUNG 31.01.2026: Fehler-Modell-Historie zur Vermeidung von Ping-Pong-Wechseln
+        self.error_model_history: Dict[str, Set[str]] = {}  # error_hash -> {tried_models}
 
     def get_model(self, agent_role: str) -> str:
         """
@@ -266,7 +269,9 @@ class ModelRouter:
         return {
             "rate_limited_models": rate_limited_info,
             "usage_stats": self.model_usage_stats,
-            "cooldown_seconds": self.cooldown_seconds
+            "cooldown_seconds": self.cooldown_seconds,
+            # AENDERUNG 31.01.2026: Fehler-Historie im Status
+            "error_history": self.get_error_history_status()
         }
 
     def clear_rate_limits(self):
@@ -274,7 +279,9 @@ class ModelRouter:
         self.rate_limited_models.clear()
         self.model_failure_count.clear()
         self.all_paused_count = 0
-        log_event("ModelRouter", "Info", "Alle Rate-Limits und Failure-Counter zurückgesetzt.")
+        # AENDERUNG 31.01.2026: Auch Fehler-Historie loeschen bei vollem Reset
+        self.error_model_history.clear()
+        log_event("ModelRouter", "Info", "Alle Rate-Limits, Failure-Counter und Fehler-Historie zurückgesetzt.")
 
     def mark_success(self, model: str):
         """
@@ -316,6 +323,99 @@ class ModelRouter:
         models.extend(model_config.get("fallback", []))
 
         return models
+
+    # AENDERUNG 31.01.2026: Neue Methoden fuer Fehler-Modell-Historie
+
+    def get_model_for_error(self, agent_role: str, error_hash: str) -> str:
+        """
+        Gibt ein Modell zurueck, das diesen Fehler noch nicht versucht hat.
+
+        Verhindert Ping-Pong-Wechsel zwischen nur 2 Modellen bei persistenten Fehlern.
+        Alle verfuegbaren Modelle werden der Reihe nach durchprobiert.
+
+        Args:
+            agent_role: Name der Agent-Rolle (z.B. "coder")
+            error_hash: Hash des Fehler-Inhalts
+
+        Returns:
+            Modell-ID die diesen Fehler noch nicht versucht hat
+        """
+        tried_models = self.error_model_history.get(error_hash, set())
+        all_models = self.get_all_models_for_role(agent_role)
+
+        # Finde erstes Modell das diesen Fehler noch nicht versucht hat
+        for model in all_models:
+            if model not in tried_models and not self._is_rate_limited_sync(model):
+                log_event("ModelRouter", "ErrorHistory",
+                          f"Modell {model} fuer Fehler {error_hash[:8]} ausgewaehlt "
+                          f"(bereits versucht: {len(tried_models)}/{len(all_models)})")
+                self._track_usage(model)
+                return model
+
+        # Alle Modelle haben diesen Fehler versucht
+        log_event("ModelRouter", "Warning",
+                  f"Alle {len(all_models)} Modelle haben Fehler {error_hash[:8]} bereits versucht. "
+                  f"Setze Historie zurueck und starte mit Primary.")
+        self.clear_error_history(error_hash)
+
+        # Gib Primary zurueck (oder erstes verfuegbares)
+        for model in all_models:
+            if not self._is_rate_limited_sync(model):
+                self._track_usage(model)
+                return model
+
+        # Fallback: Primary auch wenn rate-limited
+        return all_models[0] if all_models else ""
+
+    def mark_error_tried(self, error_hash: str, model: str) -> None:
+        """
+        Markiert dass ein Modell einen bestimmten Fehler versucht hat.
+
+        Args:
+            error_hash: Hash des Fehler-Inhalts
+            model: Modell-ID das den Fehler versucht hat
+        """
+        if not error_hash or not model:
+            return
+
+        if error_hash not in self.error_model_history:
+            self.error_model_history[error_hash] = set()
+
+        self.error_model_history[error_hash].add(model)
+        log_event("ModelRouter", "ErrorHistory",
+                  f"Modell {model} fuer Fehler {error_hash[:8]} markiert "
+                  f"(insgesamt {len(self.error_model_history[error_hash])} Modelle versucht)")
+
+    def clear_error_history(self, error_hash: str = None) -> None:
+        """
+        Loescht Fehler-Historie (einzeln oder komplett).
+
+        Args:
+            error_hash: Optional - nur diese Fehler-Historie loeschen.
+                       Wenn None, wird die gesamte Historie geloescht.
+        """
+        if error_hash:
+            if error_hash in self.error_model_history:
+                del self.error_model_history[error_hash]
+                log_event("ModelRouter", "Info", f"Fehler-Historie fuer {error_hash[:8]} geloescht.")
+        else:
+            self.error_model_history.clear()
+            log_event("ModelRouter", "Info", "Gesamte Fehler-Historie geloescht.")
+
+    def get_error_history_status(self) -> Dict[str, Any]:
+        """
+        Gibt den Status der Fehler-Historie zurueck.
+
+        Returns:
+            Dictionary mit Fehler-Hashes und versuchten Modellen
+        """
+        return {
+            "total_errors_tracked": len(self.error_model_history),
+            "errors": {
+                error_hash[:12]: list(models)
+                for error_hash, models in self.error_model_history.items()
+            }
+        }
 
 
 # Singleton-Instanz für globalen Zugriff
