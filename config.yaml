@@ -3,84 +3,267 @@ openai_api_key: ${OPENAI_API_KEY}
 mode: test
 project_type: webapp
 include_designer: true
-max_retries: 15
-max_model_attempts: 2
+max_retries: 50
+max_model_attempts: 5
 research_timeout_minutes: 5
+agent_timeout_seconds: 600
 security_max_retries: 10
-
-# ÄNDERUNG 28.01.2026: Dependency-Agent Konfiguration (IT-Abteilung)
 dependency_agent:
-  auto_install: true           # Automatisch installieren wenn fehlend
-  check_vulnerabilities: true  # npm audit / pip-audit ausführen
-  cache_inventory: 300         # Inventar-Cache in Sekunden
-
+  auto_install: true
+  check_vulnerabilities: true
+  cache_inventory: 300
 models:
   test:
     meta_orchestrator:
       primary: openrouter/meta-llama/llama-3.3-70b-instruct:free
       fallback:
-      - openrouter/google/gemma-3-27b-it:free
-      - openrouter/nousresearch/hermes-3-llama-3.1-8b:free
+      - openrouter/deepseek/deepseek-r1-0528:free
+      - openrouter/openai/gpt-oss-120b:free
+      - openrouter/meta-llama/llama-3.1-405b-instruct:free
+      - openrouter/z-ai/glm-4.5-air:free
     orchestrator:
       primary: openrouter/meta-llama/llama-3.3-70b-instruct:free
       fallback:
-      - openrouter/google/gemma-3-27b-it:free
-      - openrouter/nousresearch/hermes-3-llama-3.1-8b:free
+      - openrouter/deepseek/deepseek-r1-0528:free
+      - openrouter/openai/gpt-oss-120b:free
+      - openrouter/meta-llama/llama-3.1-405b-instruct:free
+      - openrouter/z-ai/glm-4.5-air:free
+    researcher:
+      primary: openrouter/meta-llama/llama-3.3-70b-instruct:free
+      fallback:
+      - openrouter/deepseek/deepseek-r1-0528:free
+      - openrouter/openai/gpt-oss-120b:free
+      - openrouter/nousresearch/hermes-3-llama-3.1-405b:free
+      - openrouter/z-ai/glm-4.5-air:free
     coder:
-      primary: openrouter/meta-llama/llama-3.3-70b-instruct:free
+      primary: openrouter/xiaomi/mimo-v2-flash:free
       fallback:
-      - openrouter/google/gemma-3-27b-it:free
-      - openrouter/mistralai/mistral-7b-instruct:free
-    reviewer:
-      primary: openrouter/meta-llama/llama-3.3-70b-instruct:free
+      - openrouter/qwen/qwen3-coder:free
+      - openrouter/openai/gpt-oss-120b:free
+      - openrouter/z-ai/glm-4.5-air:free
+      - openrouter/arcee-ai/trinity-large-preview:free
+    tester:
+      primary: openrouter/openai/gpt-oss-120b:free
       fallback:
-      - openrouter/google/gemma-3-27b-it:free
-      - openrouter/nousresearch/hermes-3-llama-3.1-8b:free
+      - openrouter/deepseek/deepseek-r1-0528:free
+      - openrouter/meta-llama/llama-3.3-70b-instruct:free
+      - openrouter/qwen/qwen3-coder:free
+      - openrouter/nvidia/nemotron-3-nano-30b-a3b:free
     designer:
       primary: openrouter/google/gemma-3-27b-it:free
       fallback:
+      - openrouter/mistralai/mistral-small-3.1-24b-instruct:free
+      - openrouter/arcee-ai/trinity-large-preview:free
+      - openrouter/qwen/qwen2.5-vl-7b-instruct:free
+      - openrouter/google/gemma-3-12b-it:free
+    database_designer:
+      primary: openrouter/qwen/qwen3-coder:free
+      fallback:
+      - openrouter/openai/gpt-oss-120b:free
       - openrouter/meta-llama/llama-3.3-70b-instruct:free
-    researcher:
+      - openrouter/deepseek/deepseek-r1-0528:free
+      - openrouter/google/gemma-3-27b-it:free
+    security:
+      primary: openrouter/deepseek/deepseek-r1-0528:free
+      fallback:
+      - openrouter/openai/gpt-oss-120b:free
+      - openrouter/meta-llama/llama-3.3-70b-instruct:free
+      - openrouter/qwen/qwen3-coder:free
+      - openrouter/z-ai/glm-4.5-air:free
+    reviewer:
       primary: openrouter/meta-llama/llama-3.3-70b-instruct:free
       fallback:
-      - openrouter/google/gemma-3-27b-it:free
-      - openrouter/mistralai/mistral-7b-instruct:free
-    database_designer:
-      primary: openrouter/google/gemma-3-27b-it:free
-      fallback:
-      - openrouter/meta-llama/llama-3.3-70b-instruct:free
+      - openrouter/qwen/qwen3-coder:free
+      - openrouter/openai/gpt-oss-120b:free
+      - openrouter/meta-llama/llama-3.1-405b-instruct:free
+      - openrouter/nousresearch/hermes-3-llama-3.1-405b:free
     techstack_architect:
       primary: openrouter/meta-llama/llama-3.3-70b-instruct:free
       fallback:
-      - openrouter/google/gemma-3-27b-it:free
-    security:
-      primary: openrouter/google/gemma-3-27b-it:free
+      - openrouter/openai/gpt-oss-120b:free
+      - openrouter/meta-llama/llama-3.1-405b-instruct:free
+      - openrouter/z-ai/glm-4.5-air:free
+      - openrouter/arcee-ai/trinity-large-preview:free
+    documentation_manager:
+      primary: openrouter/meta-llama/llama-3.3-70b-instruct:free
       fallback:
-      - openrouter/meta-llama/llama-3.3-70b-instruct:free
+      - openrouter/deepseek/deepseek-r1-0528:free
+      - openrouter/openai/gpt-oss-120b:free
+      - openrouter/google/gemma-3-27b-it:free
+      - openrouter/arcee-ai/trinity-large-preview:free
+    test_generator:
+      primary: openrouter/meta-llama/llama-3.3-70b-instruct:free
+      fallback:
+      - openrouter/deepseek/deepseek-r1-0528:free
+      - openrouter/qwen/qwen3-coder:free
+      - openrouter/openai/gpt-oss-120b:free
+      - openrouter/z-ai/glm-4.5-air:free
   production:
-    meta_orchestrator: openrouter/openai/gpt-5-mini
-    orchestrator: openrouter/openai/gpt-5-mini
-    coder: openrouter/anthropic/claude-haiku-4.5
-    reviewer: openrouter/openai/gpt-5-mini
-    designer: openrouter/google/gemini-3-flash-preview
+    meta_orchestrator:
+      primary: openrouter/deepseek/deepseek-r1-0528
+      fallback:
+      - openrouter/mistralai/mistral-medium-3.1
+      - openrouter/google/gemini-2.5-flash
+      - openrouter/qwen/qwen-3
+      - openrouter/baidu/ernie-5.0
+    orchestrator:
+      primary: openrouter/deepseek/deepseek-r1-0528
+      fallback:
+      - openrouter/mistralai/mistral-medium-3.1
+      - openrouter/google/gemini-2.5-flash
+      - openrouter/qwen/qwen-3
+      - openrouter/baidu/ernie-5.0
     researcher:
-      primary: openrouter/openai/gpt-5-mini
+      primary: openrouter/deepseek/deepseek-r1-0528
       fallback:
-      - openrouter/google/gemini-3-flash-preview
-      - openrouter/meta-llama/llama-3.3-70b-instruct:free
+      - openrouter/mistralai/mistral-medium-3.1
+      - openrouter/google/gemini-2.5-flash
+      - openrouter/baidu/ernie-5.0
+      - openrouter/minimax/minimax-m2.1
+    coder:
+      primary: openrouter/moonshotai/kimi-k2.5
+      fallback:
+      - openrouter/deepseek/deepseek-r1-0528
+      - openrouter/qwen/qwen-3
+      - openrouter/google/gemini-2.5-flash
+      - openrouter/z-ai/glm-4.7
+    tester:
+      primary: openrouter/deepseek/deepseek-r1-0528
+      fallback:
+      - openrouter/mistralai/mistral-medium-3.1
+      - openrouter/z-ai/glm-4.7
+      - openrouter/qwen/qwen-3
+      - openrouter/google/gemini-2.5-flash
+    designer:
+      primary: openrouter/google/gemini-2.5-flash
+      fallback:
+      - openrouter/mistralai/mistral-medium-3.1
+      - openrouter/deepseek/deepseek-r1-0528
+      - openrouter/qwen/qwen-3
+      - openrouter/baidu/ernie-5.0
     database_designer:
-      primary: openrouter/anthropic/claude-haiku-4.5
+      primary: openrouter/deepseek/deepseek-r1-0528
       fallback:
-      - openrouter/google/gemini-3-flash-preview
-    techstack_architect:
-      primary: openrouter/anthropic/claude-haiku-4.5
-      fallback:
-      - openrouter/google/gemini-3-flash-preview
+      - openrouter/z-ai/glm-4.7
+      - openrouter/qwen/qwen-3
+      - openrouter/mistralai/mistral-medium-3.1
+      - openrouter/google/gemini-2.5-flash
     security:
-      primary: openrouter/anthropic/claude-haiku-4.5
+      primary: openrouter/deepseek/deepseek-r1-0528
       fallback:
-      - openrouter/google/gemini-3-flash-preview
-      - openrouter/meta-llama/llama-3.3-70b-instruct:free
+      - openrouter/z-ai/glm-4.7
+      - openrouter/mistralai/mistral-medium-3.1
+      - openrouter/qwen/qwen-3
+      - openrouter/google/gemini-2.5-flash
+    reviewer:
+      primary: openrouter/deepseek/deepseek-r1-0528
+      fallback:
+      - openrouter/mistralai/mistral-medium-3.1
+      - openrouter/z-ai/glm-4.7
+      - openrouter/qwen/qwen-3
+      - openrouter/google/gemini-2.5-flash
+    techstack_architect:
+      primary: openrouter/deepseek/deepseek-r1-0528
+      fallback:
+      - openrouter/mistralai/mistral-medium-3.1
+      - openrouter/baidu/ernie-5.0
+      - openrouter/google/gemini-2.5-flash
+      - openrouter/qwen/qwen-3
+    documentation_manager:
+      primary: openrouter/deepseek/deepseek-r1-0528
+      fallback:
+      - openrouter/mistralai/mistral-medium-3.1
+      - openrouter/google/gemini-2.5-flash
+      - openrouter/qwen/qwen-3
+    test_generator:
+      primary: openrouter/deepseek/deepseek-r1-0528
+      fallback:
+      - openrouter/qwen/qwen-3
+      - openrouter/mistralai/mistral-medium-3.1
+      - openrouter/google/gemini-2.5-flash
+  premium:
+    meta_orchestrator:
+      primary: openrouter/google/gemini-3-pro
+      fallback:
+      - openrouter/anthropic/claude-opus-4.5-thinking
+      - openrouter/openai/gpt-5.1
+      - openrouter/x-ai/grok-4.1-thinking
+      - openrouter/meta-llama/llama-4-scout
+    orchestrator:
+      primary: openrouter/google/gemini-3-pro
+      fallback:
+      - openrouter/anthropic/claude-opus-4.5-thinking
+      - openrouter/openai/gpt-5.1
+      - openrouter/x-ai/grok-4.1-thinking
+      - openrouter/meta-llama/llama-4-scout
+    researcher:
+      primary: openrouter/google/gemini-3-pro
+      fallback:
+      - openrouter/x-ai/grok-4.1-thinking
+      - openrouter/anthropic/claude-opus-4.5-thinking
+      - openrouter/openai/gpt-5.1
+      - openrouter/meta-llama/llama-4-scout
+    coder:
+      primary: openrouter/anthropic/claude-opus-4.5-thinking
+      fallback:
+      - openrouter/openai/gpt-5.2-high
+      - openrouter/google/gemini-3-pro
+      - openrouter/minimax/minimax-m2.1
+      - openrouter/z-ai/glm-4.7
+    tester:
+      primary: openrouter/anthropic/claude-opus-4.5-thinking
+      fallback:
+      - openrouter/openai/gpt-5.1
+      - openrouter/google/gemini-3-pro
+      - openrouter/x-ai/grok-4.1-thinking
+      - openrouter/openai/gpt-5.2-high
+    designer:
+      primary: openrouter/google/gemini-3-pro
+      fallback:
+      - openrouter/anthropic/claude-opus-4.5
+      - openrouter/openai/gpt-5.1
+      - openrouter/minimax/minimax-m2.1
+      - openrouter/meta-llama/llama-4-scout
+    database_designer:
+      primary: openrouter/anthropic/claude-opus-4.5-thinking
+      fallback:
+      - openrouter/openai/gpt-5.1
+      - openrouter/google/gemini-3-pro
+      - openrouter/openai/gpt-5.2-high
+      - openrouter/minimax/minimax-m2.1
+    security:
+      primary: openrouter/anthropic/claude-opus-4.5-thinking
+      fallback:
+      - openrouter/openai/gpt-5.1
+      - openrouter/google/gemini-3-pro
+      - openrouter/x-ai/grok-4.1-thinking
+      - openrouter/openai/gpt-5.2-high
+    reviewer:
+      primary: openrouter/anthropic/claude-opus-4.5-thinking
+      fallback:
+      - openrouter/openai/gpt-5.1
+      - openrouter/google/gemini-3-pro
+      - openrouter/x-ai/grok-4.1-thinking
+      - openrouter/openai/gpt-5.2-high
+    techstack_architect:
+      primary: openrouter/x-ai/grok-4.1-thinking
+      fallback:
+      - openrouter/google/gemini-3-pro
+      - openrouter/anthropic/claude-opus-4.5-thinking
+      - openrouter/openai/gpt-5.1
+      - openrouter/meta-llama/llama-4-scout
+    documentation_manager:
+      primary: openrouter/anthropic/claude-opus-4.5-thinking
+      fallback:
+      - openrouter/google/gemini-3-pro
+      - openrouter/openai/gpt-5.1
+      - openrouter/x-ai/grok-4.1-thinking
+    test_generator:
+      primary: openrouter/anthropic/claude-opus-4.5-thinking
+      fallback:
+      - openrouter/google/gemini-3-pro
+      - openrouter/openai/gpt-5.1
+      - openrouter/x-ai/grok-4.1-thinking
 templates:
   cli:
     global:
@@ -152,27 +335,47 @@ templates:
     - Prüfe Trainings- und Testcode auf Reproduzierbarkeit.
     orchestrator:
     - Erstelle Dokumentation mit Trainingsparametern und Ergebnissen.
-
-# External Bureau - Externe Fachkraefte (CodeRabbit, EXA Search, etc.)
-# AENDERUNG 28.01.2026: External Bureau Konfiguration hinzugefuegt
 external_specialists:
   enabled: true
   timeout_seconds: 120
-
-  # CodeRabbit - KI-gestuetztes Code-Review
-  # Installation: npm install -g coderabbit
   coderabbit:
     enabled: true
-    mode: advisory           # "advisory" (Info-only) oder "blocking" (kann Review stoppen)
-    cli_path: coderabbit     # Pfad zur CLI
+    mode: advisory
+    cli_path: coderabbit
     timeout_seconds: 120
-    cooldown_seconds: 300    # Cooldown nach Rate-Limit
-
-  # EXA Search - KI-gestuetzte Websuche
-  # Benoetigt: EXA_API_KEY Umgebungsvariable
+    cooldown_seconds: 300
   exa_search:
     enabled: true
     api_key: ${EXA_API_KEY}
     timeout_seconds: 60
     max_results: 10
     cooldown_seconds: 60
+testing:
+  ui_test_routing:
+    pyqt_desktop: pytest_qt
+    pyside_desktop: pytest_qt
+    tkinter_desktop: pyautogui
+    electron_desktop: playwright
+    default_desktop: auto_detect
+  fallback_strategy:
+    pytest_qt: pyautogui
+    pyautogui: skip_with_warning
+  timeouts:
+    pytest_qt: 120
+    pyautogui: 60
+    playwright: 30
+
+# AENDERUNG 31.01.2026: Docker-Isolation fuer generierte Projekte
+docker:
+  enabled: false                    # Docker-Isolation aktivieren (false = Host-Ausfuehrung)
+  fallback_to_host: true           # Bei Docker-Fehler auf Host ausweichen
+  memory_limit: "512m"             # Memory-Limit pro Container
+  cpu_limit: 1                     # CPU-Limit pro Container
+  timeout_install: 300             # Timeout fuer Dependency-Installation (Sekunden)
+  timeout_test: 180                # Timeout fuer Tests (Sekunden)
+  timeout_run: 60                  # Timeout fuer App-Start (Sekunden)
+  cleanup_on_success: true         # Container nach Erfolg loeschen
+  images:
+    python: "python:3.11-slim"
+    nodejs: "node:20-alpine"
+    playwright: "mcr.microsoft.com/playwright:v1.40.0-jammy"

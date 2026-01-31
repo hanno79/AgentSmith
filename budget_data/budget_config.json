@@ -1,5 +1,5 @@
 {
-  "global_monthly_cap": 3000.0,
+  "global_monthly_cap": 1000.0,
   "global_daily_cap": 100.0,
   "auto_pause": true,
   "alert_thresholds": [

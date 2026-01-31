@@ -25,6 +25,8 @@ const colors = {
   orange: 'border-orange-500/40 text-orange-400 bg-orange-500/10',
   cyan: 'border-cyan-500/40 text-cyan-400 bg-cyan-500/10',
   indigo: 'border-indigo-500/40 text-indigo-400 bg-indigo-500/10',
+  // ÄNDERUNG 30.01.2026: Platinum/Weiß für Documentation Manager
+  platinum: 'border-white/30 text-white bg-white/10',
 };
 
 // Glow-Effekte für aktive Agenten
@@ -38,6 +40,8 @@ const glowStyles = {
   orange: '0 0 30px rgba(249, 115, 22, 0.8), 0 0 15px rgba(249, 115, 22, 0.5), 0 0 5px rgba(255, 255, 255, 0.3)',
   cyan: '0 0 30px rgba(6, 182, 212, 0.8), 0 0 15px rgba(6, 182, 212, 0.5), 0 0 5px rgba(255, 255, 255, 0.3)',
   indigo: '0 0 30px rgba(79, 70, 229, 0.8), 0 0 15px rgba(79, 70, 229, 0.5), 0 0 5px rgba(255, 255, 255, 0.3)',
+  // ÄNDERUNG 30.01.2026: Platinum/Weiß für Documentation Manager
+  platinum: '0 0 30px rgba(255, 255, 255, 0.8), 0 0 15px rgba(255, 255, 255, 0.5), 0 0 5px rgba(255, 255, 255, 0.3)',
 };
 
 // Border-Farben für Animation
@@ -51,6 +55,8 @@ const borderColors = {
   orange: '#f97316',
   cyan: '#06b6d4',
   indigo: '#4f46e5',
+  // ÄNDERUNG 30.01.2026: Platinum/Weiß für Documentation Manager
+  platinum: '#ffffff',
 };
 
 // ÄNDERUNG 25.01.2026: Aktive Status-Werte (Agent arbeitet gerade)

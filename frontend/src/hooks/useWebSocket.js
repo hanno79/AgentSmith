@@ -1,7 +1,7 @@
 /**
  * Author: rahn
- * Datum: 28.01.2026
- * Version: 2.1
+ * Datum: 30.01.2026
+ * Version: 2.2
  * Beschreibung: Custom Hook für WebSocket-Verbindung zum Backend.
  *               Verarbeitet Echtzeit-Nachrichten von den Agenten.
  *               ÄNDERUNG 24.01.2026: DBDesignerOutput Event Handler hinzugefügt.
@@ -12,6 +12,7 @@
  *               ÄNDERUNG 28.01.2026: Reconnection-Logik mit Exponential Backoff.
  *               ÄNDERUNG 28.01.2026: Heartbeat-Mechanismus fuer Verbindungsstabilitaet.
  *               ÄNDERUNG 29.01.2026: Host-Fallback fuer localhost -> 127.0.0.1.
+ *               ÄNDERUNG 30.01.2026: HELP_NEEDED Event Handler gemäß Kommunikationsprotokoll.
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react';
@@ -33,6 +34,8 @@ const useWebSocket = (setLogs, activeAgents, setActiveAgents, setAgentData, setS
   const reconnectTimeout = useRef(null);
   const heartbeatTimer = useRef(null);  // ÄNDERUNG 28.01.2026: Heartbeat-Timer
   const [isConnected, setIsConnected] = useState(false);
+  // ÄNDERUNG 30.01.2026: State fuer HELP_NEEDED Events
+  const [helpRequests, setHelpRequests] = useState([]);
   // ÄNDERUNG 28.01.2026: Ref für activeAgents um zirkuläre Dependencies zu vermeiden
   const activeAgentsRef = useRef(activeAgents);
   const hasConnectedOnce = useRef(false);
@@ -363,6 +366,66 @@ const useWebSocket = (setLogs, activeAgents, setActiveAgents, setAgentData, setS
         }
       }
 
+      // ÄNDERUNG 30.01.2026: HELP_NEEDED Event Handler gemäß Kommunikationsprotokoll
+      if (data.event === 'HELP_NEEDED') {
+        try {
+          const payload = JSON.parse(data.message);
+          const agentKey = data.agent?.toLowerCase().replace(/[\s-]/g, '');
+
+          // Agent-Status auf "Blocked" setzen
+          if (agentKey) {
+            setActiveAgents(prev => ({
+              ...prev,
+              [agentKey]: {
+                ...prev[agentKey],
+                status: 'Blocked',
+                helpNeeded: {
+                  reason: payload.reason,
+                  actionRequired: payload.action_required,
+                  context: payload.context,
+                  timestamp: new Date().toISOString()
+                }
+              }
+            }));
+
+            // AgentData aktualisieren mit HELP_NEEDED Info
+            setAgentData(prev => ({
+              ...prev,
+              [agentKey]: {
+                ...prev[agentKey],
+                blocked: true,
+                blockedReason: payload.reason,
+                blockedAction: payload.action_required,
+                blockedContext: payload.context
+              }
+            }));
+          }
+
+          // Zu globaler Help-Request Liste hinzufuegen
+          setHelpRequests(prev => [...prev, {
+            id: Date.now(),
+            agent: data.agent,
+            reason: payload.reason,
+            actionRequired: payload.action_required,
+            context: payload.context || {},
+            timestamp: new Date().toISOString()
+          }]);
+
+          // Browser-Notification (falls erlaubt)
+          if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+            new Notification(`${data.agent} benötigt Hilfe`, {
+              body: payload.reason,
+              icon: '/favicon.ico',
+              tag: 'help-needed-' + data.agent
+            });
+          }
+
+          console.warn('[HELP_NEEDED]', data.agent, payload.reason);
+        } catch (e) {
+          console.warn('HELP_NEEDED Event parsen fehlgeschlagen:', e);
+        }
+      }
+
       // DesignerOutput Event für Designer Office
       if (data.event === 'DesignerOutput' && data.agent === 'Designer') {
         try {
@@ -597,7 +660,25 @@ const useWebSocket = (setLogs, activeAgents, setActiveAgents, setAgentData, setS
     };
   }, [connect]);
 
-  return { ws, isConnected, reconnectAttempts: reconnectAttempts.current };
+  // ÄNDERUNG 30.01.2026: Funktion zum Entfernen eines HELP_NEEDED Requests
+  const dismissHelpRequest = useCallback((requestId) => {
+    setHelpRequests(prev => prev.filter(r => r.id !== requestId));
+  }, []);
+
+  // ÄNDERUNG 30.01.2026: Alle Help-Requests leeren
+  const clearHelpRequests = useCallback(() => {
+    setHelpRequests([]);
+  }, []);
+
+  return {
+    ws,
+    isConnected,
+    reconnectAttempts: reconnectAttempts.current,
+    // ÄNDERUNG 30.01.2026: HELP_NEEDED Support
+    helpRequests,
+    dismissHelpRequest,
+    clearHelpRequests
+  };
 };
 
 export default useWebSocket;

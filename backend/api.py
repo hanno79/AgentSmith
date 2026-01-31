@@ -1,12 +1,35 @@
 # -*- coding: utf-8 -*-
 """
 Author: rahn
-Datum: 29.01.2026
-Version: 1.4
+Datum: 31.01.2026
+Version: 1.5
 Beschreibung: FastAPI Backend - REST API und WebSocket-Endpunkte für das Multi-Agent System.
               ÄNDERUNG 29.01.2026: API in Router-Module aufgeteilt.
+              ÄNDERUNG 31.01.2026: Dependency-Check beim Server-Start.
 """
 # ÄNDERUNG 29.01.2026: Router-Registrierung ausgelagert und File-Size reduziert
+# ÄNDERUNG [31.01.2026]: Dependency-Check ohne Auto-Install in Produktion
+
+import os
+import logging
+
+# Dependency-Check VOR allen anderen Imports (ausser logging)
+# Auto-Install nur in DEV-Umgebungen aktivieren
+def _is_dev_env() -> bool:
+    env_value = (os.environ.get("ENV") or os.environ.get("NODE_ENV") or os.environ.get("APP_ENV") or "").lower()
+    debug_value = os.environ.get("DEBUG", "").lower()
+    return env_value in {"dev", "development", "local", "test"} or debug_value in {"1", "true", "yes"}
+
+try:
+    from .dependency_checker import check_and_install_dependencies
+    _auto_install = _is_dev_env()
+    _dep_result = check_and_install_dependencies(auto_install=_auto_install)
+    if _dep_result["failed"]:
+        logging.warning(f"Einige Dependencies konnten nicht installiert werden: {_dep_result['failed']}")
+    if not _auto_install and _dep_result.get("missing"):
+        logging.warning(f"Fehlende Dependencies (Auto-Install deaktiviert): {_dep_result['missing']}")
+except Exception as e:
+    logging.warning(f"Dependency-Check fehlgeschlagen: {e}")
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware

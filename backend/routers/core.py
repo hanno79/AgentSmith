@@ -152,7 +152,9 @@ def get_agents():
         "researcher": {"name": "Researcher", "description": "Web-Recherche für technische Details"},
         "database_designer": {"name": "Database Designer", "description": "Erstellt normalisierte Datenbank-Schemas"},
         "techstack_architect": {"name": "TechStack Architect", "description": "Entscheidet über den optimalen Tech-Stack"},
-        "security": {"name": "Security Agent", "description": "Prüft Code auf Sicherheitslücken (OWASP Top 10)"}
+        "security": {"name": "Security Agent", "description": "Prüft Code auf Sicherheitslücken (OWASP Top 10)"},
+        # ÄNDERUNG 30.01.2026: Documentation Manager (5. Core Agent)
+        "documentation_manager": {"name": "Documentation Manager", "description": "Erstellt README und CHANGELOG Dokumentation"}
     }
 
     for role, model_config in models.items():

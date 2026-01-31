@@ -1,11 +1,21 @@
 # -*- coding: utf-8 -*-
 """
 Author: rahn
-Datum: 28.01.2026
-Version: 1.4
-Beschreibung: Tester Agent - Führt UI-Tests mit Playwright durch und erkennt visuelle Unterschiede.
+Datum: 31.01.2026
+Version: 1.6
+Beschreibung: Tester Agent - Führt UI-Tests mit Playwright (Web) oder PyAutoGUI/pytest-qt (Desktop) durch.
+              ÄNDERUNG 31.01.2026: pytest-qt Routing für PyQt/PySide Apps hinzugefügt.
+              ÄNDERUNG 31.01.2026: Intelligentes Test-Routing basierend auf Framework-Erkennung.
+              ÄNDERUNG 31.01.2026: Display-Check für PyAutoGUI.
+              ÄNDERUNG 29.01.2026: Desktop-App Testing mit PyAutoGUI hinzugefügt.
+              ÄNDERUNG 29.01.2026: Test-Routing basierend auf app_type und test_strategy.
               ÄNDERUNG 28.01.2026: Content-Validierung gegen leere Seiten und Tech-Stack-Checks.
               ÄNDERUNG 28.01.2026: Router-Parameter und project_rules Integration (Phase 0.12).
+
+# ÄNDERUNG 29.01.2026: Desktop-App Testing mit PyAutoGUI
+# - test_desktop_app() Funktion für Tkinter, PyQt5, etc.
+# - Test-Routing basierend auf app_type (webapp/desktop/cli)
+# - Screenshot-Capture für Desktop-GUIs
 
 # ÄNDERUNG 24.01.2026: Robustere Playwright-Implementierung
 # - Retry-Logik mit Exponential Backoff hinzugefügt
@@ -27,8 +37,56 @@ from PIL import Image, ImageChops
 import os
 import time
 import logging
+import subprocess
 from crewai import Agent
 from agents.agent_utils import combine_project_rules
+
+# ÄNDERUNG 31.01.2026: pytest-qt für PyQt/PySide Tests
+try:
+    from agents.pytest_qt_tester import run_pytest_qt_tests, detect_qt_framework
+    PYTEST_QT_TESTER_AVAILABLE = True
+except ImportError:
+    PYTEST_QT_TESTER_AVAILABLE = False
+    logging.debug("pytest_qt_tester nicht verfügbar")
+
+
+# ÄNDERUNG 31.01.2026: Display-Check vor PyAutoGUI-Import
+# ÄNDERUNG [31.01.2026]: macOS als GUI-Plattform behandeln
+def _check_display_available() -> bool:
+    """
+    Prüft ob ein Display für PyAutoGUI verfügbar ist.
+    Windows: Immer True
+    macOS: Immer True
+    Linux: Prüft DISPLAY-Variable
+    """
+    import platform
+    if platform.system() == "Windows":
+        return True  # Windows hat immer ein Display
+    if platform.system() == "Darwin":
+        return True  # macOS hat ein Display
+    # Linux/Mac: Prüfe DISPLAY
+    return bool(os.environ.get("DISPLAY"))
+
+
+# ÄNDERUNG 31.01.2026: PyAutoGUI mit Display-Check
+PYAUTOGUI_AVAILABLE = False
+PYAUTOGUI_ERROR = None
+
+try:
+    if _check_display_available():
+        import pyautogui
+        # Test-Aufruf um sicherzustellen dass es funktioniert
+        _ = pyautogui.size()
+        PYAUTOGUI_AVAILABLE = True
+    else:
+        PYAUTOGUI_ERROR = "Kein Display verfügbar (DISPLAY nicht gesetzt)"
+except ImportError as e:
+    PYAUTOGUI_ERROR = f"PyAutoGUI nicht installiert: {e}"
+except Exception as e:
+    PYAUTOGUI_ERROR = f"PyAutoGUI nicht nutzbar: {e}"
+
+if not PYAUTOGUI_AVAILABLE and PYAUTOGUI_ERROR:
+    logging.warning(f"pyautogui nicht verfügbar - {PYAUTOGUI_ERROR}")
 
 # Server-Runner Import für automatisches Server-Management
 try:
@@ -296,20 +354,379 @@ def summarize_ui_result(ui_result: UITestResult) -> str:
     return summary
 
 
+# ÄNDERUNG 31.01.2026: Intelligentes UI-Test-Routing
+def _get_ui_test_strategy(project_type: str, tech_blueprint: Dict[str, Any]) -> str:
+    """
+    Bestimmt die UI-Test-Strategie basierend auf Projekt-Typ und Blueprint.
+
+    ÄNDERUNG 31.01.2026: Framework-Erkennung hat VORRANG vor expliziter Strategy,
+    weil pytest-qt objektiv besser für PyQt/PySide ist (headless, objektbasiert).
+
+    Args:
+        project_type: Typ des Projekts (z.B. "pyqt_desktop", "tkinter_desktop")
+        tech_blueprint: Vollständiger Blueprint mit Framework-Info
+
+    Returns:
+        "pytest_qt" | "pyautogui" | "playwright" | "cli_test" | "none"
+    """
+    # ÄNDERUNG 31.01.2026: Framework-Erkennung ZUERST (hat Vorrang!)
+    # PyQt/PySide → pytest-qt (besser als pyautogui für Qt-Apps)
+    framework = tech_blueprint.get("framework", "").lower()
+    dependencies = tech_blueprint.get("dependencies", [])
+    deps_lower = [d.lower() for d in dependencies] if dependencies else []
+
+    # Prüfe Framework, Dependencies und project_type auf Qt
+    is_qt_app = (
+        any(fw in framework for fw in ["pyqt", "pyside", "qt"]) or
+        any(fw in project_type.lower() for fw in ["pyqt", "pyside"]) or
+        any(dep in deps_lower for dep in ["pyqt5", "pyqt6", "pyside2", "pyside6"])
+    )
+
+    if is_qt_app:
+        logger.info("Qt-Framework erkannt - verwende pytest-qt (Vorrang vor Blueprint-Strategy)")
+        return "pytest_qt"
+
+    # Tkinter → PyAutoGUI (kein besseres Alternative)
+    if "tkinter" in project_type.lower() or "tkinter" in framework:
+        return "pyautogui"
+
+    # Explizite test_strategy aus Blueprint (nur wenn kein Qt erkannt)
+    explicit_strategy = tech_blueprint.get("test_strategy", "").lower()
+    if explicit_strategy in ["pytest_qt", "pyautogui", "playwright", "cli_test", "pytest_only"]:
+        return explicit_strategy
+
+    # app_type basiertes Routing
+    app_type = tech_blueprint.get("app_type", "").lower()
+    if app_type == "desktop":
+        # Desktop ohne spezifisches Framework → Auto-Detection
+        return "auto_detect"
+    elif app_type == "cli":
+        return "cli_test"
+    elif app_type == "api":
+        return "none"
+    elif app_type == "webapp":
+        return "playwright"
+
+    # Fallback: project_type analysieren
+    if any(dt in project_type.lower() for dt in ["desktop", "gui"]):
+        return "auto_detect"
+    elif any(ct in project_type.lower() for ct in ["cli", "script", "console"]):
+        return "cli_test"
+
+    # Default: webapp → playwright
+    return "playwright"
+
+
+def _detect_qt_framework_in_project(project_path: str) -> bool:
+    """
+    Erkennt ob das Projekt PyQt/PySide verwendet.
+
+    Analysiert main.py und requirements.txt auf Qt-Imports.
+    """
+    indicators = ["PyQt5", "PyQt6", "PySide2", "PySide6", "from PyQt", "from PySide"]
+
+    # Prüfe main.py
+    main_file = os.path.join(project_path, "main.py")
+    if os.path.exists(main_file):
+        try:
+            with open(main_file, "r", encoding="utf-8") as f:
+                content = f.read()
+                if any(ind in content for ind in indicators):
+                    return True
+        except Exception:
+            pass
+
+    # Prüfe requirements.txt
+    req_file = os.path.join(project_path, "requirements.txt")
+    if os.path.exists(req_file):
+        try:
+            with open(req_file, "r", encoding="utf-8") as f:
+                content = f.read().lower()
+                if any(ind.lower() in content for ind in ["pyqt5", "pyqt6", "pyside2", "pyside6"]):
+                    return True
+        except Exception:
+            pass
+
+    # Prüfe alle .py Dateien im Hauptverzeichnis
+    try:
+        for filename in os.listdir(project_path):
+            if filename.endswith(".py"):
+                filepath = os.path.join(project_path, filename)
+                try:
+                    with open(filepath, "r", encoding="utf-8") as f:
+                        content = f.read()
+                        if any(ind in content for ind in indicators):
+                            return True
+                except Exception:
+                    continue
+    except Exception:
+        pass
+
+    return False
+
+
+# ÄNDERUNG 29.01.2026: Desktop-App Testing mit PyAutoGUI
+def test_desktop_app(project_path: str, tech_blueprint: Dict[str, Any],
+                     config: Optional[Dict[str, Any]] = None) -> UITestResult:
+    """
+    Testet Desktop-Anwendungen (Tkinter, PyQt5, etc.) mit PyAutoGUI.
+
+    Args:
+        project_path: Pfad zum Projektverzeichnis
+        tech_blueprint: Blueprint mit run_command und anderen Infos
+        config: Optionale Konfiguration
+
+    Returns:
+        UITestResult Dictionary mit status, issues und screenshot
+    """
+    # ÄNDERUNG 31.01.2026: SKIP statt ERROR wenn PyAutoGUI fehlt
+    # Damit blockiert fehlende Dependency nicht den gesamten Run
+    if not PYAUTOGUI_AVAILABLE:
+        logger.warning("PyAutoGUI nicht verfügbar - Desktop-UI-Tests werden übersprungen")
+        return {
+            "status": "SKIP",
+            "issues": ["PyAutoGUI nicht verfügbar - Desktop-UI-Tests übersprungen. Unit-Tests laufen weiterhin."],
+            "screenshot": None
+        }
+
+    project_type = tech_blueprint.get("project_type", "desktop")
+    run_command = tech_blueprint.get("run_command", "python app.py")
+    # ÄNDERUNG 31.01.2026: None-Safe Default (Blueprint kann null enthalten)
+    startup_time_ms = tech_blueprint.get("server_startup_time_ms")
+    if startup_time_ms is None:
+        startup_time_ms = 3000
+
+    logger.info(f"Starte Desktop-App Test für {project_type}")
+
+    # Screenshots-Verzeichnis erstellen
+    screenshots_dir = Path(project_path) / "screenshots"
+    screenshots_dir.mkdir(exist_ok=True)
+
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    screenshot_path = screenshots_dir / f"desktop_test_{timestamp}.png"
+
+    result: UITestResult = {
+        "status": "OK",
+        "issues": [],
+        "screenshot": str(screenshot_path)
+    }
+
+    proc = None
+    try:
+        # 1. App starten
+        logger.info(f"Starte Desktop-App: {run_command}")
+
+        # Kommando vorbereiten (Windows vs Unix)
+        if os.name == 'nt':  # Windows
+            # Prüfe ob run.bat existiert
+            run_bat = Path(project_path) / "run.bat"
+            if run_bat.exists():
+                proc = subprocess.Popen(
+                    str(run_bat),
+                    cwd=project_path,
+                    shell=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
+                )
+            else:
+                proc = subprocess.Popen(
+                    run_command,
+                    cwd=project_path,
+                    shell=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
+                )
+        else:  # Linux/Mac
+            run_sh = Path(project_path) / "run.sh"
+            if run_sh.exists():
+                proc = subprocess.Popen(
+                    ["bash", str(run_sh)],
+                    cwd=project_path,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    start_new_session=True
+                )
+            else:
+                proc = subprocess.Popen(
+                    run_command,
+                    cwd=project_path,
+                    shell=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    start_new_session=True
+                )
+
+        # 2. Warten bis GUI geladen ist
+        wait_time = startup_time_ms / 1000
+        logger.info(f"Warte {wait_time}s auf GUI-Start...")
+        time.sleep(wait_time)
+
+        # 3. Prüfen ob App noch läuft
+        if proc.poll() is not None:
+            # App ist abgestürzt
+            stdout, stderr = proc.communicate(timeout=5)
+            error_msg = stderr.decode('utf-8', errors='replace')[:500] if stderr else "Keine Fehlermeldung"
+            result["issues"].append(f"Desktop-App ist abgestürzt: {error_msg}")
+            result["status"] = "FAIL"
+            logger.error(f"Desktop-App abgestürzt: {error_msg}")
+            return result
+
+        # 4. Screenshot mit PyAutoGUI machen
+        logger.info("Erstelle Screenshot mit PyAutoGUI...")
+        try:
+            screenshot = pyautogui.screenshot()
+            screenshot.save(str(screenshot_path))
+            logger.info(f"Screenshot gespeichert: {screenshot_path}")
+        except Exception as screenshot_err:
+            result["issues"].append(f"Screenshot fehlgeschlagen: {screenshot_err}")
+            result["status"] = "FAIL"
+            logger.error(f"Screenshot-Fehler: {screenshot_err}")
+
+        # 5. Basis-Validierung des Screenshots
+        if screenshot_path.exists():
+            # Prüfe ob Screenshot nicht komplett schwarz/weiß ist
+            try:
+                with Image.open(screenshot_path) as img:
+                    # Berechne Durchschnittsfarbe
+                    img_small = img.resize((100, 100))
+                    pixels = list(img_small.getdata())
+                    avg_color = tuple(sum(c[i] for c in pixels) // len(pixels) for i in range(3))
+
+                    # Warnung wenn fast komplett schwarz oder weiß
+                    if all(c < 10 for c in avg_color):
+                        result["issues"].append("Screenshot ist fast komplett schwarz - möglicherweise kein Fenster sichtbar")
+                    elif all(c > 245 for c in avg_color):
+                        result["issues"].append("Screenshot ist fast komplett weiß - möglicherweise leeres Fenster")
+            except Exception as img_err:
+                logger.warning(f"Screenshot-Analyse fehlgeschlagen: {img_err}")
+
+        # 6. Baseline-Vergleich (falls vorhanden)
+        baseline_path = screenshots_dir / "baseline_desktop.png"
+        if baseline_path.exists() and screenshot_path.exists():
+            diff_img = compare_images(baseline_path, screenshot_path)
+            if diff_img:
+                diff_path = screenshots_dir / f"diff_desktop_{timestamp}.png"
+                diff_img.save(str(diff_path))
+                result["issues"].append("Visuelle Änderung zur Baseline erkannt")
+                if result["status"] == "OK":
+                    result["status"] = "REVIEW"
+        elif screenshot_path.exists() and not baseline_path.exists():
+            # Neue Baseline speichern
+            import shutil
+            shutil.copy(str(screenshot_path), str(baseline_path))
+            result["issues"].append("Neue Desktop-Baseline gespeichert")
+            if result["status"] == "OK":
+                result["status"] = "BASELINE"
+
+        # Finale Status-Bestimmung
+        if not result["issues"]:
+            result["issues"].append("Desktop-App startet und zeigt GUI")
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Desktop-Test Fehler: {e}")
+        return {
+            "status": "ERROR",
+            "issues": [f"Desktop-Test fehlgeschlagen: {str(e)[:200]}"],
+            "screenshot": str(screenshot_path) if screenshot_path.exists() else None
+        }
+
+    finally:
+        # 7. App sauber beenden
+        if proc and proc.poll() is None:
+            logger.info("Beende Desktop-App...")
+            try:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait(timeout=2)
+            except Exception as term_err:
+                logger.warning(f"Fehler beim Beenden der App: {term_err}")
+
+
+# ÄNDERUNG 29.01.2026: CLI-App Testing
+def test_cli_app(project_path: str, tech_blueprint: Dict[str, Any],
+                 config: Optional[Dict[str, Any]] = None) -> UITestResult:
+    """
+    Testet CLI-Anwendungen durch Ausführen und Prüfen des Outputs.
+
+    Args:
+        project_path: Pfad zum Projektverzeichnis
+        tech_blueprint: Blueprint mit run_command
+        config: Optionale Konfiguration
+
+    Returns:
+        UITestResult Dictionary
+    """
+    run_command = tech_blueprint.get("run_command", "python main.py --help")
+    logger.info(f"Starte CLI-Test: {run_command}")
+
+    result: UITestResult = {
+        "status": "OK",
+        "issues": [],
+        "screenshot": None  # CLI hat keine Screenshots
+    }
+
+    try:
+        # CLI ausführen mit Timeout
+        proc = subprocess.run(
+            run_command,
+            cwd=project_path,
+            shell=True,
+            capture_output=True,
+            timeout=30,
+            text=True
+        )
+
+        # Prüfe Exit-Code
+        if proc.returncode != 0:
+            result["issues"].append(f"CLI beendet mit Exit-Code {proc.returncode}")
+            if proc.stderr:
+                result["issues"].append(f"Stderr: {proc.stderr[:300]}")
+            result["status"] = "FAIL"
+        else:
+            result["issues"].append("CLI läuft erfolgreich")
+            if proc.stdout:
+                # Speichere Output als "Screenshot"-Ersatz
+                output_file = Path(project_path) / "cli_output.txt"
+                with open(output_file, "w", encoding="utf-8") as f:
+                    f.write(proc.stdout)
+                result["screenshot"] = str(output_file)
+
+    except subprocess.TimeoutExpired:
+        result["status"] = "FAIL"
+        result["issues"].append("CLI-Timeout nach 30 Sekunden")
+    except Exception as e:
+        result["status"] = "ERROR"
+        result["issues"].append(f"CLI-Test Fehler: {str(e)[:200]}")
+
+    return result
+
+
 def test_project(project_path: str, tech_blueprint: Dict[str, Any],
                  config: Optional[Dict[str, Any]] = None) -> UITestResult:
     """
-    ÄNDERUNG 24.01.2026: Intelligente Test-Funktion basierend auf tech_blueprint.
+    ÄNDERUNG 31.01.2026: Intelligente Test-Funktion mit Framework-basiertem Routing.
 
-    Entscheidet automatisch:
-    - Ob ein Server gestartet werden muss (via run.bat)
-    - Welche URL/Datei getestet werden soll
-    - Wie lange auf Server-Start gewartet wird
+    Entscheidet automatisch basierend auf Framework-Erkennung:
+    - PyQt/PySide: pytest-qt (headless, objektbasiert)
+    - Tkinter: PyAutoGUI (screenshot-basiert)
+    - Webapp: Playwright Browser-Tests
+    - CLI: Kommandozeilen-Output Tests
+    - API: Nur Unit-Tests (kein UI-Test)
 
     Args:
         project_path: Pfad zum Projektverzeichnis
         tech_blueprint: Blueprint vom TechStack-Architect mit:
                        - project_type
+                       - app_type (webapp/desktop/cli/api)
+                       - test_strategy (playwright/pyautogui/pytest_qt/cli_test/pytest_only)
+                       - framework (pyqt5/tkinter/etc.)
                        - requires_server
                        - server_port
                        - run_command
@@ -320,12 +737,65 @@ def test_project(project_path: str, tech_blueprint: Dict[str, Any],
         UITestResult Dictionary
 
     Example:
-        >>> blueprint = {"project_type": "flask_app", "server_port": 5000, "requires_server": True}
+        >>> blueprint = {"project_type": "pyqt_desktop", "app_type": "desktop", "framework": "pyqt5"}
         >>> result = test_project("/path/to/project", blueprint)
-        # Startet Server, wartet auf Port 5000, testet http://localhost:5000
+        # Verwendet pytest-qt für headless Qt-Tests
     """
     project_type = tech_blueprint.get("project_type", "unknown")
-    logger.info(f"Starte Tests für Projekt-Typ: {project_type}")
+
+    # ÄNDERUNG 31.01.2026: Bestimme Test-Strategie über neues Routing
+    strategy = _get_ui_test_strategy(project_type, tech_blueprint)
+
+    # Auto-Detection wenn nötig
+    if strategy == "auto_detect":
+        if PYTEST_QT_TESTER_AVAILABLE and _detect_qt_framework_in_project(project_path):
+            strategy = "pytest_qt"
+            logger.info("Qt-Framework erkannt - verwende pytest-qt")
+        else:
+            strategy = "pyautogui"
+            logger.info("Kein Qt-Framework erkannt - verwende PyAutoGUI")
+
+    logger.info(f"UI-Test-Strategie: {strategy} für {project_type}")
+
+    # ÄNDERUNG 31.01.2026: pytest-qt für PyQt/PySide Apps
+    if strategy == "pytest_qt":
+        if PYTEST_QT_TESTER_AVAILABLE:
+            logger.info("Verwende pytest-qt Tests (headless)")
+            # ÄNDERUNG [31.01.2026]: pytest-qt Ergebnis auf UITestResult normalisieren
+            qt_result = run_pytest_qt_tests(project_path)
+            issues = qt_result.get("issues", [])
+            if not isinstance(issues, list):
+                issues = [str(issues)]
+            return {
+                "status": qt_result.get("status") or "ERROR",
+                "issues": issues,
+                "screenshot": qt_result.get("screenshot")
+            }
+        else:
+            logger.warning("pytest-qt nicht verfügbar, Fallback auf PyAutoGUI")
+            strategy = "pyautogui"
+
+    # Desktop-Apps mit PyAutoGUI testen
+    if strategy == "pyautogui":
+        logger.info("Verwende Desktop-Test (PyAutoGUI)")
+        return test_desktop_app(project_path, tech_blueprint, config)
+
+    # CLI-Apps durch Ausführen testen
+    if strategy == "cli_test":
+        logger.info("Verwende CLI-Test")
+        return test_cli_app(project_path, tech_blueprint, config)
+
+    # API-only oder pytest_only: Keine UI-Tests (nur Unit-Tests relevant)
+    if strategy == "none" or strategy == "pytest_only":
+        logger.info("Keine UI-Tests (API oder pytest_only)")
+        return {
+            "status": "OK",
+            "issues": ["UI-Tests übersprungen (app_type: api oder test_strategy: pytest_only)"],
+            "screenshot": None
+        }
+
+    # Standard: Webapp-Tests mit Playwright
+    logger.info("Verwende Webapp-Test (Playwright)")
 
     # Prüfe ob Server-Tests möglich sind
     if not SERVER_RUNNER_AVAILABLE:
@@ -370,7 +840,9 @@ def _test_with_server(project_path: str, tech_blueprint: Dict[str, Any],
     Startet Server via run.bat, wartet auf Port, führt Tests durch,
     und beendet Server sauber.
     """
-    startup_timeout = tech_blueprint.get("server_startup_time_ms", 30000) / 1000
+    # ÄNDERUNG 31.01.2026: None-Safe Default
+    startup_timeout_ms = tech_blueprint.get("server_startup_time_ms")
+    startup_timeout = (startup_timeout_ms if startup_timeout_ms is not None else 30000) / 1000
 
     with managed_server(project_path, tech_blueprint, timeout=int(startup_timeout)) as server:
         if server is None:

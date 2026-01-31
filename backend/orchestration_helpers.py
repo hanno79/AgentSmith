@@ -179,6 +179,65 @@ def is_model_unavailable_error(error: Exception) -> bool:
     return any(pattern in error_str for pattern in unavailable_patterns)
 
 
+# AENDERUNG 31.01.2026: Pruefe ob Fehler permanent ist (z.B. "free period ended")
+def is_permanently_unavailable_error(error: Exception) -> bool:
+    """
+    Prueft ob ein Fehler bedeutet, dass das Modell PERMANENT nicht verfuegbar ist.
+    Z.B. wenn ein Free-Tier abgelaufen ist.
+
+    Args:
+        error: Die aufgetretene Exception
+
+    Returns:
+        True wenn das Modell dauerhaft nicht verfuegbar ist
+    """
+    error_str = str(error).lower()
+    permanent_patterns = [
+        'free period ended',
+        'free tier ended',
+        'subscription required',
+        'model has been deprecated',
+        'model is no longer available',
+        'model discontinued',
+        'please migrate to',
+        'model removed'
+    ]
+    return any(pattern in error_str for pattern in permanent_patterns)
+
+
+# AENDERUNG 31.01.2026: Zentrale Fehlerbehandlung fuer Modell-Fehler
+def handle_model_error(model_router, model: str, error: Exception) -> str:
+    """
+    Behandelt einen Modell-Fehler und markiert das Modell entsprechend.
+
+    - Bei permanenten Fehlern (z.B. "free period ended"): mark_permanently_unavailable
+    - Bei temporaeren Fehlern (Rate-Limit, 404 temporaer): mark_rate_limited_sync
+
+    Args:
+        model_router: Der ModelRouter
+        model: Die Modell-ID
+        error: Der aufgetretene Fehler
+
+    Returns:
+        Fehlertyp-String ("permanent", "rate_limit", "unavailable")
+    """
+    if is_permanently_unavailable_error(error):
+        # Permanenter Fehler - Modell fuer diesen Run deaktivieren
+        reason = str(error)[:200]
+        model_router.mark_permanently_unavailable(model, reason)
+        return "permanent"
+    elif is_rate_limit_error(error):
+        # Temporaerer Rate-Limit
+        model_router.mark_rate_limited_sync(model)
+        return "rate_limit"
+    elif is_model_unavailable_error(error):
+        # 404 aber nicht permanent erkannt - als temporaer behandeln
+        model_router.mark_rate_limited_sync(model)
+        return "unavailable"
+    else:
+        return "unknown"
+
+
 # ÄNDERUNG 30.01.2026: Leere LLM-Antworten erkennen für Retry-Logik
 def is_empty_response_error(error: Exception) -> bool:
     """

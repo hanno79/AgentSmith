@@ -8,6 +8,8 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
+// ÄNDERUNG 29.01.2026: Import SortableModelList für Drag & Drop Prioritätslisten
+import SortableModelList from './components/SortableModelList';
 import {
   Terminal,
   Cpu,
@@ -48,6 +50,8 @@ const MainframeHub = ({
   const [serverTime, setServerTime] = useState(new Date());
   const [maxRetries, setMaxRetries] = useState(5);
   const [researchTimeout, setResearchTimeout] = useState(5);
+  // ÄNDERUNG 30.01.2026: Globaler Agent-Timeout in Sekunden
+  const [agentTimeout, setAgentTimeout] = useState(300);
   // ÄNDERUNG 25.01.2026: Lokaler State für Modellwechsel
   const [maxModelAttempts, setMaxModelAttempts] = useState(3);
   // ÄNDERUNG 25.01.2026: Filter für Modell-Listen
@@ -56,6 +60,9 @@ const MainframeHub = ({
   // ÄNDERUNG 25.01.2026: Separate Filter für Modal
   const [modalModelFilter, setModalModelFilter] = useState('');
   const [modalProviderFilter, setModalProviderFilter] = useState('all');
+  // ÄNDERUNG 29.01.2026: State für sortierbare Modell-Prioritätsliste
+  const [agentModelPriority, setAgentModelPriority] = useState([]);
+  const [savingPriority, setSavingPriority] = useState(false);
 
   // Verwende Props wenn vorhanden, sonst lokalen State (für Abwärtskompatibilität)
   const effectiveMaxRetries = propMaxRetries !== undefined ? propMaxRetries : maxRetries;
@@ -93,6 +100,8 @@ const MainframeHub = ({
       setRouterStatus(routerRes.data);
       setMaxRetries(configRes.data.max_retries || 5);
       setResearchTimeout(configRes.data.research_timeout_minutes || 5);
+      // ÄNDERUNG 30.01.2026: Globaler Agent-Timeout
+      setAgentTimeout(configRes.data.agent_timeout_seconds || 300);
     } catch (err) {
       console.error('Failed to fetch data:', err);
       setError(err);
@@ -101,16 +110,16 @@ const MainframeHub = ({
     }
   };
 
-  const toggleMode = async () => {
-    if (!config) return;
-    const newMode = config.mode === 'test' ? 'production' : 'test';
+  // ÄNDERUNG 30.01.2026: setMode ersetzt toggleMode für 3-Tier-Auswahl (Test/Production/Premium)
+  const setMode = async (newMode) => {
+    if (!config || config.mode === newMode) return;
     try {
       await axios.put(`${API_BASE}/config/mode`, { mode: newMode });
       // Reine State-Update ohne Side-Effects
       setConfig(prevConfig => ({ ...prevConfig, mode: newMode }));
       // fetchData wird automatisch durch useEffect ausgelöst wenn config.mode sich ändert
     } catch (err) {
-      console.error('Failed to toggle mode:', err);
+      console.error('Failed to set mode:', err);
     }
   };
 
@@ -123,6 +132,55 @@ const MainframeHub = ({
     } catch (err) {
       console.error('Failed to update model:', err);
     }
+  };
+
+  // ÄNDERUNG 29.01.2026: Lade Modell-Prioritätsliste beim Öffnen des Modals
+  const loadModelPriority = async (agentRole) => {
+    try {
+      const res = await axios.get(`${API_BASE}/config/model-priority/${agentRole}`);
+      setAgentModelPriority(res.data.models || []);
+    } catch (err) {
+      console.error('Failed to load model priority:', err);
+      setAgentModelPriority([]);
+    }
+  };
+
+  // ÄNDERUNG 29.01.2026: Speichere Modell-Prioritätsliste
+  const saveModelPriority = async () => {
+    if (!selectedAgent || agentModelPriority.length === 0) {
+      alert('Mindestens 1 Modell auswählen');
+      return;
+    }
+    setSavingPriority(true);
+    try {
+      await axios.put(`${API_BASE}/config/model-priority/${selectedAgent.role}`, {
+        models: agentModelPriority
+      });
+      fetchData();
+      setShowModelSelector(false);
+      setSelectedAgent(null);
+    } catch (err) {
+      console.error('Failed to save model priority:', err);
+      alert('Fehler beim Speichern: ' + (err.response?.data?.detail || err.message));
+    } finally {
+      setSavingPriority(false);
+    }
+  };
+
+  // ÄNDERUNG 29.01.2026: Modell zur Prioritätsliste hinzufügen
+  const addModelToPriority = (modelId) => {
+    if (agentModelPriority.length >= 5) {
+      alert('Maximal 5 Modelle pro Agent');
+      return;
+    }
+    if (!agentModelPriority.includes(modelId)) {
+      setAgentModelPriority([...agentModelPriority, modelId]);
+    }
+  };
+
+  // ÄNDERUNG 29.01.2026: Modell aus Prioritätsliste entfernen
+  const removeModelFromPriority = (modelId) => {
+    setAgentModelPriority(agentModelPriority.filter(m => m !== modelId));
   };
 
   const clearRateLimits = async () => {
@@ -161,6 +219,20 @@ const MainframeHub = ({
       } catch (err) {
         console.error('Failed to update research timeout:', err);
       }
+    }
+  };
+
+  // ÄNDERUNG 30.01.2026: Handler für globalen Agent-Timeout
+  const updateAgentTimeout = async (value) => {
+    // ÄNDERUNG [31.01.2026]: Optimistisches Update mit Rollback bei Fehler
+    const previousValue = agentTimeout;
+    setAgentTimeout(value);
+    try {
+      await axios.put(`${API_BASE}/config/agent-timeout`, { agent_timeout_seconds: value });
+    } catch (err) {
+      console.error('Failed to update agent timeout:', err);
+      setAgentTimeout(previousValue);
+      alert('Agent-Timeout konnte nicht gespeichert werden.');
     }
   };
 
@@ -302,6 +374,8 @@ const MainframeHub = ({
                       // Modal-Filter zurücksetzen
                       setModalModelFilter('');
                       setModalProviderFilter('all');
+                      // ÄNDERUNG 29.01.2026: Lade Prioritätsliste beim Öffnen
+                      loadModelPriority(agent.role);
                     }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') {
@@ -310,6 +384,8 @@ const MainframeHub = ({
                         setShowModelSelector(true);
                         setModalModelFilter('');
                         setModalProviderFilter('all');
+                        // ÄNDERUNG 29.01.2026: Lade Prioritätsliste beim Öffnen
+                        loadModelPriority(agent.role);
                       }
                     }}
                     role="button"
@@ -407,49 +483,93 @@ const MainframeHub = ({
                   </div>
                   <div className="bg-[#0d120f] rounded-lg p-3 border border-[#28392e]">
                     <div className="text-[10px] text-[#9cbaa6] uppercase mb-1">Mode</div>
-                    <div className={`text-xl font-bold ${config?.mode === 'production' ? 'text-yellow-400' : 'text-primary'}`}>
+                    <div className={`text-xl font-bold ${
+                      config?.mode === 'premium' ? 'text-amber-300' :
+                      config?.mode === 'production' ? 'text-yellow-400' : 'text-primary'
+                    }`}>
                       {config?.mode?.toUpperCase()}
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Environment Control */}
+              {/* Environment Control - ÄNDERUNG 30.01.2026: 3-Tier-Selector (Test/Production/Premium) */}
               <div className="w-full bg-[#0d120f] border-t border-[#28392e] p-6">
                 <div className="flex justify-between items-center mb-4">
                   <h4 className="text-[#9cbaa6] text-xs font-bold uppercase tracking-widest">Environment Control</h4>
                   <div className="flex gap-2">
                     <span className={`w-1.5 h-1.5 rounded-full ${config?.mode === 'test' ? 'bg-primary' : 'bg-primary/20'}`} />
                     <span className={`w-1.5 h-1.5 rounded-full ${config?.mode === 'production' ? 'bg-yellow-500' : 'bg-yellow-500/20'}`} />
+                    <span className={`w-1.5 h-1.5 rounded-full ${config?.mode === 'premium' ? 'bg-amber-300' : 'bg-amber-300/20'}`} />
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between gap-4 bg-[#1b271f] p-4 rounded-lg border border-[#28392e]">
-                  <div className={`text-center w-1/3 transition-opacity ${config?.mode !== 'test' ? 'opacity-40' : ''}`}>
-                    <div className="text-white font-bold text-sm mb-1">TEST</div>
-                    <div className="text-[10px] text-[#9cbaa6] uppercase">Free Models</div>
-                  </div>
+                {/* 3-Tier Selector */}
+                <div className="relative bg-[#1b271f] p-2 rounded-lg border border-[#28392e]">
+                  {/* Sliding Indicator */}
+                  <motion.div
+                    className={`absolute top-2 bottom-2 rounded-md ${
+                      config?.mode === 'premium'
+                        ? 'bg-gradient-to-br from-amber-500/30 to-amber-700/30 border border-amber-400/50'
+                        : config?.mode === 'production'
+                          ? 'bg-gradient-to-br from-yellow-600/30 to-yellow-800/30 border border-yellow-500/50'
+                          : 'bg-gradient-to-br from-[#4a6b56]/50 to-[#28392e]/50 border border-[#5c856b]/50'
+                    }`}
+                    initial={false}
+                    animate={{
+                      left: config?.mode === 'test' ? '8px' : config?.mode === 'production' ? 'calc(33.33% + 4px)' : 'calc(66.66% + 0px)',
+                      width: 'calc(33.33% - 8px)'
+                    }}
+                    transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                  />
 
-                  {/* Industrial Switch */}
-                  <button
-                    onClick={toggleMode}
-                    className="relative w-24 h-12 bg-black rounded-full border-2 border-[#3b5443] shadow-inner flex items-center p-1 cursor-pointer"
-                  >
-                    <motion.div
-                      animate={{ x: config?.mode === 'production' ? 48 : 0 }}
-                      transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                      className={`w-10 h-10 rounded-full shadow-lg border ${
-                        config?.mode === 'production'
-                          ? 'bg-gradient-to-br from-yellow-600 to-yellow-800 border-yellow-500'
-                          : 'bg-gradient-to-br from-[#4a6b56] to-[#28392e] border-[#5c856b]'
+                  <div className="relative flex">
+                    {/* TEST */}
+                    <button
+                      onClick={() => setMode('test')}
+                      className={`flex-1 py-3 px-2 text-center transition-all z-10 rounded-md ${
+                        config?.mode === 'test' ? '' : 'hover:bg-white/5'
                       }`}
-                    />
-                  </button>
+                    >
+                      <div className={`font-bold text-sm mb-0.5 transition-colors ${
+                        config?.mode === 'test' ? 'text-primary' : 'text-white/60'
+                      }`}>TEST</div>
+                      <div className="text-[9px] text-[#9cbaa6] uppercase">Free</div>
+                    </button>
 
-                  <div className={`text-center w-1/3 transition-opacity ${config?.mode !== 'production' ? 'opacity-40' : ''}`}>
-                    <div className={`font-bold text-sm mb-1 ${config?.mode === 'production' ? 'text-yellow-400' : 'text-white'}`}>PROD</div>
-                    <div className="text-[10px] text-[#9cbaa6] uppercase">Premium</div>
+                    {/* PRODUCTION */}
+                    <button
+                      onClick={() => setMode('production')}
+                      className={`flex-1 py-3 px-2 text-center transition-all z-10 rounded-md ${
+                        config?.mode === 'production' ? '' : 'hover:bg-white/5'
+                      }`}
+                    >
+                      <div className={`font-bold text-sm mb-0.5 transition-colors ${
+                        config?.mode === 'production' ? 'text-yellow-400' : 'text-white/60'
+                      }`}>PROD</div>
+                      <div className="text-[9px] text-[#9cbaa6] uppercase">Value</div>
+                    </button>
+
+                    {/* PREMIUM */}
+                    <button
+                      onClick={() => setMode('premium')}
+                      className={`flex-1 py-3 px-2 text-center transition-all z-10 rounded-md ${
+                        config?.mode === 'premium' ? '' : 'hover:bg-white/5'
+                      }`}
+                    >
+                      <div className={`font-bold text-sm mb-0.5 transition-colors ${
+                        config?.mode === 'premium' ? 'text-amber-300' : 'text-white/60'
+                      }`}>PREMIUM</div>
+                      <div className="text-[9px] text-[#9cbaa6] uppercase">Best</div>
+                    </button>
                   </div>
+                </div>
+
+                {/* Mode Description */}
+                <div className="mt-3 text-center text-[10px] text-[#9cbaa6]">
+                  {config?.mode === 'test' && 'Kostenlose Modelle - Ideal für Tests und Entwicklung'}
+                  {config?.mode === 'production' && 'Preis-Leistungs-Sieger - Beste Balance für den Alltag'}
+                  {config?.mode === 'premium' && 'Top-Premium-Modelle - Höchste Qualität ohne Kompromisse'}
                 </div>
               </div>
 
@@ -592,6 +712,36 @@ const MainframeHub = ({
                   </p>
                 </div>
               </div>
+
+              {/* ÄNDERUNG 30.01.2026: Agent Timeout Slider */}
+              <div className="w-full bg-[#0d120f] border-t border-[#28392e] p-4">
+                <div className="flex justify-between items-center mb-3">
+                  <h4 className="text-[#9cbaa6] text-xs font-bold uppercase tracking-widest flex items-center gap-2">
+                    <Clock size={14} className="text-primary" />
+                    Agent Timeout
+                  </h4>
+                  <span className="text-primary font-mono font-bold text-lg">{Math.floor(agentTimeout / 60)} min</span>
+                </div>
+
+                <div className="bg-[#1b271f] p-3 rounded-lg border border-[#28392e]">
+                  <div className="flex items-center gap-4">
+                    <span className="text-[10px] text-[#9cbaa6] font-mono w-6">1</span>
+                    <input
+                      type="range"
+                      min="60"
+                      max="600"
+                      step="30"
+                      value={agentTimeout}
+                      onChange={(e) => updateAgentTimeout(parseInt(e.target.value))}
+                      className="flex-1 mainframe-slider"
+                    />
+                    <span className="text-[10px] text-[#9cbaa6] font-mono w-8">10</span>
+                  </div>
+                  <p className="text-[10px] text-[#5c856b] mt-2 text-center">
+                    Maximale Zeit pro Agent-Operation (in Minuten)
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -714,7 +864,7 @@ const MainframeHub = ({
         </div>
       </main>
 
-      {/* Model Selector Modal */}
+      {/* Model Selector Modal - ÄNDERUNG 29.01.2026: Erweitert um sortierbare Prioritätsliste */}
       <AnimatePresence>
         {showModelSelector && selectedAgent && (
           <motion.div
@@ -729,118 +879,180 @@ const MainframeHub = ({
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-[#111813] border border-[#28392e] rounded-xl w-full max-w-lg overflow-hidden shadow-2xl"
+              className="bg-[#111813] border border-[#28392e] rounded-xl w-full max-w-4xl overflow-hidden shadow-2xl"
             >
               {/* Modal Header */}
               <div className="px-6 py-4 border-b border-[#28392e] bg-[#16211a]">
-                <h3 className="text-white font-bold text-lg">Select Model for {selectedAgent.name}</h3>
-                <p className="text-[#9cbaa6] text-sm mt-1">{selectedAgent.description}</p>
+                <h3 className="text-white font-bold text-lg">Modell-Priorität für {selectedAgent.name}</h3>
+                <p className="text-[#9cbaa6] text-sm mt-1">Ziehe Modelle per Drag & Drop um die Reihenfolge zu ändern. Das erste Modell ist Primary.</p>
               </div>
 
-              {/* ÄNDERUNG 25.01.2026: Modal Filter */}
-              <div className="p-4 border-b border-[#28392e] space-y-2 bg-[#0d120f]">
-                <input
-                  type="text"
-                  placeholder="Search models..."
-                  value={modalModelFilter}
-                  onChange={(e) => setModalModelFilter(e.target.value)}
-                  className="w-full bg-[#1b271f] border border-[#28392e] rounded-lg px-3 py-2 text-sm text-white placeholder-[#6b8f71] focus:outline-none focus:border-primary"
-                />
-                <select
-                  value={modalProviderFilter}
-                  onChange={(e) => setModalProviderFilter(e.target.value)}
-                  className="w-full bg-[#1b271f] border border-[#28392e] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary"
-                >
-                  <option value="all">All Providers</option>
-                  <option value="anthropic">Anthropic</option>
-                  <option value="openai">OpenAI</option>
-                  <option value="google">Google</option>
-                  <option value="meta-llama">Meta</option>
-                  <option value="mistralai">Mistral</option>
-                  <option value="qwen">Qwen</option>
-                  <option value="nvidia">NVIDIA</option>
-                  <option value="deepseek">DeepSeek</option>
-                </select>
-              </div>
+              {/* Two Column Layout */}
+              <div className="flex flex-col md:flex-row">
+                {/* Left: Sortable Priority List */}
+                <div className="md:w-1/2 border-b md:border-b-0 md:border-r border-[#28392e] p-4">
+                  <div className="flex justify-between items-center mb-3">
+                    <h4 className="text-[10px] text-primary uppercase tracking-widest font-bold">Modell-Priorität (1-5)</h4>
+                    <span className="text-[10px] text-[#9cbaa6]">{agentModelPriority.length}/5 Modelle</span>
+                  </div>
 
-              {/* Model Options - ÄNDERUNG 25.01.2026: Mit Filter-Logik */}
-              <div className="p-4 max-h-96 overflow-y-auto custom-scrollbar">
-                <div className="text-[10px] text-primary uppercase tracking-widest font-bold mb-2">Free Models</div>
-                <div className="space-y-2 mb-4">
-                  {availableModels.free_models
-                    .filter(m => {
-                      const matchesSearch = m.name.toLowerCase().includes(modalModelFilter.toLowerCase());
-                      const matchesProvider = modalProviderFilter === 'all' || m.id.toLowerCase().includes(modalProviderFilter);
-                      return matchesSearch && matchesProvider;
-                    })
-                    .slice(0, 50)
-                    .map((model) => (
-                    <button
-                      key={model.id}
-                      onClick={() => updateAgentModel(selectedAgent.role, model.id)}
-                      className={`w-full text-left p-3 rounded-lg border transition-all ${
-                        selectedAgent.model === model.id
-                          ? 'bg-primary/20 border-primary'
-                          : 'bg-[#1b271f] border-[#28392e] hover:border-primary/50'
-                      }`}
-                    >
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <span className="text-white font-bold">{model.name}</span>
-                          <span className="text-[#9cbaa6] text-sm ml-2">({model.provider})</span>
-                        </div>
-                        {selectedAgent.model === model.id && (
-                          <Check size={18} className="text-primary" />
-                        )}
-                      </div>
-                    </button>
-                  ))}
+                  <div className="min-h-[200px]">
+                    <SortableModelList
+                      models={agentModelPriority}
+                      onReorder={setAgentModelPriority}
+                      onRemove={removeModelFromPriority}
+                      maxModels={5}
+                      disabled={savingPriority}
+                    />
+                  </div>
+
+                  {/* Info Box */}
+                  <div className="mt-4 p-3 bg-[#0d120f] rounded-lg border border-[#28392e]">
+                    <p className="text-[10px] text-[#5c856b]">
+                      <span className="text-primary font-bold">Primary:</span> Wird zuerst verwendet
+                    </p>
+                    <p className="text-[10px] text-[#5c856b] mt-1">
+                      <span className="text-[#9cbaa6] font-bold">Fallback 1-4:</span> Bei Fehler/Rate-Limit der Reihe nach
+                    </p>
+                  </div>
                 </div>
 
-                {config?.mode === 'production' && (
-                  <>
-                    <div className="text-[10px] text-yellow-400 uppercase tracking-widest font-bold mb-2">Premium Models</div>
-                    <div className="space-y-2">
-                      {availableModels.paid_models
+                {/* Right: Available Models to Add */}
+                <div className="md:w-1/2 flex flex-col">
+                  {/* Filter */}
+                  <div className="p-4 border-b border-[#28392e] space-y-2 bg-[#0d120f]">
+                    <input
+                      type="text"
+                      placeholder="Search models..."
+                      value={modalModelFilter}
+                      onChange={(e) => setModalModelFilter(e.target.value)}
+                      className="w-full bg-[#1b271f] border border-[#28392e] rounded-lg px-3 py-2 text-sm text-white placeholder-[#6b8f71] focus:outline-none focus:border-primary"
+                    />
+                    <select
+                      value={modalProviderFilter}
+                      onChange={(e) => setModalProviderFilter(e.target.value)}
+                      className="w-full bg-[#1b271f] border border-[#28392e] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary"
+                    >
+                      <option value="all">All Providers</option>
+                      <option value="anthropic">Anthropic</option>
+                      <option value="openai">OpenAI</option>
+                      <option value="google">Google</option>
+                      <option value="meta-llama">Meta</option>
+                      <option value="mistralai">Mistral</option>
+                      <option value="qwen">Qwen</option>
+                      <option value="nvidia">NVIDIA</option>
+                      <option value="deepseek">DeepSeek</option>
+                    </select>
+                  </div>
+
+                  {/* Model List */}
+                  <div className="p-4 max-h-80 overflow-y-auto custom-scrollbar flex-1">
+                    <div className="text-[10px] text-primary uppercase tracking-widest font-bold mb-2">Free Models</div>
+                    <div className="space-y-2 mb-4">
+                      {availableModels.free_models
                         .filter(m => {
                           const matchesSearch = m.name.toLowerCase().includes(modalModelFilter.toLowerCase());
                           const matchesProvider = modalProviderFilter === 'all' || m.id.toLowerCase().includes(modalProviderFilter);
                           return matchesSearch && matchesProvider;
                         })
-                        .slice(0, 50)
-                        .map((model) => (
-                        <button
-                          key={model.id}
-                          onClick={() => updateAgentModel(selectedAgent.role, model.id)}
-                          className={`w-full text-left p-3 rounded-lg border transition-all ${
-                            selectedAgent.model === model.id
-                              ? 'bg-yellow-400/20 border-yellow-400'
-                              : 'bg-[#1b271f] border-[#28392e] hover:border-yellow-400/50'
-                          }`}
-                        >
-                          <div className="flex justify-between items-center">
-                            <div>
-                              <span className="text-white font-bold">{model.name}</span>
-                              <span className="text-[#9cbaa6] text-sm ml-2">({model.provider})</span>
-                            </div>
-                            {selectedAgent.model === model.id && (
-                              <Check size={18} className="text-yellow-400" />
-                            )}
-                          </div>
-                        </button>
-                      ))}
+                        .slice(0, 30)
+                        .map((model) => {
+                          const isInList = agentModelPriority.includes(model.id);
+                          return (
+                            <button
+                              key={model.id}
+                              onClick={() => !isInList && addModelToPriority(model.id)}
+                              disabled={isInList || agentModelPriority.length >= 5}
+                              className={`w-full text-left p-2 rounded-lg border transition-all ${
+                                isInList
+                                  ? 'bg-primary/20 border-primary opacity-50 cursor-not-allowed'
+                                  : agentModelPriority.length >= 5
+                                    ? 'bg-[#1b271f] border-[#28392e] opacity-50 cursor-not-allowed'
+                                    : 'bg-[#1b271f] border-[#28392e] hover:border-primary/50 cursor-pointer'
+                              }`}
+                            >
+                              <div className="flex justify-between items-center">
+                                <div>
+                                  <span className="text-white font-bold text-sm">{model.name}</span>
+                                  <span className="text-[#9cbaa6] text-xs ml-2">({model.provider})</span>
+                                </div>
+                                {isInList ? (
+                                  <Check size={14} className="text-primary" />
+                                ) : agentModelPriority.length < 5 ? (
+                                  <span className="text-[10px] text-primary">+ Add</span>
+                                ) : null}
+                              </div>
+                            </button>
+                          );
+                        })}
                     </div>
-                  </>
-                )}
+
+                    {/* # ÄNDERUNG [31.01.2026]: Premium-Models auch im Premium-Modus anzeigen */}
+                    {(config?.mode === 'production' || config?.mode === 'premium') && (
+                      <>
+                        <div className="text-[10px] text-yellow-400 uppercase tracking-widest font-bold mb-2">Premium Models</div>
+                        <div className="space-y-2">
+                          {availableModels.paid_models
+                            .filter(m => {
+                              const matchesSearch = m.name.toLowerCase().includes(modalModelFilter.toLowerCase());
+                              const matchesProvider = modalProviderFilter === 'all' || m.id.toLowerCase().includes(modalProviderFilter);
+                              return matchesSearch && matchesProvider;
+                            })
+                            .slice(0, 30)
+                            .map((model) => {
+                              const isInList = agentModelPriority.includes(model.id);
+                              return (
+                                <button
+                                  key={model.id}
+                                  onClick={() => !isInList && addModelToPriority(model.id)}
+                                  disabled={isInList || agentModelPriority.length >= 5}
+                                  className={`w-full text-left p-2 rounded-lg border transition-all ${
+                                    isInList
+                                      ? 'bg-yellow-400/20 border-yellow-400 opacity-50 cursor-not-allowed'
+                                      : agentModelPriority.length >= 5
+                                        ? 'bg-[#1b271f] border-[#28392e] opacity-50 cursor-not-allowed'
+                                        : 'bg-[#1b271f] border-[#28392e] hover:border-yellow-400/50 cursor-pointer'
+                                  }`}
+                                >
+                                  <div className="flex justify-between items-center">
+                                    <div>
+                                      <span className="text-white font-bold text-sm">{model.name}</span>
+                                      <span className="text-[#9cbaa6] text-xs ml-2">({model.provider})</span>
+                                    </div>
+                                    {isInList ? (
+                                      <Check size={14} className="text-yellow-400" />
+                                    ) : agentModelPriority.length < 5 ? (
+                                      <span className="text-[10px] text-yellow-400">+ Add</span>
+                                    ) : null}
+                                  </div>
+                                </button>
+                              );
+                            })}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
               </div>
 
               {/* Modal Footer */}
-              <div className="px-6 py-4 border-t border-[#28392e] bg-[#0d120f] flex justify-end">
+              <div className="px-6 py-4 border-t border-[#28392e] bg-[#0d120f] flex justify-between">
                 <button
                   onClick={() => setShowModelSelector(false)}
                   className="px-4 py-2 rounded-lg border border-[#28392e] text-[#9cbaa6] hover:text-white hover:border-white/20 transition-colors"
                 >
-                  Cancel
+                  Abbrechen
+                </button>
+                <button
+                  onClick={saveModelPriority}
+                  disabled={savingPriority || agentModelPriority.length === 0}
+                  className={`px-6 py-2 rounded-lg font-bold transition-all ${
+                    savingPriority || agentModelPriority.length === 0
+                      ? 'bg-[#28392e] text-[#5c856b] cursor-not-allowed'
+                      : 'bg-primary text-black hover:bg-primary/80'
+                  }`}
+                >
+                  {savingPriority ? 'Speichern...' : 'Priorität speichern'}
                 </button>
               </div>
             </motion.div>

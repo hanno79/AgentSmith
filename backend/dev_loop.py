@@ -1,11 +1,14 @@
 """
 Author: rahn
 Datum: 31.01.2026
-Version: 1.3
+Version: 1.6
 Beschreibung: DevLoop kapselt die Iterationslogik fuer Code-Generierung und Tests.
               AENDERUNG 31.01.2026: HELP_NEEDED Handler Integration fuer automatische Hilfs-Agenten.
               AENDERUNG 31.01.2026: FIX - Security-Blockade wird aufgehoben wenn Scan erfolgreich.
               AENDERUNG 31.01.2026: Fehler-Modell-Historie zur Vermeidung von Ping-Pong-Wechseln.
+              AENDERUNG 31.01.2026: File-by-File Modus Integration (Anti-Truncation).
+              AENDERUNG 31.01.2026: FIX - AsyncIO Event-Loop Bug in Worker-Thread behoben.
+              AENDERUNG 31.01.2026: Targeted Fix Mode - Parallele gezielte Korrekturen statt Neugenerierung.
 """
 
 import os
@@ -24,6 +27,11 @@ from .dev_loop_steps import (
     build_feedback,
     handle_model_switch
 )
+# AENDERUNG 31.01.2026: File-by-File Modus zur Vermeidung von Truncation
+from .file_by_file_loop import should_use_file_by_file, run_file_by_file_loop
+# AENDERUNG 31.01.2026: Targeted Fix Mode - Parallele gezielte Korrekturen
+from .error_analyzer import ErrorAnalyzer, analyze_errors, get_files_to_fix
+from .parallel_fixer import ParallelFixer, should_use_parallel_fix
 
 # ÄNDERUNG 29.01.2026: Dev-Loop aus OrchestrationManager ausgelagert
 
@@ -33,6 +41,129 @@ class DevLoop:
         self.manager = manager
         self.set_current_agent = set_current_agent
         self.run_with_timeout = run_with_timeout
+        # AENDERUNG 31.01.2026: Targeted Fix Mode Komponenten
+        self._parallel_fixer = None
+        self._error_analyzer = ErrorAnalyzer()
+
+    def _try_targeted_fix(
+        self,
+        sandbox_result: str,
+        review_output: str,
+        created_files: list,
+        project_rules: Dict[str, Any],
+        user_goal: str
+    ) -> Tuple[bool, str, list]:
+        """
+        Versucht gezielte Korrekturen statt kompletter Neugenerierung.
+
+        Args:
+            sandbox_result: Sandbox/Test-Output mit Fehlern
+            review_output: Reviewer-Feedback
+            created_files: Liste der erstellten Dateien
+            project_rules: Projektregeln
+            user_goal: Benutzer-Ziel
+
+        Returns:
+            Tuple (erfolg, aktualisierter_code, aktualisierte_dateien)
+        """
+        manager = self.manager
+
+        # Sammle aktuelle Dateiinhalte
+        existing_files = {}
+        for filepath in (created_files or []):
+            full_path = os.path.join(manager.project_path, filepath)
+            if os.path.exists(full_path):
+                try:
+                    with open(full_path, "r", encoding="utf-8") as f:
+                        existing_files[filepath] = f.read()
+                except Exception:
+                    pass
+
+        if not existing_files:
+            manager._ui_log("TargetedFix", "Skip", "Keine Dateien fuer gezielte Korrektur gefunden")
+            return False, "", []
+
+        # Analysiere Fehler
+        errors = analyze_errors(
+            sandbox_output=sandbox_result,
+            review_output=review_output,
+            project_files=existing_files
+        )
+
+        if not errors:
+            manager._ui_log("TargetedFix", "Skip", "Keine analysierbaren Fehler gefunden")
+            return False, "", []
+
+        # Pruefe ob paralleler Fix sinnvoll ist (max 3 Dateien)
+        affected_files = get_files_to_fix(errors, max_files=3)
+        if not should_use_parallel_fix(errors, max_threshold=3):
+            manager._ui_log("TargetedFix", "Skip",
+                          f"Zu viele Dateien betroffen ({len(affected_files)}) - nutze Standard-Modus")
+            return False, "", []
+
+        manager._ui_log("TargetedFix", "Start", json.dumps({
+            "affected_files": affected_files,
+            "error_count": len(errors),
+            "error_types": list(set(e.error_type for e in errors))
+        }, ensure_ascii=False))
+
+        # Initialisiere ParallelFixer falls noetig
+        if not self._parallel_fixer:
+            self._parallel_fixer = ParallelFixer(
+                manager=manager,
+                config=manager.config,
+                max_parallel=3,
+                max_retries=2,
+                router=manager.model_router if hasattr(manager, 'model_router') else None
+            )
+
+        # Fuehre parallele Korrekturen durch
+        try:
+            fix_results = self._parallel_fixer.fix_files_parallel(
+                errors=errors,
+                existing_files=existing_files,
+                project_rules=str(project_rules),
+                user_goal=user_goal
+            )
+
+            # Zaehle erfolgreiche Fixes
+            successful = sum(1 for r in fix_results.values() if r.success)
+            total = len(fix_results)
+
+            manager._ui_log("TargetedFix", "Results", json.dumps({
+                "successful": successful,
+                "total": total,
+                "fixed_files": [p for p, r in fix_results.items() if r.success],
+                "failed_files": [p for p, r in fix_results.items() if not r.success]
+            }, ensure_ascii=False))
+
+            if successful == 0:
+                return False, "", []
+
+            # Schreibe korrigierte Dateien zurueck
+            updated_files = []
+            for filepath, result in fix_results.items():
+                if result.success and result.new_content:
+                    full_path = os.path.join(manager.project_path, filepath)
+                    try:
+                        with open(full_path, "w", encoding="utf-8") as f:
+                            f.write(result.new_content)
+                        updated_files.append(filepath)
+                        existing_files[filepath] = result.new_content
+                    except Exception as e:
+                        manager._ui_log("TargetedFix", "WriteError", f"{filepath}: {e}")
+
+            # Baue aktualisierten Code-String
+            all_code = ""
+            for filepath in (created_files or []):
+                if filepath in existing_files:
+                    all_code += f"\n### FILENAME: {filepath}\n{existing_files[filepath]}\n"
+
+            return True, all_code, updated_files
+
+        except Exception as e:
+            manager._ui_log("TargetedFix", "Error", f"Parallele Korrektur fehlgeschlagen: {e}")
+            return False, "", []
 
     def run(
         self,
@@ -49,6 +180,50 @@ class DevLoop:
         manager.agent_reviewer = agent_reviewer
         manager.agent_tester = agent_tester
         manager.agent_security = agent_security
+
+        # AENDERUNG 31.01.2026: File-by-File Modus bei komplexen Projekten
+        # Verhindert Truncation bei Free-Tier-Modellen mit niedrigen Token-Limits
+        if should_use_file_by_file(manager.tech_blueprint, manager.config):
+            manager._ui_log("DevLoop", "Mode", "File-by-File Modus aktiviert (Anti-Truncation)")
+            try:
+                import asyncio
+                # AENDERUNG 31.01.2026: FIX AsyncIO - Erstelle neuen Event-Loop fuer Worker-Thread
+                # asyncio.get_event_loop() funktioniert nicht in Worker-Threads!
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    success, message, created_files = loop.run_until_complete(
+                        run_file_by_file_loop(
+                            manager,
+                            project_rules,
+                            manager.user_prompt if hasattr(manager, 'user_prompt') else "",
+                            max_iterations=manager.config.get("max_retries", 3)
+                        )
+                    )
+                finally:
+                    loop.close()
+                if success and created_files:
+                    manager._ui_log("DevLoop", "FileByFileComplete", json.dumps({
+                        "success": True,
+                        "files_created": len(created_files),
+                        "message": message
+                    }, ensure_ascii=False))
+                    # Fahre mit normaler Loop fuer Tests/Review fort
+                    # Setze current_code aus erstellten Dateien
+                    all_code = ""
+                    for filepath in created_files:
+                        full_path = os.path.join(manager.project_path, filepath)
+                        if os.path.exists(full_path):
+                            with open(full_path, "r", encoding="utf-8") as f:
+                                all_code += f"\n### FILENAME: {filepath}\n{f.read()}\n"
+                    manager.current_code = all_code
+                    # Ueberspringe erste Iteration da Code bereits generiert
+                    manager._ui_log("DevLoop", "Info",
+                                   "File-by-File abgeschlossen, starte Tests und Review...")
+            except Exception as fbf_err:
+                manager._ui_log("DevLoop", "Warning",
+                               f"File-by-File fehlgeschlagen, nutze Standard-Modus: {fbf_err}")
+                # Fallback auf normalen Modus
 
         max_retries = manager.config.get("max_retries", 3)
         feedback = ""
@@ -75,7 +250,8 @@ class DevLoop:
 
             c_prompt = build_coder_prompt(manager, user_goal, feedback, iteration)
             manager.current_code, manager.agent_coder = run_coder_task(manager, project_rules, c_prompt, manager.agent_coder)
-            created_files = save_coder_output(manager, manager.current_code, manager.output_path, iteration, max_retries)
+            # ÄNDERUNG 31.01.2026: Truncation-Status für Modellwechsel-Logik
+            created_files, truncated_files = save_coder_output(manager, manager.current_code, manager.output_path, iteration, max_retries)
 
             # ÄNDERUNG 30.01.2026: Quality Gate - Code Validierung nach jeder Iteration
             if hasattr(manager, 'quality_gate') and manager.current_code:
@@ -102,6 +278,51 @@ class DevLoop:
                 iteration,
                 manager.tech_blueprint.get("project_type", "webapp")
             )
+
+            # ÄNDERUNG 31.01.2026: Truncation als Sandbox-Fehler behandeln für Modellwechsel-Logik
+            # Wenn Dateien abgeschnitten wurden (Token-Limit), triggert dies den Modellwechsel
+            if truncated_files:
+                truncation_msg = f"TRUNCATION: Dateien abgeschnitten durch Token-Limit: {', '.join([f[0] for f in truncated_files])}"
+                sandbox_failed = True
+                sandbox_result = f"{sandbox_result}\n{truncation_msg}" if sandbox_result else truncation_msg
+                manager._ui_log("Coder", "TruncationError", json.dumps({
+                    "message": "Truncation wird als Fehler behandelt für Modellwechsel",
+                    "truncated_count": len(truncated_files),
+                    "files": [f[0] for f in truncated_files]
+                }, ensure_ascii=False))
+
+            # AENDERUNG 31.01.2026: Targeted Fix Mode - Versuche gezielte Korrektur vor Neugenerierung
+            # Nur bei Sandbox-Fehlern und wenn Dateien existieren (nicht erste Iteration)
+            targeted_fix_applied = False
+            if sandbox_failed and iteration > 0 and created_files:
+                manager._ui_log("TargetedFix", "Attempting",
+                              f"Versuche gezielte Korrektur fuer {len(created_files)} Dateien...")
+                fix_success, fixed_code, updated_files = self._try_targeted_fix(
+                    sandbox_result=sandbox_result,
+                    review_output="",  # Noch kein Review in dieser Phase
+                    created_files=created_files,
+                    project_rules=project_rules,
+                    user_goal=user_goal
+                )
+
+                if fix_success and fixed_code:
+                    manager.current_code = fixed_code
+                    targeted_fix_applied = True
+                    manager._ui_log("TargetedFix", "Success",
+                                   f"Gezielte Korrektur erfolgreich: {len(updated_files)} Dateien korrigiert")
+
+                    # Re-run Sandbox mit korrigiertem Code
+                    sandbox_result, sandbox_failed, test_result, ui_result, test_summary = run_sandbox_and_tests(
+                        manager,
+                        manager.current_code,
+                        created_files,
+                        iteration,
+                        manager.tech_blueprint.get("project_type", "webapp")
+                    )
+
+                    if not sandbox_failed:
+                        manager._ui_log("TargetedFix", "Validated",
+                                       "Korrigierter Code hat Sandbox-Tests bestanden")
 
             self.set_current_agent("Reviewer", project_id)
             review_output, review_verdict, _ = run_review(

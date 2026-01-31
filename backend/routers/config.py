@@ -13,7 +13,7 @@ import yaml
 import aiohttp
 import logging
 from datetime import datetime, timedelta
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from ..app_state import manager, DEFAULT_MAX_RETRIES
 
@@ -53,6 +53,11 @@ class ResearchTimeoutRequest(BaseModel):
     research_timeout_minutes: int
 
 
+# ÄNDERUNG 30.01.2026: Globaler Timeout für Agenten-Operationen
+class AgentTimeoutRequest(BaseModel):
+    agent_timeout_seconds: int
+
+
 @router.get("/config")
 def get_config():
     """Gibt die aktuelle Konfiguration zurück."""
@@ -61,17 +66,19 @@ def get_config():
         "project_type": manager.config.get("project_type", "webapp"),
         "max_retries": manager.config.get("max_retries", DEFAULT_MAX_RETRIES),
         "research_timeout_minutes": manager.config.get("research_timeout_minutes", 5),
+        # ÄNDERUNG 30.01.2026: Globaler Agent-Timeout
+        "agent_timeout_seconds": manager.config.get("agent_timeout_seconds", 300),
         "include_designer": manager.config.get("include_designer", True),
         "models": manager.config.get("models", {}),
-        "available_modes": ["test", "production"]
+        "available_modes": ["test", "production", "premium"]
     }
 
 
 @router.put("/config/mode")
 def set_mode(request: ModeRequest):
-    """Wechselt zwischen test und production Modus."""
-    if request.mode not in ["test", "production"]:
-        raise HTTPException(status_code=400, detail="Invalid mode. Use 'test' or 'production'")
+    """Wechselt zwischen test, production und premium Modus."""
+    if request.mode not in ["test", "production", "premium"]:
+        raise HTTPException(status_code=400, detail="Invalid mode. Use 'test', 'production' or 'premium'")
     manager.config["mode"] = request.mode
     _save_config()
     return {"status": "ok", "mode": request.mode}
@@ -95,6 +102,17 @@ def set_research_timeout(request: ResearchTimeoutRequest):
     manager.config["research_timeout_minutes"] = request.research_timeout_minutes
     _save_config()
     return {"status": "ok", "research_timeout_minutes": request.research_timeout_minutes}
+
+
+# ÄNDERUNG 30.01.2026: Globaler Timeout für Agenten-Operationen
+@router.put("/config/agent-timeout")
+def set_agent_timeout(request: AgentTimeoutRequest):
+    """Setzt den globalen Agent Timeout in Sekunden (60-600)."""
+    if not 60 <= request.agent_timeout_seconds <= 600:
+        raise HTTPException(status_code=400, detail="agent_timeout_seconds muss zwischen 60 und 600 liegen")
+    manager.config["agent_timeout_seconds"] = request.agent_timeout_seconds
+    _save_config()
+    return {"status": "ok", "agent_timeout_seconds": request.agent_timeout_seconds}
 
 
 @router.put("/config/max-model-attempts")
@@ -157,6 +175,77 @@ def get_agent_model(agent_role: str):
         raise HTTPException(status_code=404, detail=f"Agent role '{agent_role}' not found")
 
     return {"agent": agent_role, "model": models[agent_role], "mode": mode}
+
+
+# ÄNDERUNG 29.01.2026: Neue Endpoints für Modell-Prioritätslisten (Drag & Drop im Hub)
+@router.get("/config/model-priority/{agent_role}")
+def get_model_priority(agent_role: str):
+    """
+    Gibt die aktuelle Modell-Prioritätsliste für einen Agenten zurück.
+    Das erste Modell ist Primary, die restlichen sind Fallbacks.
+    """
+    mode = manager.config.get("mode", "test")
+    model_config = manager.config.get("models", {}).get(mode, {}).get(agent_role)
+
+    if model_config is None:
+        raise HTTPException(status_code=404, detail=f"Agent role '{agent_role}' not found")
+
+    # Altes Format: nur ein String
+    if isinstance(model_config, str):
+        return {"agent": agent_role, "models": [model_config], "mode": mode}
+
+    # Neues Format: primary + fallback Liste
+    models = []
+    primary = model_config.get("primary", "")
+    if primary:
+        models.append(primary)
+    fallbacks = model_config.get("fallback", [])
+    if isinstance(fallbacks, list):
+        models.extend(fallbacks)
+    elif fallbacks:
+        models.append(fallbacks)
+
+    return {"agent": agent_role, "models": models, "mode": mode}
+
+
+@router.put("/config/model-priority/{agent_role}")
+async def set_model_priority(agent_role: str, request: Request):
+    """
+    Setzt die Modell-Prioritätsliste für einen Agenten.
+    Body: { "models": ["model_1", "model_2", "model_3", "model_4", "model_5"] }
+    Das erste Modell wird Primary, die restlichen werden Fallbacks (max 4).
+    """
+    data = await request.json()
+    models = data.get("models", [])
+
+    if not models or len(models) < 1:
+        raise HTTPException(status_code=400, detail="Mindestens 1 Modell erforderlich")
+
+    # Validiere alle Modelle
+    for model in models[:5]:
+        if not _is_valid_model(model):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Ungültiges Modell: '{model}'"
+            )
+
+    mode = manager.config.get("mode", "test")
+
+    # Stelle sicher dass models[mode] existiert
+    if "models" not in manager.config:
+        manager.config["models"] = {}
+    if mode not in manager.config["models"]:
+        manager.config["models"][mode] = {}
+
+    # Speichere als primary + fallback Format
+    manager.config["models"][mode][agent_role] = {
+        "primary": models[0],
+        "fallback": models[1:5]  # Max 4 Fallbacks
+    }
+
+    _save_config()
+    logger.info("Modell-Priorität für %s gesetzt: %s", agent_role, models[:5])
+    return {"status": "ok", "agent": agent_role, "models": models[:5], "mode": mode}
 
 
 _models_cache = {"data": None, "timestamp": None}
@@ -275,6 +364,104 @@ def clear_rate_limits():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# =========================================================================
+# AENDERUNG 31.01.2026: Health-Check Endpoints fuer Modell-Verfuegbarkeit
+# =========================================================================
+
+@router.post("/models/health-check")
+async def run_health_check():
+    """
+    Fuehrt Health-Check fuer alle Primary-Modelle durch.
+    Markiert unavailable Modelle automatisch.
+    """
+    try:
+        router_instance = get_model_router(manager.config)
+        results = await router_instance.health_check_all_primary_models()
+        return {
+            "status": "ok",
+            "results": results,
+            "unavailable_count": len(router_instance.permanently_unavailable)
+        }
+    except Exception as e:
+        logger.exception("Health-Check Fehler: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/models/health-check/{model_id:path}")
+async def check_single_model(model_id: str):
+    """
+    Prueft ein einzelnes Modell auf Verfuegbarkeit.
+
+    Args:
+        model_id: Modell-ID (z.B. "openrouter/xiaomi/mimo-v2-flash:free")
+    """
+    try:
+        router_instance = get_model_router(manager.config)
+        available, reason = await router_instance.check_model_health(model_id)
+
+        # Bei permanent unavailable automatisch markieren
+        if not available and ("not found" in reason.lower() or "404" in reason):
+            router_instance.mark_permanently_unavailable(model_id, reason)
+
+        return {
+            "model": model_id,
+            "available": available,
+            "reason": reason,
+            "marked_unavailable": model_id in router_instance.permanently_unavailable
+        }
+    except Exception as e:
+        logger.exception("Einzelner Health-Check Fehler fuer %s: %s", model_id, e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/models/health-status")
+def get_health_status():
+    """Gibt den aktuellen Health-Status aller Modelle zurueck."""
+    try:
+        router_instance = get_model_router(manager.config)
+        return router_instance.get_health_status()
+    except Exception as e:
+        return {"error": str(e), "permanently_unavailable": {}}
+
+
+@router.post("/models/recheck-unavailable")
+async def recheck_unavailable_models():
+    """
+    Prueft ob zuvor als unavailable markierte Modelle wieder verfuegbar sind.
+    """
+    try:
+        router_instance = get_model_router(manager.config)
+        results = await router_instance.recheck_unavailable_models()
+        return {
+            "status": "ok",
+            "rechecked": results,
+            "still_unavailable": list(router_instance.permanently_unavailable.keys())
+        }
+    except Exception as e:
+        logger.exception("Recheck-Unavailable Fehler: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/models/reactivate/{model_id:path}")
+def reactivate_model(model_id: str):
+    """
+    Reaktiviert ein als unavailable markiertes Modell manuell.
+
+    Args:
+        model_id: Modell-ID zum Reaktivieren
+    """
+    try:
+        router_instance = get_model_router(manager.config)
+        success = router_instance.reactivate_model(model_id)
+        return {
+            "status": "ok" if success else "not_found",
+            "model": model_id,
+            "reactivated": success
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 def _save_config():
     """Speichert Konfiguration zurück in config.yaml."""
     config_path = os.path.join(manager.base_dir, "config.yaml")
@@ -296,6 +483,9 @@ def _save_config():
                 existing_data["max_model_attempts"] = manager.config["max_model_attempts"]
             if "research_timeout_minutes" in manager.config:
                 existing_data["research_timeout_minutes"] = manager.config["research_timeout_minutes"]
+            # ÄNDERUNG 30.01.2026: Globaler Agent-Timeout speichern
+            if "agent_timeout_seconds" in manager.config:
+                existing_data["agent_timeout_seconds"] = manager.config["agent_timeout_seconds"]
             if "include_designer" in manager.config:
                 existing_data["include_designer"] = manager.config["include_designer"]
             if "project_type" in manager.config:

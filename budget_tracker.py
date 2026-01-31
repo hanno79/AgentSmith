@@ -65,21 +65,38 @@ class BudgetTracker:
     echte Kosten basierend auf OpenRouter API.
     """
 
+    # ÄNDERUNG 30.01.2026: Vollständige Preisliste für alle genutzten Modelle
     # OpenRouter Modell-Preise (pro 1M Tokens)
+    # Preise OHNE "openrouter/" Prefix - Normalisierung erfolgt in calculate_cost()
     MODEL_PRICES = {
-        # Free Tier
-        "openrouter/meta-llama/llama-3.3-70b-instruct:free": {"input": 0.0, "output": 0.0},
-        "openrouter/qwen/qwen3-coder:free": {"input": 0.0, "output": 0.0},
-        "openrouter/google/gemma-3-27b-it:free": {"input": 0.0, "output": 0.0},
-        "openrouter/mistralai/mixtral-8x7b-instruct:free": {"input": 0.0, "output": 0.0},
-        "openrouter/nvidia/nemotron-3-nano-30b-a3b:free": {"input": 0.0, "output": 0.0},
-        # Paid Tier
-        "openrouter/anthropic/claude-sonnet-4": {"input": 3.0, "output": 15.0},
-        "openrouter/anthropic/claude-haiku-4": {"input": 0.25, "output": 1.25},
-        "openrouter/openai/gpt-4-turbo": {"input": 10.0, "output": 30.0},
-        "openrouter/openai/gpt-4o": {"input": 2.5, "output": 10.0},
-        # ÄNDERUNG 25.01.2026: gpt-4o-mini hinzugefügt für günstigere Production-Modelle
-        "openrouter/openai/gpt-4o-mini": {"input": 0.15, "output": 0.60},
+        # === FREE TIER ===
+        "meta-llama/llama-3.3-70b-instruct:free": {"input": 0.0, "output": 0.0},
+        "qwen/qwen3-coder:free": {"input": 0.0, "output": 0.0},
+        "google/gemma-3-27b-it:free": {"input": 0.0, "output": 0.0},
+        "mistralai/mixtral-8x7b-instruct:free": {"input": 0.0, "output": 0.0},
+        "nvidia/nemotron-3-nano-30b-a3b:free": {"input": 0.0, "output": 0.0},
+        "deepseek/deepseek-r1-0528:free": {"input": 0.0, "output": 0.0},
+        "z-ai/glm-4.5-air:free": {"input": 0.0, "output": 0.0},
+        "xiaomi/mimo-v2-flash:free": {"input": 0.0, "output": 0.0},
+        "openai/gpt-oss-120b:free": {"input": 0.0, "output": 0.0},
+
+        # === VALUE TIER (preiswert) ===
+        "deepseek/deepseek-r1-0528": {"input": 0.55, "output": 2.19},
+        "moonshotai/kimi-k2.5": {"input": 0.50, "output": 2.00},
+        "google/gemini-2.5-flash": {"input": 0.075, "output": 0.30},
+        "qwen/qwen-3": {"input": 0.20, "output": 0.60},
+        "z-ai/glm-4.7": {"input": 0.50, "output": 1.50},
+        "mistralai/mistral-medium-3.1": {"input": 0.40, "output": 1.20},
+
+        # === PREMIUM TIER ===
+        "google/gemini-3-pro": {"input": 1.25, "output": 5.00},
+        "anthropic/claude-sonnet-4": {"input": 3.0, "output": 15.0},
+        "anthropic/claude-opus-4.5": {"input": 15.0, "output": 75.0},
+        "anthropic/claude-haiku-4": {"input": 0.25, "output": 1.25},
+        "openai/gpt-4-turbo": {"input": 10.0, "output": 30.0},
+        "openai/gpt-4o": {"input": 2.5, "output": 10.0},
+        "openai/gpt-4o-mini": {"input": 0.15, "output": 0.60},
+        "x-ai/grok-4.1-fast": {"input": 3.0, "output": 15.0},
     }
 
     def __init__(self, data_dir: str = None):
@@ -178,7 +195,18 @@ class BudgetTracker:
         Returns:
             Kosten in USD
         """
-        prices = self.MODEL_PRICES.get(model, {"input": 0.0, "output": 0.0})
+        # ÄNDERUNG 30.01.2026: Normalisiere Modell-Namen für konsistentes Lookup
+        # Entferne "openrouter/" Prefix falls vorhanden
+        normalized_model = model.replace("openrouter/", "") if model else ""
+
+        # ÄNDERUNG [31.01.2026]: Alias-Mapping für korrigierte OpenRouter-IDs
+        alias_map = {
+            "anthropic/claude-opus-4.5-thinking": "anthropic/claude-opus-4.5",
+            "x-ai/grok-4.1-thinking": "x-ai/grok-4.1-fast"
+        }
+        normalized_model = alias_map.get(normalized_model, normalized_model)
+
+        prices = self.MODEL_PRICES.get(normalized_model, {"input": 0.0, "output": 0.0})
 
         # Preise sind pro 1M Tokens
         input_cost = (prompt_tokens / 1_000_000) * prices["input"]

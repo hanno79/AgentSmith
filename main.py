@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 """
 Author: rahn
-Datum: 25.01.2026
-Version: 3.2
+Datum: 31.01.2026
+Version: 3.3
 Beschreibung: Multi-Agenten Proof-of-Concept - Haupteinstiegspunkt.
               Orchestriert alle Agenten mit iterativem Feedback-Loop, Logging und Regelüberwachung.
               ÄNDERUNG 25.01.2026: Bug-Fix für Dateinamen-Parsing bei LLM-Formatierungsfehlern.
+              ÄNDERUNG 31.01.2026: FIX - PermissionError wenn LLM Verzeichnis als Datei ausgibt.
 """
 
 import os
@@ -138,6 +139,17 @@ def save_multi_file_output(project_path: str, code_output: str, default_filename
         dir_name = os.path.dirname(full_path)
         if dir_name:
             os.makedirs(dir_name, exist_ok=True)
+
+        # ÄNDERUNG 31.01.2026: Prüfe ob Pfad bereits ein Verzeichnis ist
+        # Dies kann passieren wenn LLM "Tests" oder "src" als Dateiname ausgibt
+        if os.path.isdir(full_path):
+            console.print(f"[yellow]⚠️ Überspringe - Pfad ist ein Verzeichnis: {filename}[/yellow]")
+            log_event("FileSystem", "SkipDirectory", f"Versuch, Verzeichnis als Datei zu öffnen: {filename}")
+            continue
+
+        # Warnung wenn Dateiname keine Extension hat (potentieller LLM-Fehler)
+        if '.' not in os.path.basename(filename):
+            console.print(f"[yellow]⚠️ Warnung - Dateiname ohne Extension: {filename}[/yellow]")
 
         with open(full_path, "w", encoding="utf-8") as f:
             f.write(content)

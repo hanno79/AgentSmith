@@ -25,6 +25,8 @@ from agents.memory_agent import (
     get_lessons_for_prompt, learn_from_error,
     extract_error_pattern, generate_tags_from_context
 )
+# AENDERUNG 31.01.2026: Docker-Isolation fuer generierte Projekte
+from backend.docker_executor import DockerExecutor, create_docker_executor
 from budget_tracker import get_budget_tracker
 from sandbox_runner import run_sandbox
 from unit_test_runner import run_unit_tests
@@ -40,6 +42,8 @@ from .orchestration_helpers import (
     is_empty_or_invalid_response,
     is_empty_response_error,  # ÄNDERUNG 30.01.2026: Leere LLM-Antworten erkennen
     is_model_unavailable_error,  # ÄNDERUNG 30.01.2026: 404-Fehler erkennen
+    is_permanently_unavailable_error,  # AENDERUNG 31.01.2026: Permanente Fehler erkennen
+    handle_model_error,  # AENDERUNG 31.01.2026: Zentrale Modell-Fehlerbehandlung
     create_human_readable_verdict,
     extract_vulnerabilities,
     truncate_review_output  # ÄNDERUNG 31.01.2026: Review-Output Truncation gegen Wiederholungen
@@ -672,11 +676,12 @@ def _sanitize_unicode(content: str) -> str:
     return content
 
 
-def save_coder_output(manager, current_code: str, output_path: str, iteration: int, max_retries: int) -> List[str]:
+def save_coder_output(manager, current_code: str, output_path: str, iteration: int, max_retries: int) -> tuple:
     """
     Speichert Coder-Output und sendet UI-Events.
     ÄNDERUNG 31.01.2026: Truncation-Detection für abgeschnittene LLM-Outputs.
     ÄNDERUNG 31.01.2026: Unicode-Sanitization vor Datei-Speicherung.
+    ÄNDERUNG 31.01.2026: Gibt jetzt (created_files, truncated_files) zurück für Modellwechsel-Logik.
     """
     # ÄNDERUNG 31.01.2026: Unicode-Sanitization vor Datei-Speicherung
     # Entfernt unsichtbare Zeichen (U+FE0F etc.) die Python-Syntax brechen
@@ -688,6 +693,8 @@ def save_coder_output(manager, current_code: str, output_path: str, iteration: i
 
     # ÄNDERUNG 31.01.2026: Truncation-Detection
     # Prüfe ob Python-Dateien vollständig sind (nicht abgeschnitten)
+    # ÄNDERUNG 31.01.2026: truncated_files außerhalb try-Block für Rückgabe
+    truncated_files = []
     try:
         files_to_check = {}
         for filename in created_files:
@@ -738,7 +745,8 @@ def save_coder_output(manager, current_code: str, output_path: str, iteration: i
         )
         manager._ui_log("Coder", "Warning", traceback.format_exc())
 
-    return created_files
+    # ÄNDERUNG 31.01.2026: Gebe auch truncated_files zurück für Modellwechsel-Logik
+    return created_files, truncated_files
 
 
 def run_sandbox_and_tests(
@@ -751,7 +759,61 @@ def run_sandbox_and_tests(
     """
     Fuehrt Sandbox, Unit-Tests und UI-Tests aus.
     ÄNDERUNG 31.01.2026: Projekt-Typ-aware Sandbox-Check - keine JS-Checks bei Python-Projekten.
+    AENDERUNG 31.01.2026: Docker-Isolation wenn aktiviert (config.yaml: docker.enabled=true).
     """
+    # AENDERUNG 31.01.2026: Docker-Isolation fuer Tests wenn aktiviert
+    docker_config = manager.config.get("docker", {})
+    use_docker = docker_config.get("enabled", False)
+
+    if use_docker:
+        try:
+            executor = create_docker_executor(
+                project_path=manager.project_path,
+                tech_blueprint=manager.tech_blueprint,
+                docker_config=docker_config
+            )
+
+            if executor.is_docker_available():
+                manager._ui_log("Docker", "Status", "Docker-Isolation aktiviert")
+
+                # Dependencies im Container installieren
+                manager._ui_log("Docker", "Info", "Installiere Dependencies im Container...")
+                dep_result = executor.install_dependencies()
+                if not dep_result.success:
+                    manager._ui_log("Docker", "Warning",
+                        f"Dependency-Installation fehlgeschlagen: {dep_result.stderr[:500]}")
+                else:
+                    manager._ui_log("Docker", "Result",
+                        f"Dependencies installiert in {dep_result.duration_seconds:.1f}s")
+
+                # Tests im Container ausfuehren
+                manager._ui_log("Docker", "Info", "Fuehre Tests im Container aus...")
+                test_result_docker = executor.run_tests()
+
+                if test_result_docker.success:
+                    manager._ui_log("Docker", "Result",
+                        f"Docker-Tests erfolgreich in {test_result_docker.duration_seconds:.1f}s")
+                else:
+                    manager._ui_log("Docker", "Warning",
+                        f"Docker-Tests fehlgeschlagen:\n{test_result_docker.stderr[:500]}")
+
+                # Cleanup
+                executor.cleanup()
+            else:
+                if docker_config.get("fallback_to_host", True):
+                    manager._ui_log("Docker", "Warning",
+                        "Docker nicht verfuegbar - Fallback auf Host-Ausfuehrung")
+                else:
+                    manager._ui_log("Docker", "Error",
+                        "Docker nicht verfuegbar und Fallback deaktiviert")
+                    return ("Docker nicht verfuegbar", True,
+                            {"unit_tests": {"status": "ERROR"}, "ui_tests": {"status": "ERROR"}},
+                            {"status": "ERROR"}, "Docker nicht verfuegbar")
+        except Exception as docker_err:
+            manager._ui_log("Docker", "Error", f"Docker-Fehler: {docker_err}")
+            if not docker_config.get("fallback_to_host", True):
+                raise
+
     # ÄNDERUNG 31.01.2026: Nutze Projekt-Typ-aware Sandbox statt generischem run_sandbox()
     sandbox_result = run_sandbox_for_project(current_code, manager.tech_blueprint)
     manager._ui_log("Sandbox", "Result", sandbox_result)

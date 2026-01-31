@@ -208,8 +208,9 @@ def _run_npm_test(project_path: str, project_type: str) -> Dict[str, Any]:
         
         # npm test mit --passWithNoTests (falls jest)
         # shell=False für Sicherheit - Command-Injection verhindern
+        # AENDERUNG 31.01.2026: Vollstaendigen npm_path verwenden (Windows: npm.cmd)
         result = subprocess.run(
-            ["npm", "test", "--", "--passWithNoTests", "--silent"],
+            [npm_path, "test", "--", "--passWithNoTests", "--silent"],
             cwd=str(project_path_resolved),
             capture_output=True,
             timeout=180,

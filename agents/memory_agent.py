@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
 """
 Author: rahn
-Datum: 29.01.2026
-Version: 1.1
+Datum: 31.01.2026
+Version: 1.2
 Beschreibung: Memory Agent - Verwaltet Projekt- und Langzeiterinnerungen.
               Speichert Erkenntnisse aus Code-, Review- und Sandbox-Ergebnissen.
               ÄNDERUNG 29.01.2026: Async-Versionen (save_memory_async, update_memory_async)
               für non-blocking I/O und WebSocket-Stabilität.
+              AENDERUNG 31.01.2026: Dart AI Feature-Ableitung Memory-Funktionen
+              (record_feature_derivation, record_file_by_file_session).
 """
 
 import os
@@ -445,3 +447,253 @@ def _generate_action_text(error_msg: str) -> str:
 
     # Generischer Aktionstext
     return f"VERMEIDE: {error_msg[:180]}..."
+
+
+# =========================================================================
+# AENDERUNG 31.01.2026: Dart AI Feature-Ableitung Memory-Funktionen
+# =========================================================================
+
+def record_feature_derivation(
+    memory_path: str,
+    anforderungen: List[Dict[str, Any]],
+    features: List[Dict[str, Any]],
+    tasks: List[Dict[str, Any]],
+    success: bool
+) -> str:
+    """
+    Speichert eine Feature-Ableitungs-Session im Memory.
+
+    Args:
+        memory_path: Pfad zur Memory-Datei
+        anforderungen: Liste der analysierten Anforderungen
+        features: Liste der extrahierten Features
+        tasks: Liste der erstellten Tasks
+        success: Ob die Ableitung erfolgreich war
+
+    Returns:
+        Statusmeldung
+    """
+    try:
+        memory_data = load_memory(memory_path)
+
+        # Erstelle Feature-Derivation Eintrag
+        derivation_entry = {
+            "type": "feature_derivation",
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "success": success,
+            "statistics": {
+                "anforderungen_count": len(anforderungen),
+                "features_count": len(features),
+                "tasks_count": len(tasks),
+                "avg_features_per_req": len(features) / len(anforderungen) if anforderungen else 0,
+                "avg_tasks_per_feature": len(tasks) / len(features) if features else 0
+            },
+            "traceability_sample": _create_traceability_sample(anforderungen, features, tasks)
+        }
+
+        # Speichere in history
+        memory_data["history"].append(derivation_entry)
+
+        # Lerne aus erfolgreichen Mustern
+        if success and features:
+            _learn_from_feature_patterns(memory_data, features)
+
+        save_memory(memory_path, memory_data)
+        return f"Feature-Derivation gespeichert: {len(anforderungen)} REQs -> {len(features)} FEATs -> {len(tasks)} TASKs"
+
+    except Exception as e:
+        return f"Fehler beim Speichern der Feature-Derivation: {e}"
+
+
+def _create_traceability_sample(
+    anforderungen: List[Dict[str, Any]],
+    features: List[Dict[str, Any]],
+    tasks: List[Dict[str, Any]]
+) -> Dict[str, Any]:
+    """
+    Erstellt eine Beispiel-Traceability fuer das Memory.
+
+    Args:
+        anforderungen: Liste der Anforderungen
+        features: Liste der Features
+        tasks: Liste der Tasks
+
+    Returns:
+        Traceability-Sample
+    """
+    sample = {
+        "req_to_feat": {},
+        "feat_to_task": {}
+    }
+
+    # Mappe REQ -> FEAT (nur erste 5)
+    for feat in features[:5]:
+        for req_id in feat.get("anforderungen", []):
+            if req_id not in sample["req_to_feat"]:
+                sample["req_to_feat"][req_id] = []
+            sample["req_to_feat"][req_id].append(feat.get("id", "FEAT-???"))
+
+    # Mappe FEAT -> TASK (nur erste 5)
+    for task in tasks[:5]:
+        for feat_id in task.get("features", []):
+            if feat_id not in sample["feat_to_task"]:
+                sample["feat_to_task"][feat_id] = []
+            sample["feat_to_task"][feat_id].append(task.get("id", "TASK-???"))
+
+    return sample
+
+
+def _learn_from_feature_patterns(memory_data: Dict[str, Any], features: List[Dict[str, Any]]) -> None:
+    """
+    Lernt Muster aus erfolgreichen Feature-Definitionen.
+
+    Args:
+        memory_data: Memory-Daten zum Erweitern
+        features: Liste der Features
+    """
+    # Analysiere Technologie-Verteilung
+    tech_counts = {}
+    for feat in features:
+        tech = feat.get("technologie", "unknown")
+        tech_counts[tech] = tech_counts.get(tech, 0) + 1
+
+    # Finde dominante Technologie
+    if tech_counts:
+        dominant_tech = max(tech_counts, key=tech_counts.get)
+        ratio = tech_counts[dominant_tech] / len(features)
+
+        if ratio > 0.7:
+            # Lerne: Dieses Projekt nutzt hauptsaechlich diese Technologie
+            lesson = {
+                "pattern": f"project_tech_{dominant_tech}",
+                "category": "architecture",
+                "action": f"Dieses Projekt verwendet hauptsaechlich {dominant_tech} ({ratio:.0%} der Features).",
+                "tags": ["global", dominant_tech.lower()],
+                "count": 1,
+                "first_seen": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "last_seen": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+
+            # Nur hinzufuegen wenn nicht bereits vorhanden
+            existing_patterns = [l.get("pattern") for l in memory_data.get("lessons", [])]
+            if lesson["pattern"] not in existing_patterns:
+                if "lessons" not in memory_data:
+                    memory_data["lessons"] = []
+                memory_data["lessons"].append(lesson)
+
+
+def record_file_by_file_session(
+    memory_path: str,
+    plan: Dict[str, Any],
+    created_files: List[str],
+    failed_files: List[str],
+    success: bool
+) -> str:
+    """
+    Speichert eine File-by-File Session im Memory.
+
+    Args:
+        memory_path: Pfad zur Memory-Datei
+        plan: Der File-by-File Plan
+        created_files: Liste erfolgreich erstellter Dateien
+        failed_files: Liste fehlgeschlagener Dateien
+        success: Ob die Session insgesamt erfolgreich war
+
+    Returns:
+        Statusmeldung
+    """
+    try:
+        memory_data = load_memory(memory_path)
+
+        planned_files = plan.get("files", [])
+        total_planned = len(planned_files)
+
+        session_entry = {
+            "type": "file_by_file_session",
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "success": success,
+            "statistics": {
+                "planned_files": total_planned,
+                "created_files": len(created_files),
+                "failed_files": len(failed_files),
+                "success_rate": len(created_files) / total_planned if total_planned > 0 else 0
+            },
+            "created": created_files[:10],  # Nur erste 10 speichern
+            "failed": failed_files[:5] if failed_files else []
+        }
+
+        memory_data["history"].append(session_entry)
+
+        # Lerne aus Fehlern
+        if failed_files:
+            for failed_file in failed_files[:3]:
+                _record_file_generation_failure(memory_data, failed_file)
+
+        save_memory(memory_path, memory_data)
+        return f"File-by-File Session gespeichert: {len(created_files)}/{total_planned} erfolgreich"
+
+    except Exception as e:
+        return f"Fehler beim Speichern der File-by-File Session: {e}"
+
+
+def _record_file_generation_failure(memory_data: Dict[str, Any], failed_file: str) -> None:
+    """
+    Lernt aus fehlgeschlagenen Datei-Generierungen.
+
+    Args:
+        memory_data: Memory-Daten
+        failed_file: Pfad der fehlgeschlagenen Datei
+    """
+    # Extrahiere Datei-Typ
+    ext = os.path.splitext(failed_file)[1].lower()
+    pattern = f"file_generation_failed_{ext}"
+
+    # Suche existierende Lesson
+    for lesson in memory_data.get("lessons", []):
+        if lesson.get("pattern") == pattern:
+            lesson["count"] = lesson.get("count", 0) + 1
+            lesson["last_seen"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            return
+
+    # Neue Lesson erstellen
+    lesson = {
+        "pattern": pattern,
+        "category": "file_generation",
+        "action": f"Dateien vom Typ {ext} haben oefter Generierungsprobleme. Mehr Kontext bereitstellen.",
+        "tags": ["global", "file_generation", ext.replace(".", "")],
+        "count": 1,
+        "first_seen": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "last_seen": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }
+
+    if "lessons" not in memory_data:
+        memory_data["lessons"] = []
+    memory_data["lessons"].append(lesson)
+
+
+async def record_file_by_file_session_async(
+    memory_path: str,
+    plan: Dict[str, Any],
+    created_files: List[str],
+    failed_files: List[str],
+    success: bool
+) -> str:
+    """
+    Async-Version von record_file_by_file_session.
+
+    Args:
+        memory_path: Pfad zur Memory-Datei
+        plan: Der File-by-File Plan
+        created_files: Liste erfolgreich erstellter Dateien
+        failed_files: Liste fehlgeschlagener Dateien
+        success: Ob die Session insgesamt erfolgreich war
+
+    Returns:
+        Statusmeldung
+    """
+    def _blocking_record():
+        return record_file_by_file_session(
+            memory_path, plan, created_files, failed_files, success
+        )
+
+    return await asyncio.to_thread(_blocking_record)

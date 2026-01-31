@@ -2,13 +2,14 @@
 """
 Author: rahn
 Datum: 28.01.2026
-Version: 1.3
+Version: 1.4
 Beschreibung: Dependency Agent - IT-Abteilung des Bueros.
               Verwaltet Software-Installationen, fuehrt Inventar und prueft Verfuegbarkeit.
               Kein LLM erforderlich - deterministische Funktionen.
               ÄNDERUNG 28.01.2026: Intelligente npm/pip Paketerkennung für hybride Projekte.
               ÄNDERUNG 28.01.2026: Windows PATH-Fallback für npm-Erkennung.
               ÄNDERUNG 28.01.2026: Fix WinError 2 - Direkte List fuer npm subprocess (keine .split()).
+              ÄNDERUNG 31.01.2026: Built-in Module Filter - sqlite3 etc. nicht per pip installieren.
 """
 
 import os
@@ -48,6 +49,72 @@ NPM_PACKAGES = {
     # Node.js specific
     "express", "fastify", "koa", "nest", "socket.io"
 }
+
+# ÄNDERUNG 31.01.2026: Python Built-in Module die NICHT per pip installiert werden dürfen
+# Diese Module sind Teil der Python Standardbibliothek
+PYTHON_BUILTIN_MODULES = {
+    # Datenbank
+    "sqlite3", "dbm", "shelve", "pickle",
+    # System/OS
+    "os", "sys", "io", "pathlib", "shutil", "glob", "tempfile",
+    "subprocess", "multiprocessing", "threading", "concurrent",
+    "asyncio", "queue", "select", "selectors", "signal", "mmap",
+    # Datentypen
+    "json", "csv", "xml", "html", "configparser",
+    "collections", "array", "heapq", "bisect", "copy",
+    "types", "typing", "dataclasses", "enum", "abc",
+    # Zeit/Datum
+    "datetime", "time", "calendar", "zoneinfo",
+    # Mathematik
+    "math", "cmath", "decimal", "fractions", "random", "statistics", "numbers",
+    # Text
+    "string", "re", "textwrap", "unicodedata", "difflib",
+    # Kryptographie
+    "hashlib", "hmac", "secrets", "base64",
+    # Netzwerk
+    "socket", "ssl", "http", "urllib", "email", "ftplib", "smtplib",
+    # Entwicklung
+    "unittest", "doctest", "pdb", "timeit", "trace", "traceback",
+    "logging", "warnings", "inspect", "dis", "gc", "weakref",
+    # Sonstiges
+    "argparse", "getopt", "getpass", "gettext", "locale",
+    "platform", "ctypes", "struct", "codecs", "pprint", "reprlib",
+    "functools", "itertools", "operator", "contextlib", "atexit",
+    "uuid", "errno", "builtins", "importlib", "zipfile", "tarfile",
+    "gzip", "bz2", "lzma", "zipimport", "pkgutil", "modulefinder"
+}
+
+
+def is_builtin_module(name: str) -> bool:
+    """
+    Prüft ob ein Paketname ein Python Built-in Modul ist.
+
+    Args:
+        name: Paketname (z.B. "sqlite3", "os", "json")
+
+    Returns:
+        True wenn es ein Built-in Modul ist
+    """
+    return name.lower() in PYTHON_BUILTIN_MODULES
+
+
+def filter_builtin_modules(dependencies: list) -> list:
+    """
+    Filtert Built-in Module aus einer Dependency-Liste heraus.
+
+    Args:
+        dependencies: Liste von Paketnamen
+
+    Returns:
+        Liste ohne Built-in Module
+    """
+    filtered = []
+    for dep in dependencies:
+        # Extrahiere Paketnamen (ohne Version)
+        pkg_name = dep.split("==")[0].split(">=")[0].split("<=")[0].split("<")[0].split(">")[0].strip()
+        if not is_builtin_module(pkg_name):
+            filtered.append(dep)
+    return filtered
 
 # ÄNDERUNG 28.01.2026: Bekannte Windows-Installationspfade für Node.js/npm
 WINDOWS_NPM_PATHS = [
@@ -205,6 +272,16 @@ class DependencyAgent:
 
     def _check_python_package(self, name: str, min_version: str = None) -> Dict[str, Any]:
         """Prueft ob ein Python-Paket installiert ist."""
+        # ÄNDERUNG 31.01.2026: Built-in Module sind immer "installiert"
+        if is_builtin_module(name):
+            return {
+                "installed": True,
+                "version": "builtin",
+                "meets_requirement": True,
+                "type": "python",
+                "note": "Python Built-in Modul (Standardbibliothek)"
+            }
+
         try:
             result = subprocess.run(
                 ["python", "-m", "pip", "show", name],
@@ -488,6 +565,18 @@ class DependencyAgent:
             Dict mit status, output
         """
         if package_type == "python":
+            # ÄNDERUNG 31.01.2026: Built-in Module überspringen
+            if is_builtin_module(name):
+                self._log("InstallSkipped", {
+                    "package": name,
+                    "reason": "Python Built-in Modul (bereits in Standardbibliothek)",
+                    "type": "python"
+                })
+                return {
+                    "status": "SKIP",
+                    "output": f"{name} ist ein Python Built-in Modul und muss nicht installiert werden"
+                }
+
             package_spec = f"{name}=={version}" if version else name
             command = f"python -m pip install {package_spec}"
             return self.install_dependencies(command)

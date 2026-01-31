@@ -1,11 +1,14 @@
 """
 Author: rahn
-Datum: 29.01.2026
-Version: 1.1
+Datum: 31.01.2026
+Version: 1.4
 Beschreibung: SessionManager - Verwaltet aktive Sessions und deren Status.
               Ermoeglicht State-Recovery nach Browser-Refresh und Navigation.
               Haelt den aktuellen Projekt-Status fuer Frontend-Synchronisation.
               ÄNDERUNG 29.01.2026: Discovery Briefing Speicherung fuer Agent-Kontext.
+              ÄNDERUNG 30.01.2026: HELP_NEEDED Support (set_agent_blocked) gemäß Protokoll.
+              ÄNDERUNG 31.01.2026: get_blocked_agents(), clear_agent_blocked() fuer HELP_NEEDED Handler.
+              ÄNDERUNG 31.01.2026: Parallel-Fix Status Tracking (fix, parallel_fixer Agenten).
 """
 
 import logging
@@ -56,6 +59,8 @@ class SessionManager:
         }
 
         # Agent-Snapshots (letzter bekannter Status jedes Agents)
+        # AENDERUNG 31.01.2026: Dart AI Agenten hinzugefuegt (planner, analyst, konzepter)
+        # AENDERUNG 31.01.2026: Parallel-Fix Agenten hinzugefuegt (fix, parallel_fixer)
         self.agent_snapshots: Dict[str, Dict[str, Any]] = {
             "coder": {},
             "reviewer": {},
@@ -64,7 +69,14 @@ class SessionManager:
             "security": {},
             "researcher": {},
             "techstack": {},
-            "dbdesigner": {}
+            "dbdesigner": {},
+            # Dart AI Feature-Ableitung Agenten
+            "planner": {},
+            "analyst": {},
+            "konzepter": {},
+            # Parallel-Fix Agenten
+            "fix": {},
+            "parallel_fixer": {}
         }
 
         # Log-Puffer (Ring-Buffer fuer letzte N Logs)
@@ -155,6 +167,87 @@ class SessionManager:
             self.current_session["active_agents"][agent_name] = is_active
             self.current_session["last_update"] = datetime.now().isoformat()
 
+    # ÄNDERUNG 30.01.2026: HELP_NEEDED Support gemäß Kommunikationsprotokoll
+    def set_agent_blocked(self, agent_name: str, is_blocked: bool, reason: str = "") -> None:
+        """
+        Markiert einen Agent als blockiert (HELP_NEEDED Status).
+
+        Args:
+            agent_name: Name des Agents
+            is_blocked: True wenn blockiert
+            reason: Grund der Blockierung (JSON-String mit Details)
+        """
+        with self._lock:
+            # ÄNDERUNG [31.01.2026]: Snapshot bei fehlenden Agents initialisieren
+            if agent_name not in self.agent_snapshots:
+                self.agent_snapshots[agent_name] = {}
+            self.agent_snapshots[agent_name]["blocked"] = is_blocked
+            self.agent_snapshots[agent_name]["blocked_reason"] = reason if is_blocked else ""
+            self.agent_snapshots[agent_name]["blocked_at"] = datetime.now().isoformat() if is_blocked else None
+            self.current_session["last_update"] = datetime.now().isoformat()
+
+            if is_blocked:
+                self._add_log(agent_name, "HELP_NEEDED", reason)
+
+    # ÄNDERUNG 31.01.2026: Methoden fuer HELP_NEEDED Handler
+    def get_blocked_agents(self) -> Dict[str, Dict[str, Any]]:
+        """
+        Gibt alle blockierten Agents zurueck.
+
+        Returns:
+            Dict mit Agent-Namen als Keys und Block-Details als Values
+            z.B. {"security": {"reason": "...", "blocked_at": "...", "priority": "high"}}
+        """
+        with self._lock:
+            return {
+                agent: {
+                    "reason": data.get("blocked_reason", ""),
+                    "blocked_at": data.get("blocked_at"),
+                    "priority": self._extract_priority(data.get("blocked_reason", ""))
+                }
+                for agent, data in self.agent_snapshots.items()
+                if data.get("blocked", False)
+            }
+
+    def _extract_priority(self, reason_json: str) -> str:
+        """
+        Extrahiert Priority aus HELP_NEEDED Reason-JSON.
+
+        Args:
+            reason_json: JSON-String mit HELP_NEEDED Details
+
+        Returns:
+            Priority-String (critical, high, normal, low)
+        """
+        try:
+            import json
+            data = json.loads(reason_json)
+            # Priority kann direkt im JSON sein oder muss aus action_required abgeleitet werden
+            if "priority" in data:
+                return data["priority"]
+            # Ableitung aus action_required
+            action = data.get("action_required", "")
+            if "security" in action.lower() or "critical" in action.lower():
+                return "high"
+            return "normal"
+        except (json.JSONDecodeError, TypeError):
+            return "normal"
+
+    def clear_agent_blocked(self, agent_name: str) -> None:
+        """
+        Setzt Agent-Blockade zurueck nach erfolgreicher Hilfe.
+
+        Args:
+            agent_name: Name des Agents dessen Blockade aufgehoben wird
+        """
+        with self._lock:
+            if agent_name in self.agent_snapshots:
+                self.agent_snapshots[agent_name]["blocked"] = False
+                self.agent_snapshots[agent_name]["blocked_reason"] = ""
+                self.agent_snapshots[agent_name]["blocked_at"] = None
+                self._add_log(agent_name, "HELP_RESOLVED", "Blockade aufgehoben")
+            self.current_session["last_update"] = datetime.now().isoformat()
+
     def update_agent_snapshot(self, agent_name: str, data: Dict[str, Any]) -> None:
         """
         Aktualisiert den Snapshot eines Agents.
@@ -167,6 +260,42 @@ class SessionManager:
             if agent_name in self.agent_snapshots:
                 self.agent_snapshots[agent_name].update(data)
                 self.agent_snapshots[agent_name]["last_update"] = datetime.now().isoformat()
+
+    # AENDERUNG 31.01.2026: Status-Update fuer Parallel-Fix Tracking
+    def update_agent_status(self, agent_name: str, status_data: Dict[str, Any]) -> None:
+        """
+        Aktualisiert den Status eines Agents (speziell fuer Parallel-Fix).
+
+        Diese Methode wird vom ParallelFixer verwendet um Fortschritt zu tracken.
+
+        Args:
+            agent_name: Name des Agents (z.B. "parallel_fixer", "fix")
+            status_data: Status-Daten mit:
+                - status: "idle", "running", "completed", "error"
+                - current_file: Aktuell bearbeitete Datei
+                - progress: Fortschritt in Prozent (0-100)
+                - message: Status-Nachricht
+                - files_fixed: Liste korrigierter Dateien
+                - files_failed: Liste fehlgeschlagener Dateien
+        """
+        with self._lock:
+            # Initialisiere Snapshot falls noetig
+            if agent_name not in self.agent_snapshots:
+                self.agent_snapshots[agent_name] = {}
+
+            self.agent_snapshots[agent_name].update(status_data)
+            self.agent_snapshots[agent_name]["last_update"] = datetime.now().isoformat()
+
+            # Aktiv-Status basierend auf "status" setzen
+            is_active = status_data.get("status") == "running"
+            self.current_session["active_agents"][agent_name] = is_active
+            self.current_session["last_update"] = datetime.now().isoformat()
+
+            # Log bei wichtigen Status-Aenderungen
+            status = status_data.get("status", "unknown")
+            if status in ["running", "completed", "error"]:
+                message = status_data.get("message", "")
+                self._add_log(agent_name, f"Status_{status}", message)
 
     def add_log(self, agent: str, event: str, message: str) -> Dict[str, Any]:
         """

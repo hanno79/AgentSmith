@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 """
 Author: rahn
-Datum: 24.01.2026
-Version: 1.0
+Datum: 29.01.2026
+Version: 1.1
 Beschreibung: Server Runner - Startet Projekt-Server und wartet auf Verfügbarkeit.
               Ermöglicht stabile Tests gegen laufende Server.
+              ÄNDERUNG 29.01.2026: app_type-basierte Server-Erkennung (Desktop/CLI brauchen keinen Server)
 """
 
 import os
@@ -142,6 +143,9 @@ def requires_server(tech_blueprint: Dict[str, Any]) -> bool:
     """
     Prüft ob das Projekt einen laufenden Server benötigt.
 
+    ÄNDERUNG 29.01.2026: Berücksichtigt app_type aus Blueprint.
+    Desktop- und CLI-Apps brauchen keinen Server.
+
     Args:
         tech_blueprint: Projekt-Blueprint
 
@@ -149,6 +153,12 @@ def requires_server(tech_blueprint: Dict[str, Any]) -> bool:
         True wenn Server gestartet werden muss
     """
     project_type = tech_blueprint.get("project_type", "")
+    app_type = tech_blueprint.get("app_type", "")
+
+    # ÄNDERUNG 29.01.2026: Desktop und CLI brauchen keinen Server
+    if app_type in ["desktop", "cli"]:
+        logger.debug(f"app_type={app_type} - kein Server nötig")
+        return False
 
     # Diese Typen brauchen einen Server
     server_types = [
@@ -156,6 +166,17 @@ def requires_server(tech_blueprint: Dict[str, Any]) -> bool:
         "nodejs_express", "nodejs_app",
         "webapp"  # Generischer Webapp-Typ
     ]
+
+    # ÄNDERUNG 29.01.2026: Diese Typen brauchen KEINEN Server
+    no_server_types = [
+        "static_html", "python_cli", "python_script",
+        "tkinter_desktop", "pyqt_desktop", "wxpython_desktop",
+        "cli_tool", "console_app"
+    ]
+
+    if project_type in no_server_types:
+        logger.debug(f"project_type={project_type} - kein Server nötig")
+        return False
 
     # Explizite Markierung im Blueprint
     if "requires_server" in tech_blueprint:
@@ -167,6 +188,12 @@ def requires_server(tech_blueprint: Dict[str, Any]) -> bool:
 
     if any(ind in run_cmd.lower() for ind in server_indicators):
         return True
+
+    # Prüfe ob run_command auf Desktop-Frameworks hinweist
+    desktop_indicators = ["tkinter", "pyqt", "wxpython", "kivy", "pyside"]
+    if any(ind in run_cmd.lower() for ind in desktop_indicators):
+        logger.debug(f"Desktop-Framework in run_command erkannt - kein Server nötig")
+        return False
 
     return project_type in server_types
 

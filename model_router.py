@@ -1,18 +1,27 @@
 # -*- coding: utf-8 -*-
 """
 Author: rahn
-Datum: 24.01.2026
-Version: 1.1
+Datum: 31.01.2026
+Version: 1.3
 Beschreibung: Model Router - Intelligentes Model-Routing mit Fallback bei Rate Limits.
               Automatisches Umschalten auf alternative Modelle bei temporärer Blockierung.
               AENDERUNG 31.01.2026: Fehler-Modell-Historie zur Vermeidung von Ping-Pong-Wechseln.
+              AENDERUNG 31.01.2026: Fix für Model-Rotation-Bug - Trennung von rate-limited und versucht.
+              AENDERUNG 31.01.2026: Proaktiver Health-Check - permanent unavailable Modelle überspringen.
 """
 
 import time
 import asyncio
 import threading
-from typing import Dict, List, Optional, Any, Callable, Set
+from typing import Dict, List, Optional, Any, Callable, Set, Tuple
 from logger_utils import log_event
+
+# AENDERUNG 31.01.2026: LiteLLM Import für Health-Check
+try:
+    import litellm
+    LITELLM_AVAILABLE = True
+except ImportError:
+    LITELLM_AVAILABLE = False
 
 
 class ModelRouter:
@@ -44,6 +53,10 @@ class ModelRouter:
         self.all_paused_count: int = 0  # Zähler für "alle pausiert" Situationen
         # AENDERUNG 31.01.2026: Fehler-Modell-Historie zur Vermeidung von Ping-Pong-Wechseln
         self.error_model_history: Dict[str, Set[str]] = {}  # error_hash -> {tried_models}
+        # AENDERUNG 31.01.2026: Proaktiver Health-Check - permanent unavailable Modelle
+        self.permanently_unavailable: Dict[str, str] = {}  # model -> reason (z.B. "free period ended")
+        self.last_health_check: float = 0  # Timestamp des letzten Health-Checks
+        self.health_check_interval: int = 600  # Re-Check alle 10 Minuten
 
     def get_model(self, agent_role: str) -> str:
         """
@@ -75,17 +88,27 @@ class ModelRouter:
         primary = model_config.get("primary", "")
         fallbacks = model_config.get("fallback", [])
 
-        # Prüfe ob Primary verfügbar (synchrone Wrapper für async _is_rate_limited)
-        is_limited = self._is_rate_limited_sync(primary)
-        
-        if not is_limited:
-            self._track_usage(primary)
-            return primary
+        # AENDERUNG 31.01.2026: Prüfe ob Primary permanent unavailable ist
+        if primary in self.permanently_unavailable:
+            reason = self.permanently_unavailable[primary]
+            log_event("ModelRouter", "Skip",
+                      f"Primary {primary} übersprungen (unavailable: {reason[:50]})")
+        else:
+            # Prüfe ob Primary verfügbar (synchrone Wrapper für async _is_rate_limited)
+            is_limited = self._is_rate_limited_sync(primary)
+
+            if not is_limited:
+                self._track_usage(primary)
+                return primary
 
         # Fallback suchen
         for fallback_model in fallbacks:
+            # AENDERUNG 31.01.2026: Auch Fallbacks auf permanent unavailable prüfen
+            if fallback_model in self.permanently_unavailable:
+                continue  # Überspringe unavailable Fallbacks
+
             is_limited = self._is_rate_limited_sync(fallback_model)
-            
+
             if not is_limited:
                 self._track_usage(fallback_model)
                 self._notify_fallback(agent_role, primary, fallback_model)
@@ -136,17 +159,27 @@ class ModelRouter:
         primary = model_config.get("primary", "")
         fallbacks = model_config.get("fallback", [])
 
-        # Prüfe ob Primary verfügbar (async Version)
-        is_limited = await self._is_rate_limited(primary)
-        
-        if not is_limited:
-            self._track_usage(primary)
-            return primary
+        # AENDERUNG 31.01.2026: Prüfe ob Primary permanent unavailable ist (async)
+        if primary in self.permanently_unavailable:
+            reason = self.permanently_unavailable[primary]
+            log_event("ModelRouter", "Skip",
+                      f"Primary {primary} übersprungen (unavailable: {reason[:50]})")
+        else:
+            # Prüfe ob Primary verfügbar (async Version)
+            is_limited = await self._is_rate_limited(primary)
+
+            if not is_limited:
+                self._track_usage(primary)
+                return primary
 
         # Fallback suchen
         for fallback_model in fallbacks:
+            # AENDERUNG 31.01.2026: Auch Fallbacks auf permanent unavailable prüfen
+            if fallback_model in self.permanently_unavailable:
+                continue  # Überspringe unavailable Fallbacks
+
             is_limited = await self._is_rate_limited(fallback_model)
-            
+
             if not is_limited:
                 self._track_usage(fallback_model)
                 self._notify_fallback(agent_role, primary, fallback_model)
@@ -271,17 +304,33 @@ class ModelRouter:
             "usage_stats": self.model_usage_stats,
             "cooldown_seconds": self.cooldown_seconds,
             # AENDERUNG 31.01.2026: Fehler-Historie im Status
-            "error_history": self.get_error_history_status()
+            "error_history": self.get_error_history_status(),
+            # AENDERUNG 31.01.2026: Health-Status im Status
+            "health_status": self.get_health_status()
         }
 
-    def clear_rate_limits(self):
-        """Löscht alle Rate-Limit-Markierungen (für Tests oder manuelles Reset)."""
+    def clear_rate_limits(self, include_permanently_unavailable: bool = False):
+        """
+        Loescht alle Rate-Limit-Markierungen (fuer Tests oder manuelles Reset).
+
+        Args:
+            include_permanently_unavailable: Wenn True, werden auch permanent
+                                            unavailable Modelle zurueckgesetzt
+        """
         self.rate_limited_models.clear()
         self.model_failure_count.clear()
         self.all_paused_count = 0
         # AENDERUNG 31.01.2026: Auch Fehler-Historie loeschen bei vollem Reset
         self.error_model_history.clear()
-        log_event("ModelRouter", "Info", "Alle Rate-Limits, Failure-Counter und Fehler-Historie zurückgesetzt.")
+
+        # AENDERUNG 31.01.2026: Optional auch permanently_unavailable zuruecksetzen
+        if include_permanently_unavailable:
+            self.permanently_unavailable.clear()
+            log_event("ModelRouter", "Info",
+                      "Alle Rate-Limits, Failure-Counter, Fehler-Historie und Unavailable-Status zurückgesetzt.")
+        else:
+            log_event("ModelRouter", "Info",
+                      "Alle Rate-Limits, Failure-Counter und Fehler-Historie zurückgesetzt.")
 
     def mark_success(self, model: str):
         """
@@ -333,6 +382,9 @@ class ModelRouter:
         Verhindert Ping-Pong-Wechsel zwischen nur 2 Modellen bei persistenten Fehlern.
         Alle verfuegbaren Modelle werden der Reihe nach durchprobiert.
 
+        AENDERUNG 31.01.2026: Trennung von "rate-limited" und "tatsaechlich versucht"
+        um vorschnelles Zuruecksetzen der Historie zu verhindern.
+
         Args:
             agent_role: Name der Agent-Rolle (z.B. "coder")
             error_hash: Hash des Fehler-Inhalts
@@ -343,18 +395,41 @@ class ModelRouter:
         tried_models = self.error_model_history.get(error_hash, set())
         all_models = self.get_all_models_for_role(agent_role)
 
-        # Finde erstes Modell das diesen Fehler noch nicht versucht hat
-        for model in all_models:
-            if model not in tried_models and not self._is_rate_limited_sync(model):
-                log_event("ModelRouter", "ErrorHistory",
-                          f"Modell {model} fuer Fehler {error_hash[:8]} ausgewaehlt "
-                          f"(bereits versucht: {len(tried_models)}/{len(all_models)})")
-                self._track_usage(model)
-                return model
+        # AENDERUNG 31.01.2026: Zaehle verfuegbare und unversuchte Modelle separat
+        available_untried = []
+        rate_limited_untried = []
 
-        # Alle Modelle haben diesen Fehler versucht
+        for model in all_models:
+            if model not in tried_models:
+                if not self._is_rate_limited_sync(model):
+                    available_untried.append(model)
+                else:
+                    rate_limited_untried.append(model)
+
+        # Fall 1: Es gibt ein verfuegbares, unversuchtes Modell
+        if available_untried:
+            model = available_untried[0]
+            log_event("ModelRouter", "ErrorHistory",
+                      f"Modell {model} fuer Fehler {error_hash[:8]} ausgewaehlt "
+                      f"(bereits versucht: {len(tried_models)}/{len(all_models)})")
+            self._track_usage(model)
+            return model
+
+        # Fall 2: Unversuchte Modelle existieren, aber alle sind rate-limited
+        # WARTEN statt Historie loeschen!
+        if rate_limited_untried:
+            log_event("ModelRouter", "Warning",
+                      f"{len(rate_limited_untried)} unversuchte Modelle fuer Fehler {error_hash[:8]} "
+                      f"sind rate-limited. Warte auf Verfuegbarkeit...")
+            # Gib das erste rate-limited Modell zurueck - es wird bald verfuegbar
+            model = rate_limited_untried[0]
+            self._track_usage(model)
+            return model
+
+        # Fall 3: ALLE Modelle haben diesen Fehler tatsaechlich versucht
+        # NUR JETZT darf die Historie geloescht werden
         log_event("ModelRouter", "Warning",
-                  f"Alle {len(all_models)} Modelle haben Fehler {error_hash[:8]} bereits versucht. "
+                  f"Alle {len(all_models)} Modelle haben Fehler {error_hash[:8]} tatsaechlich versucht. "
                   f"Setze Historie zurueck und starte mit Primary.")
         self.clear_error_history(error_hash)
 
@@ -415,6 +490,199 @@ class ModelRouter:
                 error_hash[:12]: list(models)
                 for error_hash, models in self.error_model_history.items()
             }
+        }
+
+    # =========================================================================
+    # AENDERUNG 31.01.2026: Proaktiver Health-Check fuer Modelle
+    # =========================================================================
+
+    async def check_model_health(self, model: str) -> Tuple[bool, str]:
+        """
+        Prueft ob ein Modell verfuegbar ist durch minimalen API-Call.
+
+        Args:
+            model: Modell-ID zum Pruefen
+
+        Returns:
+            Tuple (available, reason):
+            - (True, "OK") - Modell verfuegbar
+            - (True, "rate_limited") - Modell verfuegbar aber gerade limitiert
+            - (False, "reason") - Modell permanent nicht verfuegbar
+        """
+        if not LITELLM_AVAILABLE:
+            log_event("ModelRouter", "Warning", "LiteLLM nicht verfuegbar fuer Health-Check")
+            return (True, "litellm_not_available")
+
+        if not model:
+            return (False, "empty_model_id")
+
+        try:
+            # Minimaler Request: Nur 1 Token generieren
+            response = await litellm.acompletion(
+                model=model,
+                messages=[{"role": "user", "content": "Hi"}],
+                max_tokens=1,
+                timeout=15
+            )
+            log_event("ModelRouter", "HealthCheck", f"Modell {model} ist verfuegbar")
+            return (True, "OK")
+
+        except Exception as e:
+            error_str = str(e).lower()
+
+            # 404 / Not Found = Permanent unavailable (z.B. "free period ended")
+            if "404" in error_str or "not found" in error_str or "notfounderror" in type(e).__name__.lower():
+                reason = str(e)[:200]
+                log_event("ModelRouter", "HealthCheck",
+                          f"Modell {model} ist PERMANENT nicht verfuegbar: {reason[:100]}")
+                return (False, reason)
+
+            # 429 / Rate Limit = Temporär, Modell existiert aber ist gerade limitiert
+            if "429" in error_str or "rate" in error_str or "ratelimiterror" in type(e).__name__.lower():
+                log_event("ModelRouter", "HealthCheck",
+                          f"Modell {model} hat Rate-Limit (aber existiert)")
+                return (True, "rate_limited")
+
+            # Andere Fehler: Als temporär behandeln (vorsichtshalber)
+            log_event("ModelRouter", "HealthCheck",
+                      f"Modell {model} unbekannter Fehler: {str(e)[:100]}")
+            return (True, f"unknown_error: {str(e)[:100]}")
+
+    def check_model_health_sync(self, model: str) -> Tuple[bool, str]:
+        """Synchrone Version des Health-Checks (fuer Startup)."""
+        if not LITELLM_AVAILABLE:
+            return (True, "litellm_not_available")
+
+        if not model:
+            return (False, "empty_model_id")
+
+        try:
+            # Synchroner Aufruf mit litellm.completion
+            response = litellm.completion(
+                model=model,
+                messages=[{"role": "user", "content": "Hi"}],
+                max_tokens=1,
+                timeout=15
+            )
+            log_event("ModelRouter", "HealthCheck", f"Modell {model} ist verfuegbar")
+            return (True, "OK")
+
+        except Exception as e:
+            error_str = str(e).lower()
+
+            if "404" in error_str or "not found" in error_str or "notfounderror" in type(e).__name__.lower():
+                reason = str(e)[:200]
+                log_event("ModelRouter", "HealthCheck",
+                          f"Modell {model} ist PERMANENT nicht verfuegbar: {reason[:100]}")
+                return (False, reason)
+
+            if "429" in error_str or "rate" in error_str or "ratelimiterror" in type(e).__name__.lower():
+                log_event("ModelRouter", "HealthCheck",
+                          f"Modell {model} hat Rate-Limit (aber existiert)")
+                return (True, "rate_limited")
+
+            log_event("ModelRouter", "HealthCheck",
+                      f"Modell {model} unbekannter Fehler: {str(e)[:100]}")
+            return (True, f"unknown_error: {str(e)[:100]}")
+
+    def mark_permanently_unavailable(self, model: str, reason: str) -> None:
+        """
+        Markiert ein Modell als dauerhaft nicht verfuegbar.
+
+        Args:
+            model: Modell-ID
+            reason: Grund fuer Nicht-Verfuegbarkeit
+        """
+        if not model:
+            return
+
+        self.permanently_unavailable[model] = reason
+        log_event("ModelRouter", "Unavailable",
+                  f"Modell {model} als dauerhaft nicht verfuegbar markiert: {reason[:100]}")
+
+    def is_permanently_unavailable(self, model: str) -> bool:
+        """Prueft ob ein Modell als permanent unavailable markiert ist."""
+        return model in self.permanently_unavailable
+
+    def reactivate_model(self, model: str) -> bool:
+        """
+        Reaktiviert ein zuvor als unavailable markiertes Modell.
+
+        Args:
+            model: Modell-ID
+
+        Returns:
+            True wenn Modell reaktiviert wurde, False wenn es nicht unavailable war
+        """
+        if model in self.permanently_unavailable:
+            del self.permanently_unavailable[model]
+            log_event("ModelRouter", "Reactivated", f"Modell {model} wurde reaktiviert")
+            return True
+        return False
+
+    async def recheck_unavailable_models(self) -> Dict[str, bool]:
+        """
+        Prueft ob zuvor als unavailable markierte Modelle wieder verfuegbar sind.
+
+        Returns:
+            Dictionary {model: reactivated}
+        """
+        results = {}
+
+        for model in list(self.permanently_unavailable.keys()):
+            available, reason = await self.check_model_health(model)
+
+            if available and reason != "rate_limited":
+                self.reactivate_model(model)
+                results[model] = True
+            else:
+                results[model] = False
+
+        self.last_health_check = time.time()
+        return results
+
+    async def health_check_all_primary_models(self) -> Dict[str, Dict[str, Any]]:
+        """
+        Fuehrt Health-Check fuer alle Primary-Modelle aller Rollen durch.
+
+        Returns:
+            Dictionary {role: {model, available, reason}}
+        """
+        mode = self.config.get("mode", "test")
+        models_config = self.config.get("models", {}).get(mode, {})
+        results = {}
+
+        for role, model_config in models_config.items():
+            if isinstance(model_config, dict):
+                primary = model_config.get("primary", "")
+                if primary:
+                    available, reason = await self.check_model_health(primary)
+                    results[role] = {
+                        "model": primary,
+                        "available": available,
+                        "reason": reason
+                    }
+
+                    # Bei permanent unavailable automatisch markieren
+                    if not available and "not found" in reason.lower():
+                        self.mark_permanently_unavailable(primary, reason)
+
+        self.last_health_check = time.time()
+        return results
+
+    def get_health_status(self) -> Dict[str, Any]:
+        """
+        Gibt den aktuellen Health-Status aller Modelle zurueck.
+
+        Returns:
+            Dictionary mit verfuegbaren und unavailable Modellen
+        """
+        return {
+            "permanently_unavailable": dict(self.permanently_unavailable),
+            "unavailable_count": len(self.permanently_unavailable),
+            "last_health_check": self.last_health_check,
+            "health_check_interval": self.health_check_interval,
+            "next_recheck_in": max(0, (self.last_health_check + self.health_check_interval) - time.time())
         }
 
 

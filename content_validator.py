@@ -2,10 +2,11 @@
 """
 Author: rahn
 Datum: 28.01.2026
-Version: 1.0
+Version: 1.1
 Beschreibung: Content Validator - Erkennt leere Seiten, fehlende Inhalte und
               Tech-Stack-spezifische Rendering-Probleme.
               Wird von tester_agent.py nach dem Playwright-Screenshot aufgerufen.
+              ÄNDERUNG 31.01.2026: JavaScript-Check Guard und flexible run_command Validierung
 """
 
 import os
@@ -14,6 +15,93 @@ from typing import Any, Dict, List, Optional
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
+
+
+# ÄNDERUNG 31.01.2026: Guard-Funktion für JavaScript-Checks
+def _should_check_javascript(project_path: str, tech_blueprint: Dict[str, Any]) -> bool:
+    """
+    Prüft ob JavaScript-Validierung sinnvoll ist.
+
+    Vermeidet irreführende JS-Fehler bei reinen Python-Projekten.
+
+    Args:
+        project_path: Pfad zum Projektverzeichnis
+        tech_blueprint: Blueprint mit Sprach- und Typ-Informationen
+
+    Returns:
+        True wenn JavaScript-Checks durchgeführt werden sollten
+    """
+    # Sprache aus Blueprint prüfen
+    language = tech_blueprint.get("language", "").lower()
+    if language in ["python", "go", "rust", "java", "c++", "cpp", "csharp"]:
+        return False
+
+    # Projekt-Typ prüfen
+    project_type = tech_blueprint.get("project_type", "").lower()
+    if any(pt in project_type for pt in ["python", "flask", "fastapi", "django", "tkinter", "pyqt", "desktop"]):
+        return False
+
+    # Fallback: Prüfe ob .js/.ts Dateien existieren
+    if project_path and os.path.isdir(project_path):
+        for root, dirs, files in os.walk(project_path):
+            # Skip node_modules
+            if "node_modules" in root:
+                continue
+            for f in files:
+                if f.endswith(('.js', '.ts', '.jsx', '.tsx')):
+                    return True
+
+    return False
+
+
+# ÄNDERUNG 31.01.2026: Flexible run_command Prüfung
+def _run_command_present(run_cmd: str, bat_content: str) -> bool:
+    """
+    Prüft ob run_command oder eine Variante davon in bat_content ist.
+
+    Flexibler als exakter String-Match:
+    - Erkennt Varianten mit src/ Prefix
+    - Erkennt nur den Dateinamen (ohne 'python ')
+
+    Args:
+        run_cmd: Erwarteter run_command aus Blueprint
+        bat_content: Inhalt der run.bat (lowercase)
+
+    Returns:
+        True wenn Befehl oder Variante gefunden
+    """
+    bat_lower = bat_content.lower()
+    run_lower = run_cmd.lower().strip()
+
+    # Exakter Match
+    if run_lower in bat_lower:
+        return True
+
+    # Varianten mit src/ Prefix
+    if "python " in run_lower:
+        # z.B. "python main.py" -> prüfe auch "python src/main.py"
+        script = run_lower.replace("python ", "").strip()
+        if f"python src/{script}" in bat_lower:
+            return True
+        # Oder Script ohne Python prüfen
+        if script in bat_lower:
+            return True
+
+    # Varianten mit node
+    if "node " in run_lower:
+        script = run_lower.replace("node ", "").strip()
+        if f"node src/{script}" in bat_lower:
+            return True
+        if script in bat_lower:
+            return True
+
+    # Nur Dateiname (ohne interpreter) prüfen
+    for part in run_lower.split():
+        if part.endswith(('.py', '.js', '.ts', '.sh', '.bat')):
+            if part in bat_lower:
+                return True
+
+    return False
 
 
 @dataclass
@@ -434,11 +522,11 @@ def validate_run_bat(project_path: str, tech_blueprint: Dict[str, Any]) -> Conte
             "Abhaengigkeiten werden moeglicherweise nicht installiert"
         )
 
-    # run_command vorhanden?
+    # run_command vorhanden? (ÄNDERUNG 31.01.2026: Flexibler Check)
     run_cmd = tech_blueprint.get("run_command", "")
-    if run_cmd and run_cmd.lower() not in bat_content:
+    if run_cmd and not _run_command_present(run_cmd, bat_content):
         result.warnings.append(
-            f"run.bat enthaelt nicht den Start-Befehl '{run_cmd}' - "
+            f"run.bat enthaelt nicht den Start-Befehl '{run_cmd}' (oder Variante mit src/) - "
             "Anwendung wird moeglicherweise nicht gestartet"
         )
 
