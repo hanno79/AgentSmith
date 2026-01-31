@@ -1,15 +1,18 @@
 /**
  * Author: rahn
  * Datum: 24.01.2026
- * Version: 1.0
+ * Version: 1.1
  * Beschreibung: Mainframe Hub - Zentrale Steuerung für Konfiguration, Modelle und System-Status.
+ *               ÄNDERUNG 31.01.2026: Refactoring - useModelFilter Hook für Filter-Logik (Regel 13)
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 // ÄNDERUNG 29.01.2026: Import SortableModelList für Drag & Drop Prioritätslisten
 import SortableModelList from './components/SortableModelList';
+// ÄNDERUNG 31.01.2026: Zentraler Filter-Hook (Single Source of Truth)
+import { useModelFilter, PROVIDER_OPTIONS } from './hooks/useModelFilter';
 import {
   Terminal,
   Cpu,
@@ -69,6 +72,12 @@ const MainframeHub = ({
   const effectiveResearchTimeout = propResearchTimeout !== undefined ? propResearchTimeout : researchTimeout;
   // ÄNDERUNG 25.01.2026: Effektiver Wert für Modellwechsel
   const effectiveModelAttempts = propMaxModelAttempts !== undefined ? propMaxModelAttempts : maxModelAttempts;
+
+  // ÄNDERUNG 31.01.2026: Memoized gefilterte Modell-Listen (eliminiert 4x Code-Duplikation)
+  const filteredFreeModels = useModelFilter(availableModels.free_models, modelFilter, providerFilter);
+  const filteredPaidModels = useModelFilter(availableModels.paid_models, modelFilter, providerFilter);
+  const filteredModalFreeModels = useModelFilter(availableModels.free_models, modalModelFilter, modalProviderFilter);
+  const filteredModalPaidModels = useModelFilter(availableModels.paid_models, modalModelFilter, modalProviderFilter);
 
   // Alle Daten beim Laden abrufen
   useEffect(() => {
@@ -754,15 +763,8 @@ const MainframeHub = ({
                   Model Registry
                 </h3>
                 <div className="px-2 py-0.5 bg-primary/20 text-primary text-[10px] font-mono rounded border border-primary/30">
-                  {availableModels.free_models.filter(m => {
-                    const matchesSearch = m.name.toLowerCase().includes(modelFilter.toLowerCase());
-                    const matchesProvider = providerFilter === 'all' || m.id.toLowerCase().includes(providerFilter);
-                    return matchesSearch && matchesProvider;
-                  }).length + availableModels.paid_models.filter(m => {
-                    const matchesSearch = m.name.toLowerCase().includes(modelFilter.toLowerCase());
-                    const matchesProvider = providerFilter === 'all' || m.id.toLowerCase().includes(providerFilter);
-                    return matchesSearch && matchesProvider;
-                  }).length} / {availableModels.free_models.length + availableModels.paid_models.length}
+                  {/* ÄNDERUNG 31.01.2026: Nutzt memoized gefilterte Listen */}
+                  {filteredFreeModels.length + filteredPaidModels.length} / {availableModels.free_models.length + availableModels.paid_models.length}
                 </div>
               </div>
 
@@ -780,15 +782,10 @@ const MainframeHub = ({
                   onChange={(e) => setProviderFilter(e.target.value)}
                   className="w-full bg-[#1b271f] border border-[#28392e] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary"
                 >
-                  <option value="all">All Providers</option>
-                  <option value="anthropic">Anthropic</option>
-                  <option value="openai">OpenAI</option>
-                  <option value="google">Google</option>
-                  <option value="meta-llama">Meta</option>
-                  <option value="mistralai">Mistral</option>
-                  <option value="qwen">Qwen</option>
-                  <option value="nvidia">NVIDIA</option>
-                  <option value="deepseek">DeepSeek</option>
+                  {/* ÄNDERUNG 31.01.2026: Nutzt zentrale PROVIDER_OPTIONS */}
+                  {PROVIDER_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
                 </select>
               </div>
 
@@ -799,15 +796,9 @@ const MainframeHub = ({
                     <Zap size={12} />
                     Free Tier
                   </div>
+                  {/* ÄNDERUNG 31.01.2026: Nutzt memoized filteredFreeModels */}
                   <div className="space-y-2">
-                    {availableModels.free_models
-                      .filter(m => {
-                        const matchesSearch = m.name.toLowerCase().includes(modelFilter.toLowerCase());
-                        const matchesProvider = providerFilter === 'all' || m.id.toLowerCase().includes(providerFilter);
-                        return matchesSearch && matchesProvider;
-                      })
-                      .slice(0, 50)
-                      .map((model) => (
+                    {filteredFreeModels.slice(0, 50).map((model) => (
                       <div
                         key={model.id}
                         className="bg-[#1b271f] border border-[#28392e] rounded-lg p-3 hover:border-primary/30 transition-colors"
@@ -828,15 +819,9 @@ const MainframeHub = ({
                     <DollarSign size={12} />
                     Premium Tier
                   </div>
+                  {/* ÄNDERUNG 31.01.2026: Nutzt memoized filteredPaidModels */}
                   <div className="space-y-2">
-                    {availableModels.paid_models
-                      .filter(m => {
-                        const matchesSearch = m.name.toLowerCase().includes(modelFilter.toLowerCase());
-                        const matchesProvider = providerFilter === 'all' || m.id.toLowerCase().includes(providerFilter);
-                        return matchesSearch && matchesProvider;
-                      })
-                      .slice(0, 50)
-                      .map((model) => (
+                    {filteredPaidModels.slice(0, 50).map((model) => (
                       <div
                         key={model.id}
                         className="bg-[#1b271f] border border-[#28392e] rounded-lg p-3 hover:border-yellow-500/30 transition-colors"
@@ -933,30 +918,19 @@ const MainframeHub = ({
                       onChange={(e) => setModalProviderFilter(e.target.value)}
                       className="w-full bg-[#1b271f] border border-[#28392e] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary"
                     >
-                      <option value="all">All Providers</option>
-                      <option value="anthropic">Anthropic</option>
-                      <option value="openai">OpenAI</option>
-                      <option value="google">Google</option>
-                      <option value="meta-llama">Meta</option>
-                      <option value="mistralai">Mistral</option>
-                      <option value="qwen">Qwen</option>
-                      <option value="nvidia">NVIDIA</option>
-                      <option value="deepseek">DeepSeek</option>
+                      {/* ÄNDERUNG 31.01.2026: Nutzt zentrale PROVIDER_OPTIONS */}
+                      {PROVIDER_OPTIONS.map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
                     </select>
                   </div>
 
                   {/* Model List */}
                   <div className="p-4 max-h-80 overflow-y-auto custom-scrollbar flex-1">
                     <div className="text-[10px] text-primary uppercase tracking-widest font-bold mb-2">Free Models</div>
+                    {/* ÄNDERUNG 31.01.2026: Nutzt memoized filteredModalFreeModels */}
                     <div className="space-y-2 mb-4">
-                      {availableModels.free_models
-                        .filter(m => {
-                          const matchesSearch = m.name.toLowerCase().includes(modalModelFilter.toLowerCase());
-                          const matchesProvider = modalProviderFilter === 'all' || m.id.toLowerCase().includes(modalProviderFilter);
-                          return matchesSearch && matchesProvider;
-                        })
-                        .slice(0, 30)
-                        .map((model) => {
+                      {filteredModalFreeModels.slice(0, 30).map((model) => {
                           const isInList = agentModelPriority.includes(model.id);
                           return (
                             <button
@@ -991,15 +965,9 @@ const MainframeHub = ({
                     {(config?.mode === 'production' || config?.mode === 'premium') && (
                       <>
                         <div className="text-[10px] text-yellow-400 uppercase tracking-widest font-bold mb-2">Premium Models</div>
+                        {/* ÄNDERUNG 31.01.2026: Nutzt memoized filteredModalPaidModels */}
                         <div className="space-y-2">
-                          {availableModels.paid_models
-                            .filter(m => {
-                              const matchesSearch = m.name.toLowerCase().includes(modalModelFilter.toLowerCase());
-                              const matchesProvider = modalProviderFilter === 'all' || m.id.toLowerCase().includes(modalProviderFilter);
-                              return matchesSearch && matchesProvider;
-                            })
-                            .slice(0, 30)
-                            .map((model) => {
+                          {filteredModalPaidModels.slice(0, 30).map((model) => {
                               const isInList = agentModelPriority.includes(model.id);
                               return (
                                 <button
