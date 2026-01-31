@@ -1,63 +1,21 @@
 /**
  * Author: rahn
  * Datum: 25.01.2026
- * Version: 1.5
+ * Version: 1.6
  * Beschreibung: AgentCard Komponente - Zeigt Status und Logs eines einzelnen Agenten.
  *               Mit farbigem Glow-Effekt bei aktiven Agenten.
  *               ÄNDERUNG 25.01.2026: Bug Fix - Glow nur bei explizit aktiven Status (nicht bei *Output).
  *               ÄNDERUNG 25.01.2026: Worker-Anzeige für parallele Verarbeitung (Badge mit aktiv/total).
  *               ÄNDERUNG 25.01.2026: Kompaktere Status-Badges und gefilterte Logs.
  *               ÄNDERUNG 25.01.2026: BUG FIX - Glow-Effekt auch bei aktiven Workern (activeWorkers > 0).
+ *               ÄNDERUNG 31.01.2026: Refactoring - Nutzt zentrale COLORS aus config.js (Single Source of Truth)
  */
 
 import React, { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { ExternalLink, Users } from 'lucide-react';
-
-// Farbkonfiguration für verschiedene Agenten
-const colors = {
-  blue: 'border-blue-500/40 text-blue-400 bg-blue-500/10',
-  purple: 'border-purple-500/40 text-purple-400 bg-purple-500/10',
-  pink: 'border-pink-500/40 text-pink-400 bg-pink-500/10',
-  yellow: 'border-yellow-500/40 text-yellow-400 bg-yellow-500/10',
-  red: 'border-red-500/40 text-red-400 bg-red-500/10',
-  green: 'border-green-500/40 text-green-400 bg-green-500/10',
-  orange: 'border-orange-500/40 text-orange-400 bg-orange-500/10',
-  cyan: 'border-cyan-500/40 text-cyan-400 bg-cyan-500/10',
-  indigo: 'border-indigo-500/40 text-indigo-400 bg-indigo-500/10',
-  // ÄNDERUNG 30.01.2026: Platinum/Weiß für Documentation Manager
-  platinum: 'border-white/30 text-white bg-white/10',
-};
-
-// Glow-Effekte für aktive Agenten
-const glowStyles = {
-  blue: '0 0 30px rgba(59, 130, 246, 0.8), 0 0 15px rgba(59, 130, 246, 0.5), 0 0 5px rgba(255, 255, 255, 0.3)',
-  purple: '0 0 30px rgba(168, 85, 247, 0.8), 0 0 15px rgba(168, 85, 247, 0.5), 0 0 5px rgba(255, 255, 255, 0.3)',
-  pink: '0 0 30px rgba(236, 72, 153, 0.8), 0 0 15px rgba(236, 72, 153, 0.5), 0 0 5px rgba(255, 255, 255, 0.3)',
-  yellow: '0 0 30px rgba(234, 179, 8, 0.8), 0 0 15px rgba(234, 179, 8, 0.5), 0 0 5px rgba(255, 255, 255, 0.3)',
-  red: '0 0 30px rgba(239, 68, 68, 0.8), 0 0 15px rgba(239, 68, 68, 0.5), 0 0 5px rgba(255, 255, 255, 0.3)',
-  green: '0 0 30px rgba(34, 197, 94, 0.8), 0 0 15px rgba(34, 197, 94, 0.5), 0 0 5px rgba(255, 255, 255, 0.3)',
-  orange: '0 0 30px rgba(249, 115, 22, 0.8), 0 0 15px rgba(249, 115, 22, 0.5), 0 0 5px rgba(255, 255, 255, 0.3)',
-  cyan: '0 0 30px rgba(6, 182, 212, 0.8), 0 0 15px rgba(6, 182, 212, 0.5), 0 0 5px rgba(255, 255, 255, 0.3)',
-  indigo: '0 0 30px rgba(79, 70, 229, 0.8), 0 0 15px rgba(79, 70, 229, 0.5), 0 0 5px rgba(255, 255, 255, 0.3)',
-  // ÄNDERUNG 30.01.2026: Platinum/Weiß für Documentation Manager
-  platinum: '0 0 30px rgba(255, 255, 255, 0.8), 0 0 15px rgba(255, 255, 255, 0.5), 0 0 5px rgba(255, 255, 255, 0.3)',
-};
-
-// Border-Farben für Animation
-const borderColors = {
-  blue: '#3b82f6',
-  purple: '#a855f7',
-  pink: '#ec4899',
-  yellow: '#eab308',
-  red: '#ef4444',
-  green: '#22c55e',
-  orange: '#f97316',
-  cyan: '#06b6d4',
-  indigo: '#4f46e5',
-  // ÄNDERUNG 30.01.2026: Platinum/Weiß für Documentation Manager
-  platinum: '#ffffff',
-};
+// ÄNDERUNG 31.01.2026: Import aus zentraler Konfiguration statt lokaler Duplikate
+import { COLORS, getColorClasses } from '../constants/config';
 
 // ÄNDERUNG 25.01.2026: Aktive Status-Werte (Agent arbeitet gerade)
 // ÄNDERUNG 28.01.2026: 'Working' hinzugefügt als universeller Arbeitsstatus
@@ -143,11 +101,11 @@ const AgentCard = ({ name, icon, color, status, logs, onOpenOffice, workers = []
     <motion.div
       initial={false}
       animate={{
-        boxShadow: isActive ? glowStyles[color] : 'none',
-        borderColor: isActive ? borderColors[color] : '',
+        boxShadow: isActive ? COLORS[color]?.glow : 'none',
+        borderColor: isActive ? COLORS[color]?.hex : '',
       }}
       transition={{ duration: 0.6, repeat: isActive ? Infinity : 0, repeatType: 'reverse', ease: 'easeInOut' }}
-      className={`p-4 rounded-xl border ${colors[color].split(' ')[0]} bg-[#1c2127] transition-all relative overflow-hidden group ${isActive ? 'ring-1 ring-white/10' : ''}`}
+      className={`p-4 rounded-xl border ${COLORS[color]?.border} bg-[#1c2127] transition-all relative overflow-hidden group ${isActive ? 'ring-1 ring-white/10' : ''}`}
     >
       {/* Hintergrund-Icon */}
       <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
@@ -157,7 +115,7 @@ const AgentCard = ({ name, icon, color, status, logs, onOpenOffice, workers = []
       {/* Header mit Name und Status - ÄNDERUNG 25.01.2026: Kompakteres Layout */}
       <div className="flex justify-between items-start mb-4 relative z-10">
         <div className="flex items-center gap-2">
-          <div className={`p-2 rounded-lg bg-slate-800 border border-border-dark ${colors[color].split(' ')[1]}`}>
+          <div className={`p-2 rounded-lg bg-slate-800 border border-border-dark ${COLORS[color]?.text}`}>
             {icon}
           </div>
           <div className="min-w-0">
@@ -170,7 +128,7 @@ const AgentCard = ({ name, icon, color, status, logs, onOpenOffice, workers = []
           {/* Worker-Badge: kompakter */}
           {totalWorkers > 1 && (
             <div className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-full border text-[8px] font-medium ${
-              activeWorkers > 0 ? colors[color] : 'bg-[#283039] border-border-dark text-slate-500'
+              activeWorkers > 0 ? getColorClasses(color) : 'bg-[#283039] border-border-dark text-slate-500'
             }`} title={`${activeWorkers} von ${totalWorkers} Worker aktiv`}>
               <Users size={9} />
               <span>{activeWorkers}/{totalWorkers}</span>
@@ -178,7 +136,7 @@ const AgentCard = ({ name, icon, color, status, logs, onOpenOffice, workers = []
           )}
           {/* Status-Badge: gekürzt */}
           <div className={`px-1.5 py-0.5 rounded-full border text-[8px] font-bold uppercase transition-all max-w-[60px] truncate ${
-            status !== 'Idle' ? colors[color] : 'bg-[#283039] border-border-dark text-slate-500'
+            status !== 'Idle' ? getColorClasses(color) : 'bg-[#283039] border-border-dark text-slate-500'
           }`} title={status}>
             {formatStatus(status)}
           </div>
@@ -189,7 +147,7 @@ const AgentCard = ({ name, icon, color, status, logs, onOpenOffice, workers = []
                 e.stopPropagation();
                 onOpenOffice(name.toLowerCase().replace(' ', ''));
               }}
-              className={`p-1 rounded-lg border transition-all hover:scale-105 ${colors[color]}`}
+              className={`p-1 rounded-lg border transition-all hover:scale-105 ${getColorClasses(color)}`}
               title={`${name} Office öffnen`}
             >
               <ExternalLink size={11} />
