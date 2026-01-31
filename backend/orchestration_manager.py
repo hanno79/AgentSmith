@@ -253,6 +253,49 @@ def _repair_json(text: str) -> str:
     return text
 
 
+# ÄNDERUNG 31.01.2026: Robuste JSON-Extraktion durch Klammer-Zählung
+def _extract_json_from_text(text: str) -> Optional[str]:
+    """
+    Extrahiert JSON-Objekt aus Text durch Klammer-Zählung.
+    Funktioniert auch mit verschachtelten Objekten, im Gegensatz zu Regex.
+
+    Args:
+        text: Der Text, der JSON enthalten könnte
+
+    Returns:
+        Das extrahierte JSON als String, oder None wenn keines gefunden
+    """
+    # Finde erste öffnende Klammer
+    start = text.find('{')
+    if start == -1:
+        return None
+
+    depth = 0
+    in_string = False
+    escape_next = False
+
+    for i, char in enumerate(text[start:], start):
+        if escape_next:
+            escape_next = False
+            continue
+        if char == '\\':
+            escape_next = True
+            continue
+        if char == '"' and not escape_next:
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if char == '{':
+            depth += 1
+        elif char == '}':
+            depth -= 1
+            if depth == 0:
+                return text[start:i+1]
+
+    return None  # Unbalancierte Klammern
+
+
 def _extract_user_requirements(user_goal: str) -> dict:
     """
     Extrahiert ALLE erkennbaren Anforderungen aus dem Benutzer-Goal.
@@ -1235,8 +1278,8 @@ class OrchestrationManager:
                             else:
                                 # Anderer Fehler - weiterleiten
                                 raise ts_error
-                    # ÄNDERUNG 30.01.2026: Robusteres JSON-Parsing mit intelligenter Fallback-Logik
-                    # Respektiert Benutzer-Vorgaben und fällt nicht blind auf static_html zurück
+                    # ÄNDERUNG 31.01.2026: Robusteres JSON-Parsing mit Klammer-Zählung
+                    # Ersetzt fehleranfällige Regex durch _extract_json_from_text()
                     try:
                         json_text = None
 
@@ -1245,17 +1288,14 @@ class OrchestrationManager:
                         if code_block_match:
                             json_text = code_block_match.group(1)
 
-                        # Schritt 2: Falls kein Code-Block, einfaches JSON-Regex (double quotes)
+                        # Schritt 2: Falls kein Code-Block, nutze robuste Klammer-Zählung
+                        # ÄNDERUNG 31.01.2026: _extract_json_from_text() statt fehlerhaftem Regex
+                        # Regex [^{}]* konnte keine verschachtelten JSON-Objekte matchen
                         if not json_text:
-                            json_match = re.search(r'\{[^{}]*"project_type"[^{}]*\}', techstack_result, re.DOTALL)
-                            if json_match:
-                                json_text = json_match.group()
-
-                        # Schritt 3: Falls immer noch nichts, versuche single-quotes Variante
-                        if not json_text:
-                            single_quote_match = re.search(r"\{[^{}]*'project_type'[^{}]*\}", techstack_result, re.DOTALL)
-                            if single_quote_match:
-                                json_text = _repair_json(single_quote_match.group())
+                            json_text = _extract_json_from_text(techstack_result)
+                            # Falls single-quotes gefunden, reparieren
+                            if json_text and "'" in json_text and '"' not in json_text:
+                                json_text = _repair_json(json_text)
                                 self._ui_log("TechArchitect", "Info", "JSON mit single quotes erkannt, repariere...")
 
                         # Schritt 4: JSON parsen
