@@ -51,14 +51,13 @@ AGENT_TO_SESSION_KEY = {
 
 # ÄNDERUNG 29.01.2026: Robuste .env-Ladung mit mehreren Fallback-Pfaden
 # Löst das Problem wenn Module aus Worktree-Pfad importiert werden
+# ÄNDERUNG 31.01.2026: Hardcodierten Windows-Pfad entfernt für Plattform-Unabhängigkeit
 def _load_env_robust():
     """Lädt .env aus mehreren möglichen Pfaden."""
     possible_paths = [
-        # 1. Expliziter bekannter Pfad (höchste Priorität)
-        r"C:\Temp\multi_agent_poc\.env",
-        # 2. Relativ zum aktuellen Arbeitsverzeichnis
+        # 1. Relativ zum aktuellen Arbeitsverzeichnis
         os.path.join(os.getcwd(), ".env"),
-        # 3. Relativ zu __file__ (funktioniert wenn nicht im Worktree)
+        # 2. Relativ zu __file__ (funktioniert wenn nicht im Worktree)
         os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"),
     ]
 

@@ -1,5 +1,8 @@
 /**
- * Zentrale Konfiguration - Single Source of Truth
+ * Author: rahn
+ * Datum: 31.01.2026
+ * Version: 1.0
+ * Beschreibung: Zentrale Konfiguration - Single Source of Truth für Frontend-Konstanten
  *
  * Alle Default-Werte und Konstanten für das Frontend.
  * Diese Datei sollte die einzige Quelle für solche Werte sein.
@@ -78,6 +81,14 @@ export const COLORS = {
     bg: 'bg-indigo-500/10',
     hex: '#4f46e5',
     glow: '0 0 30px rgba(79, 70, 229, 0.8), 0 0 15px rgba(79, 70, 229, 0.5), 0 0 5px rgba(255, 255, 255, 0.3)',
+  },
+  // ÄNDERUNG 30.01.2026: Platinum/Weiß für Documentation Manager
+  platinum: {
+    border: 'border-white/30',
+    text: 'text-white',
+    bg: 'bg-white/10',
+    hex: '#ffffff',
+    glow: '0 0 30px rgba(255, 255, 255, 0.8), 0 0 15px rgba(255, 255, 255, 0.5), 0 0 5px rgba(255, 255, 255, 0.3)',
   },
 };
 
