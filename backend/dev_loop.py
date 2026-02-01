@@ -1,8 +1,10 @@
 """
 Author: rahn
-Datum: 31.01.2026
-Version: 1.6
+Datum: 01.02.2026
+Version: 1.8
 Beschreibung: DevLoop kapselt die Iterationslogik fuer Code-Generierung und Tests.
+              AENDERUNG 01.02.2026: Documenter + Memory Agent Integration für Orchestrator-Entscheidungen.
+              AENDERUNG 01.02.2026: OrchestratorValidator Integration gemäß Dart AI Protokoll.
               AENDERUNG 31.01.2026: HELP_NEEDED Handler Integration fuer automatische Hilfs-Agenten.
               AENDERUNG 31.01.2026: FIX - Security-Blockade wird aufgehoben wenn Scan erfolgreich.
               AENDERUNG 31.01.2026: Fehler-Modell-Historie zur Vermeidung von Ping-Pong-Wechseln.
@@ -28,10 +30,28 @@ from .dev_loop_steps import (
     handle_model_switch
 )
 # AENDERUNG 31.01.2026: File-by-File Modus zur Vermeidung von Truncation
-from .file_by_file_loop import should_use_file_by_file, run_file_by_file_loop
+# AENDERUNG 01.02.2026: Truncation Recovery - File-by-File Reparatur
+from .file_by_file_loop import (
+    should_use_file_by_file,
+    run_file_by_file_loop,
+    run_file_by_file_repair,
+    merge_repaired_files,
+    run_planner
+)
+# AENDERUNG 01.02.2026: Parallele Datei-Generierung fuer dynamische Worker-Anzahl
+from .parallel_file_generator import (
+    run_parallel_file_generation,
+    run_parallel_fixes,
+    get_file_descriptions_from_plan,
+    get_file_list_from_plan
+)
 # AENDERUNG 31.01.2026: Targeted Fix Mode - Parallele gezielte Korrekturen
 from .error_analyzer import ErrorAnalyzer, analyze_errors, get_files_to_fix
 from .parallel_fixer import ParallelFixer, should_use_parallel_fix
+# AENDERUNG 01.02.2026: OrchestratorValidator gemäß Dart AI Kommunikationsprotokoll
+from .orchestration_validator import OrchestratorValidator, ValidatorAction
+# AENDERUNG 01.02.2026: Universal Task Derivation System (UTDS)
+from .dev_loop_task_derivation import DevLoopTaskDerivation, integrate_task_derivation
 
 # ÄNDERUNG 29.01.2026: Dev-Loop aus OrchestrationManager ausgelagert
 
@@ -44,6 +64,14 @@ class DevLoop:
         # AENDERUNG 31.01.2026: Targeted Fix Mode Komponenten
         self._parallel_fixer = None
         self._error_analyzer = ErrorAnalyzer()
+        # AENDERUNG 01.02.2026: OrchestratorValidator für zentrale Prüflogik
+        self._orchestrator_validator = OrchestratorValidator(
+            manager=manager,
+            model_router=manager.model_router,
+            config=manager.config
+        )
+        # AENDERUNG 01.02.2026: Universal Task Derivation System (UTDS)
+        self._task_derivation = DevLoopTaskDerivation(manager, manager.config)
 
     def _try_targeted_fix(
         self,
@@ -182,33 +210,86 @@ class DevLoop:
         manager.agent_security = agent_security
 
         # AENDERUNG 31.01.2026: File-by-File Modus bei komplexen Projekten
+        # AENDERUNG 01.02.2026: Parallele Generierung mit dynamischer Worker-Anzahl
         # Verhindert Truncation bei Free-Tier-Modellen mit niedrigen Token-Limits
         if should_use_file_by_file(manager.tech_blueprint, manager.config):
-            manager._ui_log("DevLoop", "Mode", "File-by-File Modus aktiviert (Anti-Truncation)")
+            # Pruefe ob parallele Generierung aktiviert ist
+            parallel_config = manager.config.get("parallel_file_generation", {})
+            use_parallel = parallel_config.get("enabled", True)
+
+            if use_parallel:
+                manager._ui_log("DevLoop", "Mode", "PARALLELE File-by-File Generierung aktiviert")
+            else:
+                manager._ui_log("DevLoop", "Mode", "File-by-File Modus aktiviert (sequenziell)")
+
             try:
                 import asyncio
-                # AENDERUNG 31.01.2026: FIX AsyncIO - Erstelle neuen Event-Loop fuer Worker-Thread
-                # asyncio.get_event_loop() funktioniert nicht in Worker-Threads!
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 try:
-                    success, message, created_files = loop.run_until_complete(
-                        run_file_by_file_loop(
-                            manager,
-                            project_rules,
-                            manager.user_prompt if hasattr(manager, 'user_prompt') else "",
-                            max_iterations=manager.config.get("max_retries", 3)
+                    if use_parallel:
+                        # AENDERUNG 01.02.2026: Parallele Generierung
+                        # Schritt 1: Plan erstellen
+                        plan = loop.run_until_complete(
+                            run_planner(
+                                manager,
+                                project_rules,
+                                manager.user_prompt if hasattr(manager, 'user_prompt') else ""
+                            )
                         )
-                    )
+                        file_list = get_file_list_from_plan(plan)
+                        file_descriptions = get_file_descriptions_from_plan(plan)
+
+                        manager._ui_log("DevLoop", "ParallelPlan", json.dumps({
+                            "total_files": len(file_list),
+                            "files": file_list[:10]  # Erste 10 anzeigen
+                        }, ensure_ascii=False))
+
+                        # Schritt 2: Parallele Generierung
+                        max_workers = parallel_config.get("max_workers", None)  # None = unbegrenzt
+                        timeout_per_file = parallel_config.get("timeout_per_file", 120)
+                        batch_timeout = parallel_config.get("batch_timeout", 300)
+
+                        results, errors = loop.run_until_complete(
+                            run_parallel_file_generation(
+                                manager=manager,
+                                file_list=file_list,
+                                file_descriptions=file_descriptions,
+                                user_goal=manager.user_prompt if hasattr(manager, 'user_prompt') else "",
+                                project_rules=project_rules,
+                                max_workers=max_workers,
+                                timeout_per_file=timeout_per_file,
+                                batch_timeout=batch_timeout
+                            )
+                        )
+
+                        created_files = list(results.keys())
+                        success = len(created_files) > 0
+
+                        if errors:
+                            manager._ui_log("DevLoop", "ParallelErrors", json.dumps({
+                                "failed_count": len(errors),
+                                "errors": [(f, e[:50]) for f, e in errors[:5]]
+                            }, ensure_ascii=False))
+                    else:
+                        # Sequenzieller Modus (Original)
+                        success, message, created_files = loop.run_until_complete(
+                            run_file_by_file_loop(
+                                manager,
+                                project_rules,
+                                manager.user_prompt if hasattr(manager, 'user_prompt') else "",
+                                max_iterations=manager.config.get("max_retries", 3)
+                            )
+                        )
                 finally:
                     loop.close()
+
                 if success and created_files:
                     manager._ui_log("DevLoop", "FileByFileComplete", json.dumps({
                         "success": True,
                         "files_created": len(created_files),
-                        "message": message
+                        "parallel": use_parallel
                     }, ensure_ascii=False))
-                    # Fahre mit normaler Loop fuer Tests/Review fort
                     # Setze current_code aus erstellten Dateien
                     all_code = ""
                     for filepath in created_files:
@@ -217,12 +298,13 @@ class DevLoop:
                             with open(full_path, "r", encoding="utf-8") as f:
                                 all_code += f"\n### FILENAME: {filepath}\n{f.read()}\n"
                     manager.current_code = all_code
-                    # Ueberspringe erste Iteration da Code bereits generiert
                     manager._ui_log("DevLoop", "Info",
                                    "File-by-File abgeschlossen, starte Tests und Review...")
             except Exception as fbf_err:
                 manager._ui_log("DevLoop", "Warning",
                                f"File-by-File fehlgeschlagen, nutze Standard-Modus: {fbf_err}")
+                import traceback
+                logger.error(f"File-by-File Fehler: {traceback.format_exc()}")
                 # Fallback auf normalen Modus
 
         max_retries = manager.config.get("max_retries", 3)
@@ -291,6 +373,67 @@ class DevLoop:
                     "files": [f[0] for f in truncated_files]
                 }, ensure_ascii=False))
 
+                # AENDERUNG 01.02.2026: Truncation Recovery - File-by-File Reparatur
+                # Repariere abgeschnittene Dateien einzeln statt alle neu zu generieren
+                manager._ui_log("DevLoop", "TruncationRecovery",
+                               f"Starte File-by-File Reparatur fuer {len(truncated_files)} Dateien...")
+                try:
+                    import asyncio
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        repair_success, repair_msg, repaired_content = loop.run_until_complete(
+                            run_file_by_file_repair(
+                                manager,
+                                project_rules,
+                                truncated_files,
+                                manager.current_code,
+                                user_goal,
+                                max_iterations=3
+                            )
+                        )
+                    finally:
+                        loop.close()
+
+                    if repair_success and repaired_content:
+                        # Merge reparierte Dateien in aktuellen Code
+                        manager.current_code = merge_repaired_files(
+                            manager.current_code,
+                            repaired_content
+                        )
+                        manager._ui_log("DevLoop", "TruncationRepaired", json.dumps({
+                            "success": True,
+                            "repaired_files": list(repaired_content.keys()),
+                            "message": repair_msg
+                        }, ensure_ascii=False))
+
+                        # Aktualisiere created_files Liste
+                        for filepath in repaired_content.keys():
+                            if filepath not in created_files:
+                                created_files.append(filepath)
+
+                        # Truncation behoben - Reset fuer naechsten Sandbox-Check
+                        truncated_files = []
+
+                        # Re-run Sandbox mit reparierten Dateien
+                        sandbox_result, sandbox_failed, test_result, ui_result, test_summary = run_sandbox_and_tests(
+                            manager,
+                            manager.current_code,
+                            created_files,
+                            iteration,
+                            manager.tech_blueprint.get("project_type", "webapp")
+                        )
+
+                        if not sandbox_failed:
+                            manager._ui_log("DevLoop", "TruncationRecoverySuccess",
+                                           "Sandbox nach Reparatur erfolgreich!")
+                    else:
+                        manager._ui_log("DevLoop", "TruncationRecoveryFailed",
+                                       f"File-by-File Reparatur fehlgeschlagen: {repair_msg}")
+                except Exception as repair_err:
+                    manager._ui_log("DevLoop", "TruncationRecoveryError",
+                                   f"Reparatur-Fehler: {repair_err}")
+
             # AENDERUNG 31.01.2026: Targeted Fix Mode - Versuche gezielte Korrektur vor Neugenerierung
             # Nur bei Sandbox-Fehlern und wenn Dateien existieren (nicht erste Iteration)
             targeted_fix_applied = False
@@ -334,6 +477,16 @@ class DevLoop:
                 sandbox_failed,
                 self.run_with_timeout
             )
+
+            # AENDERUNG 01.02.2026: Augment Context bei wiederholten Fehlern
+            augment_context = ""
+            if sandbox_failed and iteration >= 2:
+                augment_context = self._get_augment_context(
+                    sandbox_result, review_output, iteration
+                )
+                if augment_context:
+                    # Fuege Augment-Kontext zum Review hinzu
+                    review_output = f"{review_output}\n\n[AUGMENT ARCHITEKTUR-ANALYSE]\n{augment_context}"
 
             # ÄNDERUNG 30.01.2026: Quality Gate - Review Validierung
             if hasattr(manager, 'quality_gate') and review_output:
@@ -480,18 +633,83 @@ class DevLoop:
                 manager._current_iteration = iteration
                 continue
 
-            # ÄNDERUNG 31.01.2026: review_verdict an build_feedback übergeben
-            feedback = build_feedback(
-                manager,
-                review_output,
-                review_verdict,  # NEU: Strukturiertes Verdict statt nur String-Parsing
-                sandbox_failed,
-                sandbox_result,
-                test_summary,
-                test_result,
-                security_passed,
-                security_rescan_vulns
+            # ÄNDERUNG 01.02.2026: OrchestratorValidator prüft Review-Output gemäß Dart AI Protokoll
+            # Der Orchestrator analysiert ob Root Cause vorhanden ist und ergänzt bei Bedarf
+            current_files = {}
+            for filepath in (created_files or []):
+                full_path = os.path.join(manager.project_path, filepath)
+                if os.path.exists(full_path):
+                    try:
+                        with open(full_path, "r", encoding="utf-8") as f:
+                            current_files[filepath] = f.read()
+                    except Exception:
+                        pass
+
+            validator_decision = self._orchestrator_validator.validate_review_output(
+                review_output=review_output,
+                review_verdict=review_verdict,
+                sandbox_result=sandbox_result,
+                sandbox_failed=sandbox_failed,
+                current_code=manager.current_code,
+                current_files=current_files,
+                current_model=current_coder_model
             )
+
+            # Logge Orchestrator-Entscheidung
+            manager._ui_log("Orchestrator", "ValidationDecision", json.dumps({
+                "action": validator_decision.action.value,
+                "target_agent": validator_decision.target_agent,
+                "model_switch_recommended": validator_decision.model_switch_recommended,
+                "has_root_cause": validator_decision.root_cause is not None,
+                "error_hash": validator_decision.error_hash[:8] if validator_decision.error_hash else None
+            }, ensure_ascii=False))
+
+            # AENDERUNG 01.02.2026: Documenter-Integration - Orchestrator-Entscheidung aufzeichnen
+            if hasattr(manager, 'doc_service') and manager.doc_service:
+                manager.doc_service.collect_orchestrator_decision(
+                    iteration=iteration + 1,
+                    action=validator_decision.action.value,
+                    target_agent=validator_decision.target_agent,
+                    root_cause=validator_decision.root_cause,
+                    model_switch=validator_decision.model_switch_recommended,
+                    error_hash=validator_decision.error_hash
+                )
+
+            # AENDERUNG 01.02.2026: Memory-Agent-Integration - Root Cause aufzeichnen
+            if validator_decision.root_cause:
+                try:
+                    memory_path = os.path.join(manager.base_dir, "memory", "global_memory.json")
+                    with ThreadPoolExecutor(max_workers=1) as executor:
+                        executor.submit(
+                            update_memory, memory_path,
+                            f"Orchestrator Root Cause (Iteration {iteration + 1}): {validator_decision.root_cause[:500]}",
+                            f"Action: {validator_decision.action.value}, Target: {validator_decision.target_agent}",
+                            sandbox_result[:500] if sandbox_result else ""
+                        )
+                    manager._ui_log("Memory", "OrchestratorDecision",
+                                   f"Root Cause Analyse aufgezeichnet (Iteration {iteration + 1})")
+                except Exception as mem_err:
+                    manager._ui_log("Memory", "Warning",
+                                   f"Memory-Aufzeichnung fehlgeschlagen: {mem_err}")
+
+            # Nutze Validator-Feedback wenn Root Cause Analyse durchgeführt wurde
+            if validator_decision.root_cause:
+                feedback = validator_decision.feedback
+                manager._ui_log("Orchestrator", "RootCauseEnhanced",
+                               "Orchestrator hat Root Cause Analyse zum Feedback hinzugefügt")
+            else:
+                # Fallback auf klassisches build_feedback
+                feedback = build_feedback(
+                    manager,
+                    review_output,
+                    review_verdict,
+                    sandbox_failed,
+                    sandbox_result,
+                    test_summary,
+                    test_result,
+                    security_passed,
+                    security_rescan_vulns
+                )
             manager._ui_log("Reviewer", "Feedback", feedback)
 
             # ÄNDERUNG 31.01.2026: HELP_NEEDED Handler aufrufen
@@ -505,6 +723,73 @@ class DevLoop:
                     for action in help_result.get("actions", []):
                         if action.get("action") == "test_generator" and action.get("success"):
                             feedback += "\n\nHINWEIS: Unit-Tests wurden automatisch generiert."
+
+            # AENDERUNG 01.02.2026: Universal Task Derivation System (UTDS)
+            # Zerlegt Feedback in Tasks und fuehrt sie parallel aus
+            utds_context = {
+                "current_code": manager.current_code,
+                "affected_files": created_files or [],
+                "tech_stack": getattr(manager, 'tech_blueprint', {}).get('language', 'unknown')
+            }
+
+            # AENDERUNG 01.02.2026: Security als UTDS-Quelle (Phase 9)
+            if not security_passed and security_rescan_vulns:
+                security_feedback = "\n".join([
+                    f"Security-Vulnerability: {v}" if isinstance(v, str)
+                    else f"Security-Vulnerability ({v.get('severity', 'medium')}): {v.get('description', str(v))}"
+                    for v in security_rescan_vulns
+                ])
+                if self._task_derivation.should_use_task_derivation(security_feedback, "security", iteration):
+                    manager._ui_log("TaskDerivation", "SecurityStart", "Starte Task-Ableitung aus Security-Findings")
+                    sec_success, sec_summary, sec_modified = self._task_derivation.process_feedback(
+                        security_feedback, "security", utds_context
+                    )
+                    if sec_success:
+                        manager._ui_log("TaskDerivation", "SecuritySuccess",
+                                       f"Security-Tasks erfolgreich: {len(sec_modified)} Dateien geaendert")
+                        # Aktualisiere Zustand - Security erneut pruefen nicht notwendig da Tasks erledigt
+                        security_passed = True
+                    else:
+                        manager._ui_log("TaskDerivation", "SecurityPartial",
+                                       "Nicht alle Security-Tasks erfolgreich - verbleibende im Feedback")
+                        feedback = f"{feedback}\n\nSecurity-Tasks Status:\n{sec_summary}"
+
+            # AENDERUNG 01.02.2026: Sandbox als UTDS-Quelle (Phase 9)
+            if sandbox_failed and sandbox_result:
+                sandbox_feedback = f"Sandbox-Fehler:\n{sandbox_result}"
+                if test_summary:
+                    sandbox_feedback += f"\n\nTest-Summary:\n{test_summary}"
+                if self._task_derivation.should_use_task_derivation(sandbox_feedback, "sandbox", iteration):
+                    manager._ui_log("TaskDerivation", "SandboxStart", "Starte Task-Ableitung aus Sandbox-Fehlern")
+                    sb_success, sb_summary, sb_modified = self._task_derivation.process_feedback(
+                        sandbox_feedback, "sandbox", utds_context
+                    )
+                    if sb_success:
+                        manager._ui_log("TaskDerivation", "SandboxSuccess",
+                                       f"Sandbox-Tasks erfolgreich: {len(sb_modified)} Dateien geaendert")
+                        # Markiere sandbox als erfolgreich da Tasks erledigt
+                        sandbox_failed = False
+                    else:
+                        manager._ui_log("TaskDerivation", "SandboxPartial",
+                                       "Nicht alle Sandbox-Tasks erfolgreich - verbleibende im Feedback")
+                        feedback = f"{feedback}\n\nSandbox-Tasks Status:\n{sb_summary}"
+
+            # Reviewer als UTDS-Quelle (Original)
+            if self._task_derivation.should_use_task_derivation(feedback, "reviewer", iteration):
+                manager._ui_log("TaskDerivation", "Start", "Starte Task-Ableitung aus Feedback")
+                td_success, td_summary, td_modified = self._task_derivation.process_feedback(
+                    feedback, "reviewer", utds_context
+                )
+                if td_success:
+                    manager._ui_log("TaskDerivation", "Success",
+                                   f"Alle Tasks erfolgreich: {len(td_modified)} Dateien geaendert")
+                    # Bei Erfolg: Feedback durch Summary ersetzen
+                    feedback = td_summary
+                else:
+                    manager._ui_log("TaskDerivation", "Partial",
+                                   "Nicht alle Tasks erfolgreich - verbleibende werden dokumentiert")
+                    # Bei Teilerflog: Summary anhaengen
+                    feedback = f"{feedback}\n\n{td_summary}"
 
             # ÄNDERUNG 30.01.2026: Sammle fehlgeschlagene Iterations-Daten für Dokumentation
             if hasattr(manager, 'doc_service') and manager.doc_service:
@@ -533,6 +818,13 @@ class DevLoop:
                 "sandbox_error": sandbox_result[:300] if sandbox_failed else ""
             })
 
+            # AENDERUNG 01.02.2026: OrchestratorValidator kann Modellwechsel erzwingen
+            # Wenn Validator Modellwechsel empfiehlt, Error in ModelRouter markieren
+            if validator_decision.model_switch_recommended and validator_decision.error_hash:
+                manager.model_router.mark_error_tried(validator_decision.error_hash, current_coder_model)
+                manager._ui_log("Orchestrator", "ForceModelSwitch",
+                               f"Orchestrator erzwingt Modellwechsel für Fehler {validator_decision.error_hash[:8]}")
+
             # AENDERUNG 31.01.2026: sandbox_result und sandbox_failed fuer Fehler-Modell-Historie
             current_coder_model, model_attempt, models_used, feedback = handle_model_switch(
                 manager,
@@ -552,3 +844,133 @@ class DevLoop:
             manager._current_iteration = iteration
 
         return success, feedback
+
+    # AENDERUNG 01.02.2026: Augment Context Integration bei wiederholten Fehlern
+    def _get_augment_context(
+        self,
+        sandbox_result: str,
+        review_output: str,
+        iteration: int
+    ) -> str:
+        """
+        Holt Augment-Kontext bei wiederholten Fehlern (Iteration 3+).
+
+        Args:
+            sandbox_result: Sandbox/Test-Output mit Fehlern
+            review_output: Reviewer-Feedback
+            iteration: Aktuelle Iteration (0-basiert)
+
+        Returns:
+            Augment-Kontext-String oder leerer String wenn nicht verfuegbar
+        """
+        manager = self.manager
+
+        # Pruefe ob External Bureau verfuegbar
+        if not hasattr(manager, 'external_bureau') or not manager.external_bureau:
+            return ""
+
+        # Nur bei Iteration 3+ (nach 2 fehlgeschlagenen Versuchen)
+        if iteration < 2:
+            return ""
+
+        # Pruefe ob use_for_context aktiviert ist
+        augment_cfg = manager.config.get("external_specialists", {}).get("augment_context", {})
+        if not augment_cfg.get("use_for_context", False):
+            return ""
+
+        try:
+            augment = manager.external_bureau.get_specialist("augment_context")
+            if not augment:
+                return ""
+
+            # Pruefe CLI-Verfuegbarkeit
+            if not augment.check_available():
+                manager._ui_log("Augment", "NotAvailable",
+                               "Auggie CLI nicht verfuegbar - ueberspringe Kontext-Analyse")
+                return ""
+
+            # Aktiviere wenn noetig
+            from external_specialists.base_specialist import SpecialistStatus
+            if augment.status != SpecialistStatus.READY:
+                manager.external_bureau.activate_specialist("augment_context")
+
+            manager._ui_log("Augment", "ContextAnalysis",
+                           f"Hole Architektur-Kontext fuer Iteration {iteration + 1}...")
+
+            # Query mit Fehler-Kontext
+            query = f"""Analysiere diese Fehler und gib Kontext zur Architektur:
+
+SANDBOX-FEHLER (gekuerzt):
+{sandbox_result[:800] if sandbox_result else 'Keine'}
+
+REVIEW-FEEDBACK (gekuerzt):
+{review_output[:500] if review_output else 'Keines'}
+
+Was koennte strukturell falsch sein? Gib konkrete Hinweise."""
+
+            import subprocess
+            import time as _time
+
+            # AENDERUNG 01.02.2026: Synchroner Subprocess statt asyncio (Timeout-Fix)
+            # Problem: asyncio.wait_for() konnte den Subprocess in Thread nicht abbrechen
+            # Loesung: Direkter subprocess.run() mit eingebautem Timeout
+            timeout = augment_cfg.get("timeout_seconds", 300)  # Default: 5 Minuten
+            cli_command = augment_cfg.get("cli_command", "npx @augmentcode/auggie")
+
+            # Command zusammenbauen: auggie "<query>" --print
+            # Verwende kurze Query fuer schnellere Analyse
+            short_query = "Gib eine kurze Uebersicht der Projekt-Architektur."
+            cmd = f'{cli_command} "{short_query}" --print'
+
+            # DIAGNOSE: Log Command und Start
+            project_path = str(manager.project_path) if hasattr(manager, 'project_path') else None
+            manager._ui_log("Augment", "Debug",
+                           f"Starte: {cmd[:80]}... | cwd={project_path} | timeout={timeout}s")
+            start_time = _time.time()
+
+            try:
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    timeout=timeout,
+                    text=True,
+                    encoding='utf-8',
+                    errors='replace',
+                    cwd=project_path,
+                    shell=True
+                )
+
+                elapsed = _time.time() - start_time
+                manager._ui_log("Augment", "Debug",
+                               f"Subprocess fertig nach {elapsed:.1f}s | returncode={result.returncode}")
+
+                if result.returncode == 0 and result.stdout.strip():
+                    context_output = result.stdout[:2000]
+                    manager._ui_log("Augment", "ContextResult",
+                                   f"Kontext erhalten: {len(context_output)} Zeichen in {elapsed:.1f}s")
+                    return context_output
+                else:
+                    # DIAGNOSE: Detaillierte Fehlerinfo
+                    stdout_info = result.stdout[:300] if result.stdout else "(leer)"
+                    stderr_info = result.stderr[:300] if result.stderr else "(leer)"
+                    manager._ui_log("Augment", "NoOutput",
+                                   f"returncode={result.returncode} | stdout={stdout_info} | stderr={stderr_info}")
+                    return ""
+
+            except subprocess.TimeoutExpired as te:
+                elapsed = _time.time() - start_time
+                manager._ui_log("Augment", "Timeout",
+                               f"Timeout nach {elapsed:.1f}s (limit={timeout}s)")
+                return ""
+            except FileNotFoundError:
+                manager._ui_log("Augment", "NotFound",
+                               f"Augment CLI nicht gefunden: {cli_command}")
+                return ""
+            except OSError as ose:
+                manager._ui_log("Augment", "OSError",
+                               f"Betriebssystemfehler: {str(ose)[:200]}")
+                return ""
+
+        except Exception as e:
+            manager._ui_log("Augment", "ContextError", f"Fehler: {str(e)[:200]}")
+            return ""

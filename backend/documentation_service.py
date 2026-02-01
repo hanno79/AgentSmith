@@ -1,18 +1,21 @@
 # -*- coding: utf-8 -*-
 """
 Author: rahn
-Datum: 31.01.2026
-Version: 1.1
+Datum: 01.02.2026
+Version: 1.2
 Beschreibung: Documentation Service - Aggregiert und speichert Projekt-Dokumentation.
               Sammelt Informationen von allen Agenten für README und CHANGELOG.
               AENDERUNG 31.01.2026: Dart AI Feature-Ableitung Dokumentation
               (anforderungen, features, tasks, file_by_file, traceability).
+              AENDERUNG 31.01.2026: Traceability-Logik in TraceabilityService ausgelagert (Regel 1).
 """
 
 import os
 import json
 from datetime import datetime
 from typing import Dict, Any, List, Optional
+
+from backend.traceability_service import TraceabilityService
 
 
 class DocumentationService:
@@ -48,13 +51,17 @@ class DocumentationService:
             "tasks": [],
             "file_by_file_plan": {},
             "file_generations": [],
-            "traceability": {}
+            "traceability": {},
+            # AENDERUNG 01.02.2026: Orchestrator-Entscheidungen
+            "orchestrator_decisions": []
         }
         self.created_at = datetime.now()
+        self._traceability_service = TraceabilityService(self.project_path, self.data)
 
     def set_project_path(self, project_path: str) -> None:
         """Setzt den Projekt-Pfad nachträglich."""
         self.project_path = project_path
+        self._traceability_service.project_path = project_path
 
     def collect_goal(self, user_goal: str) -> None:
         """
@@ -189,6 +196,112 @@ class DocumentationService:
             "warnings": result.get("warnings", []),
             "timestamp": datetime.now().isoformat()
         })
+
+    # AENDERUNG 01.02.2026: Orchestrator-Entscheidungen dokumentieren
+    def collect_orchestrator_decision(
+        self,
+        iteration: int,
+        action: str,
+        target_agent: str,
+        root_cause: str = None,
+        model_switch: bool = False,
+        error_hash: str = None
+    ) -> None:
+        """
+        Sammelt Orchestrator-Validierungsentscheidungen.
+
+        Args:
+            iteration: Aktuelle Iteration
+            action: Die gewählte Aktion (proceed, fix, model_switch, escalate)
+            target_agent: Der Ziel-Agent für die nächste Aktion
+            root_cause: Erkannte Root Cause (falls vorhanden)
+            model_switch: Ob Modellwechsel empfohlen wurde
+            error_hash: Hash des Fehlers (für Tracking)
+        """
+        self.data["orchestrator_decisions"].append({
+            "iteration": iteration,
+            "action": action,
+            "target_agent": target_agent,
+            "root_cause": root_cause[:500] if root_cause else None,
+            "model_switch_recommended": model_switch,
+            "error_hash": error_hash[:12] if error_hash else None,
+            "timestamp": datetime.now().isoformat()
+        })
+
+    # AENDERUNG 01.02.2026: UTDS Task-Derivation Dokumentation
+    def collect_task_derivation(self, derivation_result: Dict[str, Any]) -> None:
+        """
+        Sammelt UTDS Task-Derivation Details.
+
+        Args:
+            derivation_result: TaskDerivationResult als Dict
+        """
+        if "task_derivations" not in self.data:
+            self.data["task_derivations"] = []
+
+        self.data["task_derivations"].append({
+            "timestamp": datetime.now().isoformat(),
+            "source": derivation_result.get("source", "unknown"),
+            "total_tasks": derivation_result.get("total_tasks", 0),
+            "by_category": derivation_result.get("tasks_by_category", {}),
+            "by_priority": derivation_result.get("tasks_by_priority", {}),
+            "by_agent": derivation_result.get("tasks_by_agent", {}),
+            "derivation_time": derivation_result.get("derivation_time_seconds", 0)
+        })
+
+    def collect_task_execution_results(self, batch_results: List[Dict[str, Any]]) -> None:
+        """
+        Sammelt Batch-Execution Ergebnisse.
+
+        Args:
+            batch_results: Liste von BatchResult Dicts
+        """
+        if "task_executions" not in self.data:
+            self.data["task_executions"] = []
+
+        for result in batch_results:
+            self.data["task_executions"].append({
+                "batch_id": result.get("batch_id", ""),
+                "success": result.get("success", False),
+                "completed_tasks": len(result.get("completed_tasks", [])),
+                "failed_tasks": len(result.get("failed_tasks", [])),
+                "execution_time": result.get("execution_time_seconds", 0),
+                "modified_files": result.get("modified_files", [])[:10],
+                "timestamp": datetime.now().isoformat()
+            })
+
+    def get_task_derivation_summary(self) -> Dict[str, Any]:
+        """
+        Erstellt eine Zusammenfassung aller Task-Derivations.
+
+        Returns:
+            Dict mit Statistiken
+        """
+        derivations = self.data.get("task_derivations", [])
+        executions = self.data.get("task_executions", [])
+
+        if not derivations:
+            return {"total_derivations": 0}
+
+        total_tasks = sum(d.get("total_tasks", 0) for d in derivations)
+        total_completed = sum(e.get("completed_tasks", 0) for e in executions)
+        total_failed = sum(e.get("failed_tasks", 0) for e in executions)
+
+        # Aggregiere Kategorien
+        categories = {}
+        for d in derivations:
+            for cat, count in d.get("by_category", {}).items():
+                categories[cat] = categories.get(cat, 0) + count
+
+        return {
+            "total_derivations": len(derivations),
+            "total_tasks": total_tasks,
+            "total_completed": total_completed,
+            "total_failed": total_failed,
+            "success_rate": total_completed / max(total_completed + total_failed, 1),
+            "categories": categories,
+            "sources": list(set(d.get("source", "") for d in derivations))
+        }
 
     def generate_readme_context(self) -> str:
         """
@@ -457,148 +570,13 @@ class DocumentationService:
         })
 
     def collect_traceability_matrix(self, matrix: Dict[str, Any]) -> None:
-        """
-        Sammelt die Traceability-Matrix.
-
-        Args:
-            matrix: Die vollstaendige Traceability-Matrix
-        """
-        self.data["traceability"] = {
-            "summary": matrix.get("summary", {}),
-            "coverage": matrix.get("summary", {}).get("coverage", 0.0),
-            "gaps": self._summarize_gaps(matrix),
-            "timestamp": datetime.now().isoformat()
-        }
-
-    def _summarize_gaps(self, matrix: Dict[str, Any]) -> Dict[str, int]:
-        """
-        Fasst die Luecken in der Traceability zusammen.
-
-        Args:
-            matrix: Die Traceability-Matrix
-
-        Returns:
-            Dict mit Anzahl der Luecken pro Kategorie
-        """
-        # Berechne Luecken aus der Matrix
-        anforderungen = matrix.get("anforderungen", {})
-        features = matrix.get("features", {})
-        tasks = matrix.get("tasks", {})
-
-        return {
-            "anforderungen_ohne_features": sum(
-                1 for req in anforderungen.values()
-                if not req.get("features")
-            ),
-            "features_ohne_tasks": sum(
-                1 for feat in features.values()
-                if not feat.get("tasks")
-            ),
-            "tasks_ohne_dateien": sum(
-                1 for task in tasks.values()
-                if not task.get("dateien")
-            )
-        }
+        """Delegiert an TraceabilityService."""
+        self._traceability_service.collect_traceability_matrix(matrix)
 
     def generate_traceability_report(self) -> str:
-        """
-        Generiert einen Traceability-Report als Markdown.
-
-        Returns:
-            Formatierter Markdown-String
-        """
-        report_parts = [
-            "# Traceability Report",
-            "",
-            f"Generiert am: {datetime.now().strftime('%d.%m.%Y %H:%M')}",
-            ""
-        ]
-
-        # Zusammenfassung
-        report_parts.append("## Zusammenfassung")
-        report_parts.append("")
-        report_parts.append(f"- **Anforderungen:** {len(self.data['anforderungen'])}")
-        report_parts.append(f"- **Features:** {len(self.data['features'])}")
-        report_parts.append(f"- **Tasks:** {len(self.data['tasks'])}")
-        report_parts.append(f"- **Generierte Dateien:** {len(self.data['file_generations'])}")
-
-        if self.data["traceability"]:
-            coverage = self.data["traceability"].get("coverage", 0)
-            report_parts.append(f"- **Coverage:** {coverage:.1%}")
-        report_parts.append("")
-
-        # Anforderungen
-        if self.data["anforderungen"]:
-            report_parts.append("## Anforderungen")
-            report_parts.append("")
-            for req in self.data["anforderungen"][:10]:  # Max 10
-                report_parts.append(
-                    f"- **[{req.get('id', 'REQ-???')}]** {req.get('titel', 'Unbenannt')} "
-                    f"({req.get('kategorie', 'Unbekannt')}, {req.get('prioritaet', 'mittel')})"
-                )
-            if len(self.data["anforderungen"]) > 10:
-                report_parts.append(f"- ... und {len(self.data['anforderungen']) - 10} weitere")
-            report_parts.append("")
-
-        # Features
-        if self.data["features"]:
-            report_parts.append("## Features")
-            report_parts.append("")
-            for feat in self.data["features"][:10]:  # Max 10
-                req_refs = ", ".join(feat.get("anforderungen", []))
-                report_parts.append(
-                    f"- **[{feat.get('id', 'FEAT-???')}]** {feat.get('titel', 'Unbenannt')} "
-                    f"(Refs: {req_refs})"
-                )
-            if len(self.data["features"]) > 10:
-                report_parts.append(f"- ... und {len(self.data['features']) - 10} weitere")
-            report_parts.append("")
-
-        # File-by-File Plan
-        if self.data["file_by_file_plan"]:
-            plan = self.data["file_by_file_plan"]
-            report_parts.append("## File-by-File Plan")
-            report_parts.append("")
-            report_parts.append(f"- **Geplante Dateien:** {plan.get('total_files', 0)}")
-            for f in plan.get("files", [])[:5]:  # Max 5
-                report_parts.append(f"  - `{f.get('path', '?')}`: {f.get('description', '')[:50]}")
-            report_parts.append("")
-
-        # Generierungs-Ergebnisse
-        if self.data["file_generations"]:
-            report_parts.append("## Datei-Generierung")
-            report_parts.append("")
-            success_count = sum(1 for f in self.data["file_generations"] if f.get("success"))
-            total_count = len(self.data["file_generations"])
-            report_parts.append(f"- **Erfolgreich:** {success_count}/{total_count}")
-
-            failed = [f for f in self.data["file_generations"] if not f.get("success")]
-            if failed:
-                report_parts.append("- **Fehlgeschlagen:**")
-                for f in failed[:5]:
-                    report_parts.append(f"  - `{f.get('filepath', '?')}`: {f.get('error', 'Unbekannt')[:50]}")
-            report_parts.append("")
-
-        return "\n".join(report_parts)
+        """Delegiert an TraceabilityService."""
+        return self._traceability_service.generate_traceability_report()
 
     def save_traceability_report(self) -> Optional[str]:
-        """
-        Generiert und speichert den Traceability-Report.
-
-        Returns:
-            Pfad zur erstellten Datei oder None bei Fehler
-        """
-        if not self.project_path:
-            return None
-
-        try:
-            content = self.generate_traceability_report()
-            docs_path = os.path.join(self.project_path, "docs")
-            os.makedirs(docs_path, exist_ok=True)
-            path = os.path.join(docs_path, "TRACEABILITY.md")
-            with open(path, "w", encoding="utf-8") as f:
-                f.write(content)
-            return path
-        except Exception as e:
-            print(f"FEHLER beim Speichern von TRACEABILITY.md: {e}")
-            return None
+        """Delegiert an TraceabilityService."""
+        return self._traceability_service.save_traceability_report()

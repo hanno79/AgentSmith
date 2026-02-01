@@ -1,0 +1,484 @@
+"""
+Author: rahn
+Datum: 01.02.2026
+Version: 1.0
+Beschreibung: Task-Dispatcher fuer das Universal Task Derivation System (UTDS).
+              Verteilt Tasks an passende Agenten und orchestriert parallele Ausfuehrung.
+"""
+
+import os
+import asyncio
+import logging
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional, Callable
+from datetime import datetime
+
+from crewai import Task, Crew
+
+from backend.task_models import (
+    DerivedTask, TaskBatch, BatchResult, TaskStatus, TargetAgent,
+    TaskPriority, filter_ready_tasks, sort_tasks_by_priority, priority_to_int
+)
+from backend.task_tracker import TaskTracker
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class TaskExecutionResult:
+    """Ergebnis einer Task-Ausfuehrung."""
+    task_id: str
+    success: bool
+    result: Optional[str] = None
+    error_message: str = ""
+    modified_files: List[str] = field(default_factory=list)
+    duration_seconds: float = 0.0
+    agent_used: str = ""
+
+
+class TaskDispatcher:
+    """
+    Verteilt Tasks an passende Agenten und orchestriert Parallelisierung.
+
+    Features:
+    - Multi-Agent Support (Coder, Tester, Security, Docs)
+    - Abhaengigkeits-bewusste Batch-Bildung
+    - CPU-basierte dynamische Parallelisierung
+    - Task-Tracker Integration
+    """
+
+    def __init__(
+        self,
+        manager,
+        config: Dict[str, Any],
+        tracker: TaskTracker = None,
+        router=None,
+        max_parallel: int = None
+    ):
+        """
+        Initialisiert den TaskDispatcher.
+
+        Args:
+            manager: SessionManager fuer Agenten-Erstellung
+            config: Anwendungskonfiguration
+            tracker: TaskTracker fuer Traceability
+            router: Model Router fuer Agenten
+            max_parallel: Max parallele Agenten (None = CPU-basiert)
+        """
+        self.manager = manager
+        self.config = config
+        self.tracker = tracker or TaskTracker()
+        self.router = router
+
+        # CPU-basierte Parallelisierung
+        if max_parallel is None:
+            self.max_parallel = os.cpu_count() or 4
+        else:
+            self.max_parallel = max_parallel
+
+        self.executor = ThreadPoolExecutor(max_workers=self.max_parallel)
+        self._progress_callback: Optional[Callable] = None
+
+        # Agent Factory Cache
+        self._agent_cache: Dict[str, Any] = {}
+
+    def set_progress_callback(self, callback: Callable[[str, str, float], None]):
+        """
+        Setzt Callback fuer Fortschritts-Updates.
+
+        Args:
+            callback: Funktion(task_id, status, progress_percent)
+        """
+        self._progress_callback = callback
+
+    def dispatch(self, tasks: List[DerivedTask]) -> List[TaskBatch]:
+        """
+        Erstellt Batches fuer parallele Verarbeitung.
+
+        Gruppiert unabhaengige Tasks in Batches,
+        beachtet Abhaengigkeiten zwischen Tasks.
+
+        Args:
+            tasks: Liste von DerivedTask-Objekten
+
+        Returns:
+            Liste von TaskBatch-Objekten in Ausfuehrungsreihenfolge
+        """
+        if not tasks:
+            return []
+
+        # Tasks nach Prioritaet sortieren
+        sorted_tasks = sort_tasks_by_priority(tasks)
+
+        # Abhaengigkeits-Graph aufbauen
+        dependency_graph = self._build_dependency_graph(sorted_tasks)
+
+        # Batches erstellen
+        batches = []
+        completed_ids: List[str] = []
+        remaining = list(sorted_tasks)
+        batch_counter = 0
+
+        while remaining:
+            # Finde alle Tasks ohne unerfuellte Abhaengigkeiten
+            ready = [t for t in remaining if t.is_ready(completed_ids)]
+
+            if not ready:
+                # Deadlock - Zirkulaere Abhaengigkeit oder Fehler
+                logger.warning(f"[TaskDispatcher] Deadlock erkannt. Verbleibend: {len(remaining)}")
+                # Forciere ersten verbleibenden Task
+                ready = [remaining[0]]
+
+            # Batch erstellen
+            batch_counter += 1
+            batch = TaskBatch(
+                batch_id=f"BATCH-{batch_counter:03d}",
+                tasks=ready,
+                priority_order=batch_counter
+            )
+            batches.append(batch)
+
+            # Tasks als "scheduled" markieren
+            for task in ready:
+                remaining.remove(task)
+                completed_ids.append(task.id)
+
+        logger.info(f"[TaskDispatcher] {len(batches)} Batches erstellt fuer {len(tasks)} Tasks")
+        return batches
+
+    def execute_batch(self, batch: TaskBatch) -> BatchResult:
+        """
+        Fuehrt einen Batch parallel aus.
+
+        Args:
+            batch: TaskBatch zum Ausfuehren
+
+        Returns:
+            BatchResult mit Ergebnissen
+        """
+        start_time = time.time()
+        batch.status = TaskStatus.IN_PROGRESS
+        batch.started_at = datetime.now()
+
+        results: List[TaskExecutionResult] = []
+        futures = {}
+
+        # Tasks parallel starten
+        for task in batch.tasks:
+            self.tracker.update_status(task.id, TaskStatus.IN_PROGRESS)
+            future = self.executor.submit(self._execute_single_task, task)
+            futures[future] = task
+
+        # Auf Ergebnisse warten
+        for future in as_completed(futures):
+            task = futures[future]
+            try:
+                result = future.result(timeout=task.timeout_seconds)
+                results.append(result)
+
+                # Tracker aktualisieren
+                if result.success:
+                    self.tracker.update_status(
+                        task.id,
+                        TaskStatus.COMPLETED,
+                        result=result.result,
+                        modified_files=result.modified_files
+                    )
+                else:
+                    # Retry pruefen
+                    can_retry = self.tracker.increment_retry(task.id)
+                    if not can_retry:
+                        self.tracker.update_status(
+                            task.id,
+                            TaskStatus.FAILED,
+                            error_message=result.error_message
+                        )
+
+            except Exception as e:
+                logger.error(f"[TaskDispatcher] Task {task.id} Exception: {e}")
+                results.append(TaskExecutionResult(
+                    task_id=task.id,
+                    success=False,
+                    error_message=str(e)
+                ))
+                self.tracker.update_status(
+                    task.id,
+                    TaskStatus.FAILED,
+                    error_message=str(e)
+                )
+
+        # Batch-Ergebnis zusammenstellen
+        batch.status = TaskStatus.COMPLETED
+        batch.completed_at = datetime.now()
+
+        completed = [r.task_id for r in results if r.success]
+        failed = [r.task_id for r in results if not r.success]
+
+        return BatchResult(
+            batch_id=batch.batch_id,
+            success=len(failed) == 0,
+            completed_tasks=completed,
+            failed_tasks=failed,
+            execution_time_seconds=time.time() - start_time,
+            modified_files=self._collect_modified_files(results),
+            errors=[r.error_message for r in results if r.error_message]
+        )
+
+    async def execute_batch_async(self, batch: TaskBatch) -> BatchResult:
+        """
+        Asynchrone Batch-Ausfuehrung.
+
+        Args:
+            batch: TaskBatch zum Ausfuehren
+
+        Returns:
+            BatchResult mit Ergebnissen
+        """
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self.execute_batch, batch)
+
+    def execute_all(self, tasks: List[DerivedTask]) -> List[BatchResult]:
+        """
+        Fuehrt alle Tasks aus (Batching + Execution).
+
+        Args:
+            tasks: Liste von Tasks
+
+        Returns:
+            Liste von BatchResults
+        """
+        # Tasks im Tracker registrieren
+        for task in tasks:
+            self.tracker.log_task(task)
+
+        # Batches erstellen
+        batches = self.dispatch(tasks)
+
+        # Batches sequenziell ausfuehren (intern parallel)
+        results = []
+        completed_ids = []
+
+        for i, batch in enumerate(batches):
+            self._report_progress(f"Batch {i+1}/{len(batches)}", "starting", i / len(batches))
+
+            result = self.execute_batch(batch)
+            results.append(result)
+
+            # Erfolgreiche Tasks zu completed hinzufuegen
+            completed_ids.extend(result.completed_tasks)
+
+            # Bei kritischen Fehlern abbrechen
+            if result.failed_tasks and self._has_critical_failure(batch, result):
+                logger.warning("[TaskDispatcher] Kritischer Fehler - Abbruch")
+                break
+
+            self._report_progress(f"Batch {i+1}/{len(batches)}", "completed", (i+1) / len(batches))
+
+        return results
+
+    async def execute_all_async(self, tasks: List[DerivedTask]) -> List[BatchResult]:
+        """Asynchrone Version von execute_all."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self.execute_all, tasks)
+
+    def _execute_single_task(self, task: DerivedTask) -> TaskExecutionResult:
+        """
+        Fuehrt einen einzelnen Task aus.
+
+        Args:
+            task: DerivedTask zum Ausfuehren
+
+        Returns:
+            TaskExecutionResult
+        """
+        start_time = time.time()
+
+        try:
+            # Agent fuer Task-Typ holen
+            agent = self._get_agent_for_task(task)
+
+            if agent is None:
+                return TaskExecutionResult(
+                    task_id=task.id,
+                    success=False,
+                    error_message=f"Kein Agent fuer {task.target_agent.value} verfuegbar"
+                )
+
+            # CrewAI Task erstellen
+            crew_task = Task(
+                description=self._build_task_description(task),
+                expected_output="Korrigierter Code oder Loesung",
+                agent=agent
+            )
+
+            # Crew ausfuehren
+            crew = Crew(
+                agents=[agent],
+                tasks=[crew_task],
+                verbose=False
+            )
+
+            result = crew.kickoff()
+            result_text = str(result) if result else ""
+
+            # Ergebnis analysieren
+            modified_files = self._extract_modified_files(result_text, task)
+
+            return TaskExecutionResult(
+                task_id=task.id,
+                success=True,
+                result=result_text[:2000],  # Truncate
+                modified_files=modified_files,
+                duration_seconds=time.time() - start_time,
+                agent_used=task.target_agent.value
+            )
+
+        except Exception as e:
+            logger.error(f"[TaskDispatcher] Task {task.id} Fehler: {e}")
+            return TaskExecutionResult(
+                task_id=task.id,
+                success=False,
+                error_message=str(e),
+                duration_seconds=time.time() - start_time
+            )
+
+    def _get_agent_for_task(self, task: DerivedTask) -> Optional[Any]:
+        """
+        Holt oder erstellt einen Agenten fuer den Task-Typ.
+
+        Args:
+            task: DerivedTask
+
+        Returns:
+            CrewAI Agent oder None
+        """
+        agent_type = task.target_agent.value
+
+        # Cache pruefen
+        if agent_type in self._agent_cache:
+            return self._agent_cache[agent_type]
+
+        # Agent erstellen ueber agent_factory
+        try:
+            if hasattr(self.manager, 'agent_factory'):
+                agent = self.manager.agent_factory.get(agent_type)
+                if agent:
+                    self._agent_cache[agent_type] = agent
+                    return agent
+
+            # Fallback: Direkter Import
+            agent = self._create_agent_fallback(agent_type)
+            if agent:
+                self._agent_cache[agent_type] = agent
+            return agent
+
+        except Exception as e:
+            logger.error(f"[TaskDispatcher] Agent-Erstellung fehlgeschlagen: {e}")
+            return None
+
+    def _create_agent_fallback(self, agent_type: str) -> Optional[Any]:
+        """Fallback Agent-Erstellung."""
+        try:
+            if agent_type == "coder":
+                from agents.coder_agent import create_coder
+                return create_coder(self.config, {}, router=self.router)
+            elif agent_type == "fix":
+                from agents.fix_agent import create_fix_agent
+                return create_fix_agent(self.config, {}, router=self.router)
+            elif agent_type == "tester":
+                from agents.tester_agent import create_tester
+                return create_tester(self.config, {}, router=self.router)
+            elif agent_type == "security":
+                # Security nutzt Coder mit speziellem Prompt
+                from agents.coder_agent import create_coder
+                return create_coder(self.config, {}, router=self.router)
+            elif agent_type == "reviewer":
+                from agents.reviewer_agent import create_reviewer
+                return create_reviewer(self.config, {}, router=self.router)
+            else:
+                logger.warning(f"[TaskDispatcher] Unbekannter Agent-Typ: {agent_type}")
+                return None
+        except ImportError as e:
+            logger.error(f"[TaskDispatcher] Import-Fehler: {e}")
+            return None
+
+    def _build_task_description(self, task: DerivedTask) -> str:
+        """Erstellt die Task-Beschreibung fuer CrewAI."""
+        desc = f"""## Task: {task.title}
+
+{task.description}
+
+### Betroffene Dateien:
+{chr(10).join(f'- {f}' for f in task.affected_files) if task.affected_files else '- Nicht spezifiziert'}
+
+### Kategorie: {task.category.value}
+### Prioritaet: {task.priority.value}
+
+### Original-Issue:
+{task.source_issue[:500] if task.source_issue else 'Kein Original-Issue'}
+
+### Anforderungen:
+1. Behebe das Problem vollstaendig
+2. Generiere nur den betroffenen Code
+3. Keine zusaetzlichen Aenderungen
+4. Teste gedanklich die Loesung
+"""
+        return desc
+
+    def _build_dependency_graph(self, tasks: List[DerivedTask]) -> Dict[str, List[str]]:
+        """Erstellt Abhaengigkeits-Graph."""
+        graph = {}
+        for task in tasks:
+            graph[task.id] = task.dependencies
+        return graph
+
+    def _extract_modified_files(self, result: str, task: DerivedTask) -> List[str]:
+        """Extrahiert geaenderte Dateien aus Ergebnis."""
+        import re
+        # Suche nach Dateinamen im Ergebnis
+        file_pattern = r'["\']?([a-zA-Z0-9_/\\.-]+\.(?:py|js|jsx|ts|tsx|html|css|json))["\']?'
+        matches = re.findall(file_pattern, result)
+        found = list(set(matches))[:10]
+
+        # Fallback auf affected_files
+        if not found and task.affected_files:
+            return task.affected_files
+
+        return found
+
+    def _collect_modified_files(self, results: List[TaskExecutionResult]) -> List[str]:
+        """Sammelt alle geaenderten Dateien."""
+        all_files = []
+        for r in results:
+            all_files.extend(r.modified_files)
+        return list(set(all_files))
+
+    def _has_critical_failure(self, batch: TaskBatch, result: BatchResult) -> bool:
+        """Prueft ob ein kritischer Fehler aufgetreten ist."""
+        for task in batch.tasks:
+            if task.id in result.failed_tasks:
+                if task.priority == TaskPriority.CRITICAL:
+                    return True
+        return False
+
+    def _report_progress(self, stage: str, status: str, progress: float):
+        """Meldet Fortschritt an Callback."""
+        if self._progress_callback:
+            try:
+                self._progress_callback(stage, status, progress)
+            except Exception as e:
+                logger.warning(f"[TaskDispatcher] Progress-Callback Fehler: {e}")
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Liefert Dispatcher-Statistiken."""
+        return {
+            "max_parallel": self.max_parallel,
+            "cached_agents": list(self._agent_cache.keys()),
+            "tracker_summary": self.tracker._generate_summary()
+        }
+
+    def shutdown(self):
+        """Beendet den Executor sauber."""
+        self.executor.shutdown(wait=True)
