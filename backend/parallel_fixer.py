@@ -576,13 +576,15 @@ def quick_fix(
     return result.new_content if result.success else None
 
 
-def should_use_parallel_fix(errors: List[FileError], max_threshold: int = 3) -> bool:
+def should_use_parallel_fix(errors: List[FileError], max_threshold: int = 7) -> bool:
     """
     Entscheidet ob parallele Korrektur sinnvoll ist.
 
+    AENDERUNG 02.02.2026: Default von 3 auf 7 erhoeht (Bug #12)
+
     Args:
         errors: Liste von Fehlern
-        max_threshold: Maximale Anzahl Dateien fuer parallelen Fix
+        max_threshold: Maximale Anzahl Dateien fuer parallelen Fix (Default: 7)
 
     Returns:
         True wenn paralleler Fix empfohlen

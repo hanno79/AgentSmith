@@ -15,8 +15,12 @@ Beschreibung: DevLoop kapselt die Iterationslogik fuer Code-Generierung und Test
 
 import os
 import json
+import logging
+import shlex
 from typing import Dict, Any, Tuple
 from concurrent.futures import ThreadPoolExecutor
+
+logger = logging.getLogger(__name__)
 
 from agents.memory_agent import update_memory
 from .dev_loop_steps import (
@@ -122,9 +126,12 @@ class DevLoop:
             manager._ui_log("TargetedFix", "Skip", "Keine analysierbaren Fehler gefunden")
             return False, "", []
 
-        # Pruefe ob paralleler Fix sinnvoll ist (max 3 Dateien)
-        affected_files = get_files_to_fix(errors, max_files=3)
-        if not should_use_parallel_fix(errors, max_threshold=3):
+        # AENDERUNG 02.02.2026: Config-basiertes Limit statt hardcodiert (Bug #12)
+        fix_config = manager.config.get("targeted_fix", {})
+        max_files = fix_config.get("max_files", 7)
+
+        affected_files = get_files_to_fix(errors, max_files=max_files)
+        if not should_use_parallel_fix(errors, max_threshold=max_files):
             manager._ui_log("TargetedFix", "Skip",
                           f"Zu viele Dateien betroffen ({len(affected_files)}) - nutze Standard-Modus")
             return False, "", []
@@ -264,13 +271,65 @@ class DevLoop:
                         )
 
                         created_files = list(results.keys())
-                        success = len(created_files) > 0
 
+                        # AENDERUNG 01.02.2026: Retry fuer fehlgeschlagene Dateien bei Rate-Limits
                         if errors:
                             manager._ui_log("DevLoop", "ParallelErrors", json.dumps({
                                 "failed_count": len(errors),
                                 "errors": [(f, e[:50]) for f, e in errors[:5]]
                             }, ensure_ascii=False))
+
+                            # Pruefen ob Rate-Limit-Fehler - dann Retry nach Pause
+                            rate_limit_files = [
+                                (f, desc) for f, e in errors
+                                if "RateLimit" in e or "429" in e
+                                for desc in [file_descriptions.get(f, f"Generiere {f}")]
+                            ]
+
+                            if rate_limit_files and len(rate_limit_files) > 0:
+                                import time
+                                manager._ui_log("DevLoop", "ParallelRetry", json.dumps({
+                                    "reason": "rate_limit",
+                                    "files_to_retry": len(rate_limit_files),
+                                    "wait_seconds": 30
+                                }, ensure_ascii=False))
+
+                                # Warte auf Rate-Limit Ablauf
+                                time.sleep(30)
+
+                                # Retry fuer Rate-Limited Files
+                                retry_file_list = [f for f, _ in rate_limit_files]
+                                retry_descriptions = {f: d for f, d in rate_limit_files}
+
+                                retry_results, retry_errors = loop.run_until_complete(
+                                    run_parallel_file_generation(
+                                        manager=manager,
+                                        file_list=retry_file_list,
+                                        file_descriptions=retry_descriptions,
+                                        user_goal=manager.user_prompt if hasattr(manager, 'user_prompt') else "",
+                                        project_rules=project_rules,
+                                        max_workers=1,  # Sequenziell um Rate-Limits zu vermeiden
+                                        timeout_per_file=timeout_per_file * 2,
+                                        batch_timeout=batch_timeout
+                                    )
+                                )
+
+                                # Merge Results
+                                results.update(retry_results)
+                                created_files = list(results.keys())
+
+                                if retry_errors:
+                                    manager._ui_log("DevLoop", "ParallelRetryPartial", json.dumps({
+                                        "success_count": len(retry_results),
+                                        "still_failed": len(retry_errors)
+                                    }, ensure_ascii=False))
+
+                        # AENDERUNG 02.02.2026: success nur wenn ALLE Dateien erstellt wurden
+                        # Bug-Fix: "or actual_files > 0" entfernt - führte zu false-positive success
+                        expected_files = len(file_list)
+                        actual_files = len(created_files)
+                        success = actual_files >= expected_files  # Strikt: ALLE Dateien müssen erstellt sein
+                        expected_files = len(file_list)  # Für Logging
                     else:
                         # Sequenzieller Modus (Original)
                         success, message, created_files = loop.run_until_complete(
@@ -281,13 +340,16 @@ class DevLoop:
                                 max_iterations=manager.config.get("max_retries", 3)
                             )
                         )
+                        expected_files = len(created_files) if created_files else 0
                 finally:
                     loop.close()
 
-                if success and created_files:
+                # AENDERUNG 02.02.2026: Auch bei partiellem Erfolg loggen
+                if created_files:
                     manager._ui_log("DevLoop", "FileByFileComplete", json.dumps({
-                        "success": True,
+                        "success": success,  # Echter Status, nicht hardcoded True
                         "files_created": len(created_files),
+                        "files_expected": expected_files if use_parallel else len(created_files),
                         "parallel": use_parallel
                     }, ensure_ascii=False))
                     # Setze current_code aus erstellten Dateien
@@ -304,7 +366,7 @@ class DevLoop:
                 manager._ui_log("DevLoop", "Warning",
                                f"File-by-File fehlgeschlagen, nutze Standard-Modus: {fbf_err}")
                 import traceback
-                logger.error(f"File-by-File Fehler: {traceback.format_exc()}")
+                logger.error("File-by-File Fehler: %s", traceback.format_exc())
                 # Fallback auf normalen Modus
 
         max_retries = manager.config.get("max_retries", 3)
@@ -747,8 +809,8 @@ class DevLoop:
                     if sec_success:
                         manager._ui_log("TaskDerivation", "SecuritySuccess",
                                        f"Security-Tasks erfolgreich: {len(sec_modified)} Dateien geaendert")
-                        # Aktualisiere Zustand - Security erneut pruefen nicht notwendig da Tasks erledigt
-                        security_passed = True
+                        # security_passed erst nach verifiziertem Re-Scan setzen (siehe naechste Iteration:
+                        # run_security_rescan). Kein sofortiges security_passed = True ohne Re-Scan.
                     else:
                         manager._ui_log("TaskDerivation", "SecurityPartial",
                                        "Nicht alle Security-Tasks erfolgreich - verbleibende im Feedback")
@@ -767,8 +829,8 @@ class DevLoop:
                     if sb_success:
                         manager._ui_log("TaskDerivation", "SandboxSuccess",
                                        f"Sandbox-Tasks erfolgreich: {len(sb_modified)} Dateien geaendert")
-                        # Markiere sandbox als erfolgreich da Tasks erledigt
-                        sandbox_failed = False
+                        # sandbox_failed erst nach verifiziertem Sandbox-Lauf zuruecksetzen (naechste Iteration).
+                        # Nicht hier zuruecksetzen, da noch kein erneuter Sandbox/Test-Lauf durchgefuehrt wurde.
                     else:
                         manager._ui_log("TaskDerivation", "SandboxPartial",
                                        "Nicht alle Sandbox-Tasks erfolgreich - verbleibende im Feedback")
@@ -917,27 +979,25 @@ Was koennte strukturell falsch sein? Gib konkrete Hinweise."""
             timeout = augment_cfg.get("timeout_seconds", 300)  # Default: 5 Minuten
             cli_command = augment_cfg.get("cli_command", "npx @augmentcode/auggie")
 
-            # Command zusammenbauen: auggie "<query>" --print
-            # Verwende kurze Query fuer schnellere Analyse
+            # Command als Argumentliste (ohne shell=True) gegen Shell-Injection
             short_query = "Gib eine kurze Uebersicht der Projekt-Architektur."
-            cmd = f'{cli_command} "{short_query}" --print'
+            cmd_argv = shlex.split(cli_command) + [short_query, "--print"]
 
-            # DIAGNOSE: Log Command und Start
             project_path = str(manager.project_path) if hasattr(manager, 'project_path') else None
             manager._ui_log("Augment", "Debug",
-                           f"Starte: {cmd[:80]}... | cwd={project_path} | timeout={timeout}s")
+                           f"Starte: {' '.join(cmd_argv)[:80]}... | cwd={project_path} | timeout={timeout}s")
             start_time = _time.time()
 
             try:
                 result = subprocess.run(
-                    cmd,
+                    cmd_argv,
                     capture_output=True,
                     timeout=timeout,
                     text=True,
                     encoding='utf-8',
                     errors='replace',
                     cwd=project_path,
-                    shell=True
+                    shell=False
                 )
 
                 elapsed = _time.time() - start_time

@@ -5,6 +5,19 @@ project_type: webapp
 include_designer: true
 max_retries: 50
 max_model_attempts: 5
+# AENDERUNG 01.02.2026: Parallele Datei-Generierung
+parallel_file_generation:
+  enabled: true          # Aktiviert parallele Generierung statt sequenziell
+  max_workers: null       # null = unbegrenzt (so viele wie Dateien im Batch)
+  timeout_per_file: 120   # Timeout pro Datei in Sekunden
+  batch_timeout: 300      # Timeout pro Batch in Sekunden
+# AENDERUNG 02.02.2026: Targeted Fix Konfiguration (Bug #12)
+targeted_fix:
+  enabled: true           # Aktiviert gezielte Fixes statt kompletter Regenerierung
+  max_files: 7            # Max Dateien fuer gezielten Fix (erhoeht von 3 auf 7)
+  prefer_fix_below_files: 5  # Unter dieser Anzahl immer Fix versuchen
+# File-by-File Modus (Anti-Truncation)
+enable_file_by_file_mode: true
 research_timeout_minutes: 5
 agent_timeout_seconds: 600
 security_max_retries: 10
@@ -36,12 +49,21 @@ models:
       - openrouter/nousresearch/hermes-3-llama-3.1-405b:free
       - openrouter/z-ai/glm-4.5-air:free
     coder:
-      primary: openrouter/xiaomi/mimo-v2-flash:free
+      primary: openrouter/qwen/qwen3-coder:free
       fallback:
-      - openrouter/qwen/qwen3-coder:free
       - openrouter/openai/gpt-oss-120b:free
-      - openrouter/z-ai/glm-4.5-air:free
+      # AENDERUNG 02.02.2026: nvidia/llama-3.1-nemotron-70b-instruct:free ersetzt - existiert nicht (404)
+      - openrouter/nousresearch/deephermes-3-llama-3-8b:free
       - openrouter/arcee-ai/trinity-large-preview:free
+      - openrouter/z-ai/glm-4.5-air:free
+      # AENDERUNG 01.02.2026: Extended Fallbacks wenn alle Top-Modelle erschoepft
+      extended_fallback:
+      - openrouter/xiaomi/mimo-v2-flash:free
+      - openrouter/deepseek/deepseek-r1-0528:free
+      - openrouter/meta-llama/llama-3.3-70b-instruct:free
+      - openrouter/google/gemma-3-27b-it:free
+      - openrouter/mistralai/mistral-small-3.1-24b-instruct:free
+      - openrouter/nousresearch/deephermes-3-llama-3-8b:free
     tester:
       primary: openrouter/openai/gpt-oss-120b:free
       fallback:
@@ -49,6 +71,14 @@ models:
       - openrouter/meta-llama/llama-3.3-70b-instruct:free
       - openrouter/qwen/qwen3-coder:free
       - openrouter/nvidia/nemotron-3-nano-30b-a3b:free
+      extended_fallback:
+      - openrouter/arcee-ai/trinity-large-preview:free
+      - openrouter/z-ai/glm-4.5-air:free
+      - openrouter/google/gemma-3-27b-it:free
+      - openrouter/mistralai/mistral-small-3.1-24b-instruct:free
+      # AENDERUNG 02.02.2026: nvidia/llama-3.1-nemotron-70b-instruct:free ersetzt - existiert nicht (404)
+      - openrouter/nousresearch/deephermes-3-llama-3-8b:free
+      - openrouter/xiaomi/mimo-v2-flash:free
     designer:
       primary: openrouter/google/gemma-3-27b-it:free
       fallback:
@@ -63,13 +93,27 @@ models:
       - openrouter/meta-llama/llama-3.3-70b-instruct:free
       - openrouter/deepseek/deepseek-r1-0528:free
       - openrouter/google/gemma-3-27b-it:free
+      extended_fallback:
+      - openrouter/arcee-ai/trinity-large-preview:free
+      - openrouter/z-ai/glm-4.5-air:free
+      # AENDERUNG 02.02.2026: nvidia/llama-3.1-nemotron-70b-instruct:free ersetzt - existiert nicht (404)
+      - openrouter/nousresearch/deephermes-3-llama-3-8b:free
+      - openrouter/xiaomi/mimo-v2-flash:free
+      - openrouter/mistralai/mistral-small-3.1-24b-instruct:free
     security:
-      primary: openrouter/deepseek/deepseek-r1-0528:free
+      primary: openrouter/openai/gpt-oss-120b:free
       fallback:
-      - openrouter/openai/gpt-oss-120b:free
       - openrouter/meta-llama/llama-3.3-70b-instruct:free
+      - openrouter/nousresearch/hermes-3-llama-3.1-405b:free
       - openrouter/qwen/qwen3-coder:free
       - openrouter/z-ai/glm-4.5-air:free
+      extended_fallback:
+      - openrouter/deepseek/deepseek-r1-0528:free
+      - openrouter/arcee-ai/trinity-large-preview:free
+      - openrouter/google/gemma-3-27b-it:free
+      # AENDERUNG 02.02.2026: nvidia/llama-3.1-nemotron-70b-instruct:free ersetzt - existiert nicht (404)
+      - openrouter/nousresearch/deephermes-3-llama-3-8b:free
+      - openrouter/xiaomi/mimo-v2-flash:free
     reviewer:
       primary: openrouter/meta-llama/llama-3.3-70b-instruct:free
       fallback:
@@ -77,6 +121,13 @@ models:
       - openrouter/openai/gpt-oss-120b:free
       - openrouter/meta-llama/llama-3.1-405b-instruct:free
       - openrouter/nousresearch/hermes-3-llama-3.1-405b:free
+      extended_fallback:
+      - openrouter/deepseek/deepseek-r1-0528:free
+      - openrouter/arcee-ai/trinity-large-preview:free
+      - openrouter/z-ai/glm-4.5-air:free
+      - openrouter/google/gemma-3-27b-it:free
+      # AENDERUNG 02.02.2026: nvidia/llama-3.1-nemotron-70b-instruct:free ersetzt - existiert nicht (404)
+      - openrouter/nousresearch/deephermes-3-llama-3-8b:free
     techstack_architect:
       primary: openrouter/meta-llama/llama-3.3-70b-instruct:free
       fallback:
@@ -98,6 +149,25 @@ models:
       - openrouter/qwen/qwen3-coder:free
       - openrouter/openai/gpt-oss-120b:free
       - openrouter/z-ai/glm-4.5-air:free
+    orchestrator_validator:
+      primary: openrouter/meta-llama/llama-3.3-70b-instruct:free
+      fallback:
+      - openrouter/deepseek/deepseek-r1-0528:free
+      - openrouter/openai/gpt-oss-120b:free
+      - openrouter/qwen/qwen3-coder:free
+      - openrouter/z-ai/glm-4.5-air:free
+    validator:
+      primary: openrouter/meta-llama/llama-3.3-70b-instruct:free
+      fallback:
+      - openrouter/deepseek/deepseek-r1-0528:free
+      - openrouter/qwen/qwen3-235b-a22b:free
+      - openrouter/openai/gpt-oss-120b:free
+    reporter:
+      primary: openrouter/meta-llama/llama-3.3-70b-instruct:free
+      fallback:
+      - openrouter/deepseek/deepseek-r1-0528:free
+      - openrouter/qwen/qwen3-235b-a22b:free
+      - openrouter/openai/gpt-oss-120b:free
   production:
     meta_orchestrator:
       primary: openrouter/deepseek/deepseek-r1-0528
@@ -181,6 +251,25 @@ models:
       - openrouter/qwen/qwen-3
       - openrouter/mistralai/mistral-medium-3.1
       - openrouter/google/gemini-2.5-flash
+    orchestrator_validator:
+      primary: openrouter/deepseek/deepseek-r1-0528
+      fallback:
+      - openrouter/mistralai/mistral-medium-3.1
+      - openrouter/google/gemini-2.5-flash
+      - openrouter/qwen/qwen-3
+      - openrouter/baidu/ernie-5.0
+    validator:
+      primary: openrouter/deepseek/deepseek-r1-0528
+      fallback:
+      - openrouter/mistralai/mistral-medium-3.1
+      - openrouter/google/gemini-2.5-flash
+      - openrouter/qwen/qwen-3
+    reporter:
+      primary: openrouter/deepseek/deepseek-r1-0528
+      fallback:
+      - openrouter/mistralai/mistral-medium-3.1
+      - openrouter/google/gemini-2.5-flash
+      - openrouter/qwen/qwen-3
   premium:
     meta_orchestrator:
       primary: openrouter/google/gemini-3-pro
@@ -263,6 +352,25 @@ models:
       fallback:
       - openrouter/google/gemini-3-pro
       - openrouter/openai/gpt-5.1
+      - openrouter/x-ai/grok-4.1-thinking
+    orchestrator_validator:
+      primary: openrouter/anthropic/claude-opus-4.5-thinking
+      fallback:
+      - openrouter/openai/gpt-5.1
+      - openrouter/google/gemini-3-pro
+      - openrouter/x-ai/grok-4.1-thinking
+      - openrouter/openai/gpt-5.2-high
+    validator:
+      primary: openrouter/anthropic/claude-opus-4.5-thinking
+      fallback:
+      - openrouter/openai/gpt-5.1
+      - openrouter/google/gemini-3-pro
+      - openrouter/x-ai/grok-4.1-thinking
+    reporter:
+      primary: openrouter/anthropic/claude-opus-4.5-thinking
+      fallback:
+      - openrouter/openai/gpt-5.1
+      - openrouter/google/gemini-3-pro
       - openrouter/x-ai/grok-4.1-thinking
 templates:
   cli:
@@ -350,6 +458,14 @@ external_specialists:
     timeout_seconds: 60
     max_results: 10
     cooldown_seconds: 60
+  augment_context:
+    enabled: true
+    auto_activate: true
+    use_for_context: true
+    cli_command: npx @augmentcode/auggie
+    timeout_seconds: 300
+    cooldown_seconds: 60
+    default_prompt: Analysiere die Projektstruktur und Architektur
 testing:
   ui_test_routing:
     pyqt_desktop: pytest_qt
@@ -364,18 +480,16 @@ testing:
     pytest_qt: 120
     pyautogui: 60
     playwright: 30
-
-# AENDERUNG 31.01.2026: Docker-Isolation fuer generierte Projekte
 docker:
-  enabled: false                    # Docker-Isolation aktivieren (false = Host-Ausfuehrung)
-  fallback_to_host: true           # Bei Docker-Fehler auf Host ausweichen
-  memory_limit: "512m"             # Memory-Limit pro Container
-  cpu_limit: 1                     # CPU-Limit pro Container
-  timeout_install: 300             # Timeout fuer Dependency-Installation (Sekunden)
-  timeout_test: 180                # Timeout fuer Tests (Sekunden)
-  timeout_run: 60                  # Timeout fuer App-Start (Sekunden)
-  cleanup_on_success: true         # Container nach Erfolg loeschen
+  enabled: true
+  fallback_to_host: true
+  memory_limit: 512m
+  cpu_limit: 1
+  timeout_install: 300
+  timeout_test: 180
+  timeout_run: 60
+  cleanup_on_success: true
   images:
-    python: "python:3.11-slim"
-    nodejs: "node:20-alpine"
-    playwright: "mcr.microsoft.com/playwright:v1.40.0-jammy"
+    python: python:3.11-slim
+    nodejs: node:20-alpine
+    playwright: mcr.microsoft.com/playwright:v1.40.0-jammy
