@@ -11,24 +11,43 @@ Beschreibung: Memory Agent Core-Funktionen (Load/Save).
 
 import os
 import json
+import logging
+import copy
 import asyncio
 from datetime import datetime
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
-from typing import List
 from agents.memory_types import MemoryData, MemoryEntry, DataSource, DomainTerm
 from agents.memory_encryption import encrypt_data, decrypt_data
+
+logger = logging.getLogger(__name__)
+
+# Sichere Standard-Struktur mit erweitertem MemoryData (history, lessons, known_data_sources, domain_vocabulary)
+_DEFAULT_MEMORY_DATA: MemoryData = {
+    "history": [],
+    "lessons": [],
+    "known_data_sources": [],
+    "domain_vocabulary": []
+}
 
 
 def load_memory(memory_path: str) -> MemoryData:
     """Lädt bestehendes Memory oder erstellt ein leeres. Supports encrypted files."""
-    if os.path.exists(memory_path):
+    if not os.path.exists(memory_path):
+        return copy.deepcopy(_DEFAULT_MEMORY_DATA)
+    try:
         with open(memory_path, "r", encoding="utf-8") as f:
             content = f.read()
-        # Decrypt if encrypted, otherwise parse as-is (backwards compatible)
         decrypted_content = decrypt_data(content)
-        return json.loads(decrypted_content)
-    return {"history": [], "lessons": []}
+        data = json.loads(decrypted_content)
+        # Stelle erweiterte Keys sicher (Backwards-Kompatibilität); Kopien vermeiden shared mutable lists
+        for key in ("history", "lessons", "known_data_sources", "domain_vocabulary"):
+            if key not in data:
+                data[key] = copy.deepcopy(_DEFAULT_MEMORY_DATA[key])
+        return data
+    except (OSError, json.JSONDecodeError, ValueError) as e:
+        logger.exception("load_memory: Datei-/Decrypt-/JSON-Fehler für %s", memory_path)
+        return copy.deepcopy(_DEFAULT_MEMORY_DATA)
 
 
 def save_memory(memory_path: str, memory_data: MemoryData) -> None:
@@ -78,6 +97,40 @@ def update_memory(
     return entry
 
 
+# AENDERUNG 02.02.2026: Planner-Plan Logging fuer Traceability
+def add_plan_entry(
+    memory_path: str,
+    plan: Dict[str, Any],
+    source: str = "planner"
+) -> MemoryEntry:
+    """
+    Fuegt einen File-by-File Plan ins Memory hinzu.
+
+    Args:
+        memory_path: Pfad zur Memory-Datei
+        plan: Der generierte Plan mit files-Liste
+        source: Quelle des Plans ("planner" oder "default")
+
+    Returns:
+        MemoryEntry mit Plan-Informationen
+    """
+    memory_data = load_memory(memory_path)
+
+    entry = {
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "type": "file_plan",
+        "source": source,
+        "file_count": len(plan.get("files", [])),
+        "files": [f["path"] for f in plan.get("files", [])][:10],
+        "estimated_lines": plan.get("estimated_lines", 0)
+    }
+
+    memory_data["history"].append(entry)
+    save_memory(memory_path, memory_data)
+
+    return entry
+
+
 async def update_memory_async(
     memory_path: str,
     coder_output: str,
@@ -104,9 +157,20 @@ async def update_memory_async(
     return entry
 
 
-def get_lessons_for_prompt(memory_path: str, tech_stack: str = None) -> str:
+def get_lessons_for_prompt(memory_path: str, tech_stack: str = None, limit: int = 15) -> str:
     """
     Lädt Lessons Learned aus dem Memory, gefiltert nach Tech-Stack.
+
+    ÄNDERUNG 03.02.2026: Lessons nach Häufigkeit (count) sortieren.
+    High-Impact Lessons (count >= 5) werden zuerst angezeigt.
+
+    Args:
+        memory_path: Pfad zur Memory-Datei
+        tech_stack: Optional Tech-Stack Filter
+        limit: Max. Anzahl Lessons (Default: 15)
+
+    Returns:
+        Formatierter String mit priorisierten Lessons
     """
     if not os.path.exists(memory_path):
         return ""
@@ -126,21 +190,52 @@ def get_lessons_for_prompt(memory_path: str, tech_stack: str = None) -> str:
     for lesson in lessons:
         # Simple keywords matching or global
         tags = lesson.get("tags", [])
-        if "global" in tags:
-            relevant_lessons.append(lesson["action"])
-            continue
+        is_relevant = False
 
-        # Check if tags match current tech stack
-        if tech_stack:
+        if "global" in tags:
+            is_relevant = True
+        elif tech_stack:
             for tag in tags:
                 if tag.lower() in tech_stack.lower():
-                    relevant_lessons.append(lesson["action"])
+                    is_relevant = True
                     break
+
+        if is_relevant:
+            relevant_lessons.append(lesson)
 
     if not relevant_lessons:
         return ""
 
-    return "\n".join([f"- [MEMORY]: {l}" for l in relevant_lessons])
+    # ÄNDERUNG 03.02.2026: Nach count sortieren (höchste zuerst)
+    relevant_lessons = sorted(
+        relevant_lessons,
+        key=lambda x: x.get("count", 1),
+        reverse=True
+    )[:limit]
+
+    # ÄNDERUNG 03.02.2026: Formatierung mit Prioritäts-Emoji und suggested_fix
+    result = []
+    for lesson in relevant_lessons:
+        count = lesson.get("count", 1)
+        action = lesson.get("action", "")
+
+        # Prioritäts-Emoji basierend auf Häufigkeit
+        if count >= 5:
+            priority = "🔴"  # Kritisch - oft aufgetreten
+        elif count >= 2:
+            priority = "🟡"  # Mittel - mehrfach
+        else:
+            priority = "⚪"  # Niedrig - einmalig
+
+        line = f"{priority} [{count}x] {action}"
+        result.append(line)
+
+        # Suggested Fix anzeigen wenn vorhanden
+        suggested_fix = lesson.get("suggested_fix")
+        if suggested_fix:
+            result.append(f"   → Fix: {suggested_fix}")
+
+    return "\n".join(result)
 
 
 # =============================================================================

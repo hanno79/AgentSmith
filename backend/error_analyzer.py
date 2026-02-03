@@ -2,9 +2,13 @@
 """
 Author: rahn
 Datum: 02.02.2026
-Version: 1.3
+Version: 1.4
 Beschreibung: Analysiert Fehler-Output und identifiziert betroffene Dateien.
               Extrahiert Fehlerdetails aus Sandbox-Output und Reviewer-Feedback.
+
+              AENDERUNG 02.02.2026 v1.4: Zirkulaere Import-Erkennung fuer TargetedFix
+              - extract_circular_import_errors() integriert
+              - Erkennt conftest ImportError und zirkulaere Imports
 
               AENDERUNG 02.02.2026 v1.3: Issue #10 - pip/Docker Fehler-Erkennung
               - extract_pip_dependency_errors() integriert
@@ -54,6 +58,8 @@ from backend.error_extractors import (
     extract_truncation_errors,
     extract_pip_dependency_errors,  # AENDERUNG 02.02.2026: Issue #10
     analyze_docker_error,  # AENDERUNG 02.02.2026: Issue #10
+    extract_circular_import_errors,  # AENDERUNG 02.02.2026: Zirkulaere Imports
+    extract_config_errors,  # AENDERUNG 03.02.2026: pytest.ini/Config-Fehler
 )
 
 # Re-Exports fuer Rückwärtskompatibilität
@@ -107,6 +113,10 @@ class ErrorAnalyzer:
         errors.extend(extract_truncation_errors(sandbox_result, project_files))
         # AENDERUNG 02.02.2026: Issue #10 - pip/Docker Fehler erkennen
         errors.extend(extract_pip_dependency_errors(sandbox_result, project_files))
+        # AENDERUNG 02.02.2026: Zirkulaere Import-Fehler erkennen (fuer TargetedFix)
+        errors.extend(extract_circular_import_errors(sandbox_result, project_files))
+        # AENDERUNG 03.02.2026: pytest.ini/Config-Fehler erkennen
+        errors.extend(extract_config_errors(sandbox_result, project_files))
 
         return merge_errors(errors)
 

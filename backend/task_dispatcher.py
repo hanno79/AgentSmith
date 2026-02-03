@@ -1,14 +1,19 @@
 """
 Author: rahn
-Datum: 01.02.2026
-Version: 1.0
+Datum: 02.02.2026
+Version: 1.1
 Beschreibung: Task-Dispatcher fuer das Universal Task Derivation System (UTDS).
               Verteilt Tasks an passende Agenten und orchestriert parallele Ausfuehrung.
+
+              AENDERUNG 02.02.2026 v1.1: Verbessertes Debug-Logging fuer Fehleranalyse
+              - Detailliertes Logging in _execute_single_task
+              - Agent-Factory Diagnostik in _get_agent_for_task
 """
 
 import os
 import asyncio
 import logging
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -187,14 +192,25 @@ class TaskDispatcher:
                         modified_files=result.modified_files
                     )
                 else:
+                    # AENDERUNG 02.02.2026: Verbessertes Retry-Handling mit Logging
                     # Retry pruefen
                     can_retry = self.tracker.increment_retry(task.id)
                     if not can_retry:
+                        # Max Retries erreicht - Status auf FAILED setzen
                         self.tracker.update_status(
                             task.id,
                             TaskStatus.FAILED,
-                            error_message=result.error_message
+                            error_message=f"Max Retries erreicht. Letzter Fehler: {result.error_message}"
                         )
+                        logger.warning(f"[TaskDispatcher] Task {task.id} FAILED nach max retries")
+                    else:
+                        # Noch Retries moeglich - explizit auf PENDING setzen fuer Retry-Queue
+                        self.tracker.update_status(
+                            task.id,
+                            TaskStatus.PENDING,
+                            error_message=f"Retry geplant. Fehler: {result.error_message}"
+                        )
+                        logger.info(f"[TaskDispatcher] Task {task.id} wird wiederholt (Retry verfuegbar)")
 
             except Exception as e:
                 logger.error(f"[TaskDispatcher] Task {task.id} Exception: {e}")
@@ -295,11 +311,16 @@ class TaskDispatcher:
         """
         start_time = time.time()
 
+        # AENDERUNG 02.02.2026: Verbessertes Debug-Logging fuer Fehleranalyse
+        logger.info(f"[UTDS] Starte Task {task.id}: {task.title[:50]} | Agent: {task.target_agent.value}")
+
         try:
             # Agent fuer Task-Typ holen
             agent = self._get_agent_for_task(task)
 
             if agent is None:
+                logger.error(f"[UTDS] Task {task.id} FAILED: Kein Agent fuer '{task.target_agent.value}'")
+                logger.error(f"[UTDS] Manager hat agent_factory: {hasattr(self.manager, 'agent_factory')}")
                 return TaskExecutionResult(
                     task_id=task.id,
                     success=False,
@@ -326,6 +347,10 @@ class TaskDispatcher:
             # Ergebnis analysieren
             modified_files = self._extract_modified_files(result_text, task)
 
+            # ÄNDERUNG 03.02.2026: UTDS-Fixes zu manager.current_code synchronisieren
+            # Verhindert dass Fixes bei nächster Coder-Iteration verloren gehen
+            self._sync_modified_files_to_manager(modified_files, result_text)
+
             return TaskExecutionResult(
                 task_id=task.id,
                 success=True,
@@ -336,7 +361,9 @@ class TaskDispatcher:
             )
 
         except Exception as e:
+            # AENDERUNG 02.02.2026: Detailliertes Logging fuer besseres Debugging
             logger.error(f"[TaskDispatcher] Task {task.id} Fehler: {e}")
+            logger.exception(f"[TaskDispatcher] Task {task.id} Stacktrace fuer Debugging:")
             return TaskExecutionResult(
                 task_id=task.id,
                 success=False,
@@ -358,24 +385,34 @@ class TaskDispatcher:
 
         # Cache pruefen
         if agent_type in self._agent_cache:
+            logger.debug(f"[UTDS] Agent '{agent_type}' aus Cache geholt")
             return self._agent_cache[agent_type]
 
         # Agent erstellen ueber agent_factory
         try:
             if hasattr(self.manager, 'agent_factory'):
+                logger.debug(f"[UTDS] Versuche Agent '{agent_type}' via agent_factory")
                 agent = self.manager.agent_factory.get(agent_type)
                 if agent:
                     self._agent_cache[agent_type] = agent
+                    logger.info(f"[UTDS] Agent '{agent_type}' erfolgreich erstellt via factory")
                     return agent
+                else:
+                    logger.warning(f"[UTDS] agent_factory.get('{agent_type}') lieferte None")
 
             # Fallback: Direkter Import
+            logger.debug(f"[UTDS] Versuche Agent '{agent_type}' via Fallback-Import")
             agent = self._create_agent_fallback(agent_type)
             if agent:
                 self._agent_cache[agent_type] = agent
+                logger.info(f"[UTDS] Agent '{agent_type}' erfolgreich erstellt via Fallback")
+            else:
+                logger.error(f"[UTDS] Fallback-Erstellung fuer '{agent_type}' fehlgeschlagen")
             return agent
 
         except Exception as e:
             logger.error(f"[TaskDispatcher] Agent-Erstellung fehlgeschlagen: {e}")
+            logger.exception(f"[TaskDispatcher] Stacktrace fuer '{agent_type}':")
             return None
 
     def _create_agent_fallback(self, agent_type: str) -> Optional[Any]:
@@ -436,7 +473,6 @@ class TaskDispatcher:
 
     def _extract_modified_files(self, result: str, task: DerivedTask) -> List[str]:
         """Extrahiert geaenderte Dateien aus Ergebnis."""
-        import re
         # Suche nach Dateinamen im Ergebnis
         file_pattern = r'["\']?([a-zA-Z0-9_/\\.-]+\.(?:py|js|jsx|ts|tsx|html|css|json))["\']?'
         matches = re.findall(file_pattern, result)
@@ -447,6 +483,110 @@ class TaskDispatcher:
             return task.affected_files
 
         return found
+
+    def _sync_modified_files_to_manager(self, modified_files: List[str], result_text: str):
+        """
+        Synchronisiert UTDS-modifizierte Dateien zurück zu manager.current_code.
+
+        ÄNDERUNG 03.02.2026: Verhindert dass Fixes bei nächster Iteration verloren gehen.
+        Root Cause Fix für zyklisches Regenerieren.
+
+        Args:
+            modified_files: Liste der modifizierten Dateinamen
+            result_text: Der vollständige Ergebnis-Text mit Code-Blöcken
+        """
+        if not modified_files or not hasattr(self.manager, 'current_code'):
+            return
+
+        if self.manager.current_code is None:
+            self.manager.current_code = {}
+
+        synced_count = 0
+        for filename in modified_files:
+            # Extrahiere neuen Code-Inhalt aus result_text
+            new_content = self._extract_file_content_from_result(filename, result_text)
+            if new_content:
+                # Update current_code Dictionary
+                self.manager.current_code[filename] = new_content
+                synced_count += 1
+                logger.info(f"[UTDS-Sync] {filename} nach current_code synchronisiert ({len(new_content)} chars)")
+
+        # ÄNDERUNG 03.02.2026: UI-Log für Sichtbarkeit im Projekt-Log
+        # ÄNDERUNG 03.02.2026: UI-Log für Sichtbarkeit im Projekt-Log
+        if synced_count > 0:
+            logger.info(f"[UTDS-Sync] {synced_count}/{len(modified_files)} Dateien synchronisiert")
+            if hasattr(self.manager, '_ui_log'):
+                self.manager._ui_log("UTDS-Sync", "Success",
+                    f"{synced_count} Datei(en) nach current_code synchronisiert: {', '.join(modified_files[:3])}")
+        elif modified_files:
+            # Log wenn keine Dateien extrahiert werden konnten (Debugging)
+            logger.warning(f"[UTDS-Sync] Code-Extraktion fehlgeschlagen für: {modified_files}")
+            if hasattr(self.manager, '_ui_log'):
+                self.manager._ui_log("UTDS-Sync", "Warning",
+                    f"Code-Extraktion fehlgeschlagen für {len(modified_files)} Datei(en)")
+
+    def _extract_file_content_from_result(self, filename: str, result_text: str) -> Optional[str]:
+        """
+        Extrahiert den Code-Inhalt für eine Datei aus dem Ergebnis-Text.
+
+        ÄNDERUNG 03.02.2026: Unterstützt verschiedene Code-Block-Formate.
+
+        Args:
+            filename: Name der Datei
+            result_text: Vollständiger Ergebnis-Text
+
+        Returns:
+            Extrahierter Code-Inhalt oder None
+        """
+        if not result_text or not filename:
+            return None
+
+        # ÄNDERUNG 03.02.2026: Erweiterte Patterns für robustere Code-Extraktion
+        # Unterstützt verschiedene Formate die LLMs/CrewAI produzieren
+        basename = filename.split("/")[-1].split("\\")[-1]  # Nur Dateiname ohne Pfad
+        patterns = [
+            # 1. Markdown Code-Block mit Dateiname im Kommentar
+            rf'```(?:python|javascript|js|jsx|ts|tsx|html|css|json|ini|cfg|yaml|toml)?\s*\n(?:#\s*{re.escape(filename)}|//\s*{re.escape(filename)})\s*\n(.*?)```',
+            # 2. Code-Block nach "Datei: filename.py" oder "File: filename.py"
+            rf'(?:Datei|File|###?):\s*{re.escape(filename)}\s*\n```[a-z]*\n(.*?)```',
+            # 3. Mit Basename statt vollem Pfad
+            rf'(?:Datei|File|###?):\s*{re.escape(basename)}\s*\n```[a-z]*\n(.*?)```',
+            # 4. Markdown-Header: **filename.py** oder ### filename.py
+            rf'(?:\*\*|###?\s+){re.escape(basename)}(?:\*\*)?[:\s]*\n```[a-z]*\n(.*?)```',
+            # 5. [filename.py] Format
+            rf'\[{re.escape(basename)}\][:\s]*\n```[a-z]*\n(.*?)```',
+            # 6. Generischer Code-Block nach Dateiname
+            rf'{re.escape(basename)}[:\s]*\n```[a-z]*\n(.*?)```',
+            # 7. INI/CFG spezifisch: [pytest] section direkt erkennen
+            rf'```(?:ini|cfg|toml)?\s*\n(\[(?:pytest|tool|metadata).*?)```',
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, result_text, re.DOTALL | re.IGNORECASE)
+            if match:
+                content = match.group(1).strip()
+                if content and len(content) > 10:
+                    return content
+
+        # Fallback 1: Suche nach Code-Block der den Dateinamen im Text erwähnt
+        code_blocks = re.findall(r'```[a-z]*\n(.*?)```', result_text, re.DOTALL)
+        for block in code_blocks:
+            # Prüfe ob der Block zum Dateinamen passt (Heuristik)
+            if basename.endswith('.py') and ('def ' in block or 'import ' in block or 'class ' in block):
+                if len(block) > 50:
+                    return block.strip()
+            elif basename.endswith('.ini') and '[' in block and ']' in block:
+                return block.strip()
+            elif basename.endswith('.cfg') and '[' in block:
+                return block.strip()
+
+        # Fallback 2: Größter Code-Block wenn nur eine Datei
+        if code_blocks:
+            longest = max(code_blocks, key=len)
+            if len(longest) > 50:
+                return longest.strip()
+
+        return None
 
     def _collect_modified_files(self, results: List[TaskExecutionResult]) -> List[str]:
         """Sammelt alle geaenderten Dateien."""

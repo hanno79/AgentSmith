@@ -199,9 +199,33 @@ def _generate_action_text(error_msg: str) -> str:
     return f"VERMEIDE: {error_msg[:180]}..."
 
 
-def learn_from_error(memory_path: str, error_msg: str, tags: List[str]) -> str:
+def learn_from_error(
+    memory_path: str,
+    error_msg: str,
+    tags: List[str],
+    affected_file: str = None,
+    suggested_fix: str = None,
+    tech_blueprint: dict = None
+) -> str:
     """
     Fügt eine neue Lektion basierend auf einem Fehler hinzu.
+
+    ÄNDERUNG 03.02.2026: Erweiterte Lesson-Struktur mit mehr Kontext.
+    - affected_file: Datei in der der Fehler auftrat
+    - suggested_fix: Vorgeschlagene Lösung
+    - full_error: Mehr Kontext (500 chars statt 100)
+    - tech_stack: Aus Blueprint für besseres Matching
+
+    Args:
+        memory_path: Pfad zur Memory-Datei
+        error_msg: Die Fehlermeldung
+        tags: Liste von Tags
+        affected_file: Optional - Betroffene Datei
+        suggested_fix: Optional - Vorgeschlagene Lösung
+        tech_blueprint: Optional - Tech-Stack Info
+
+    Returns:
+        Statusmeldung
     """
     try:
         if not error_msg or not error_msg.strip():
@@ -218,7 +242,7 @@ def learn_from_error(memory_path: str, error_msg: str, tags: List[str]) -> str:
         # Extrahiere das Kernmuster
         error_pattern = extract_error_pattern(error_msg) if error_msg else ""
         if not error_pattern:
-            error_pattern = error_msg[:100]
+            error_pattern = error_msg[:200]
 
         # Check für exakte Duplikate
         for l in data.get("lessons", []):
@@ -226,6 +250,9 @@ def learn_from_error(memory_path: str, error_msg: str, tags: List[str]) -> str:
             if existing_pattern in error_pattern.lower() or error_pattern.lower()[:50] in existing_pattern:
                 l["count"] = l.get("count", 0) + 1
                 l["last_seen"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                # ÄNDERUNG 03.02.2026: Update suggested_fix wenn besser
+                if suggested_fix and not l.get("suggested_fix"):
+                    l["suggested_fix"] = suggested_fix
                 save_memory(memory_path, data)
                 return f"Bekannter Fehler aktualisiert: {l['pattern'][:50]}..."
 
@@ -236,8 +263,10 @@ def learn_from_error(memory_path: str, error_msg: str, tags: List[str]) -> str:
         # Neue Lesson mit verbessertem Action-Text
         action_text = _generate_action_text(error_pattern)
 
+        # ÄNDERUNG 03.02.2026: Erweiterte Lesson-Struktur
         new_lesson = {
-            "pattern": error_pattern[:100],
+            "pattern": error_pattern[:300],  # Erhöht von 100 auf 300
+            "full_error": error_msg[:500],   # NEU: Mehr Kontext
             "category": "error",
             "action": action_text,
             "tags": tags if tags else ["global"],
@@ -245,6 +274,14 @@ def learn_from_error(memory_path: str, error_msg: str, tags: List[str]) -> str:
             "first_seen": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "last_seen": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
+
+        # NEU: Optionale erweiterte Felder
+        if affected_file:
+            new_lesson["affected_file"] = affected_file
+        if suggested_fix:
+            new_lesson["suggested_fix"] = suggested_fix
+        if tech_blueprint:
+            new_lesson["tech_stack"] = tech_blueprint.get("project_type", "")
 
         if "lessons" not in data:
             data["lessons"] = []
