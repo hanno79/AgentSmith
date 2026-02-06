@@ -416,24 +416,45 @@ class TaskDispatcher:
             return None
 
     def _create_agent_fallback(self, agent_type: str) -> Optional[Any]:
-        """Fallback Agent-Erstellung."""
+        """
+        Fallback Agent-Erstellung.
+
+        AENDERUNG 06.02.2026: tech_blueprint an alle Agents durchreichen.
+        """
         try:
+            # AENDERUNG 06.02.2026: Tech-Stack-Kontext fuer alle Agents
+            tech_blueprint = getattr(self.manager, 'tech_blueprint', {})
+            # Tech-Kontext als project_rules injizieren (da create_coder/tester/reviewer
+            # kein tech_blueprint akzeptieren, aber project_rules in Backstory einfliessen)
+            rules = {}
+            if tech_blueprint:
+                language = tech_blueprint.get('language', 'unbekannt')
+                framework = tech_blueprint.get('framework', 'keins')
+                project_type = tech_blueprint.get('project_type', 'unbekannt')
+                rules['tech_stack_context'] = (
+                    f"TECH-STACK: Sprache={language}, Framework={framework}, Typ={project_type}. "
+                    f"ALLE Code-Aenderungen MUESSEN in '{language}' sein!"
+                )
+
             if agent_type == "coder":
                 from agents.coder_agent import create_coder
-                return create_coder(self.config, {}, router=self.router)
+                return create_coder(self.config, rules, router=self.router)
             elif agent_type == "fix":
                 from agents.fix_agent import create_fix_agent
-                return create_fix_agent(self.config, {}, router=self.router)
+                return create_fix_agent(
+                    self.config, rules, router=self.router,
+                    tech_blueprint=tech_blueprint
+                )
             elif agent_type == "tester":
                 from agents.tester_agent import create_tester
-                return create_tester(self.config, {}, router=self.router)
+                return create_tester(self.config, rules, router=self.router)
             elif agent_type == "security":
                 # Security nutzt Coder mit speziellem Prompt
                 from agents.coder_agent import create_coder
-                return create_coder(self.config, {}, router=self.router)
+                return create_coder(self.config, rules, router=self.router)
             elif agent_type == "reviewer":
                 from agents.reviewer_agent import create_reviewer
-                return create_reviewer(self.config, {}, router=self.router)
+                return create_reviewer(self.config, rules, router=self.router)
             else:
                 logger.warning(f"[TaskDispatcher] Unbekannter Agent-Typ: {agent_type}")
                 return None
@@ -442,11 +463,33 @@ class TaskDispatcher:
             return None
 
     def _build_task_description(self, task: DerivedTask) -> str:
-        """Erstellt die Task-Beschreibung fuer CrewAI."""
+        """
+        Erstellt die Task-Beschreibung fuer CrewAI.
+
+        AENDERUNG 06.02.2026: ROOT-CAUSE-FIX Tech-Stack-Kontext fuer alle Agents
+        Symptom: Fix-Agent erzeugt Python-Code (BeispielDatei.py) fuer JavaScript-Projekte
+        Ursache: Agents erhalten KEINEN Tech-Stack-Kontext in der Task-Beschreibung
+        Loesung: Tech-Stack aus manager.tech_blueprint in jede Task-Beschreibung einfuegen
+        """
+        # AENDERUNG 06.02.2026: Tech-Stack-Kontext aus Manager extrahieren
+        tech_blueprint = getattr(self.manager, 'tech_blueprint', {})
+        tech_section = ""
+        if tech_blueprint:
+            language = tech_blueprint.get('language', 'unbekannt')
+            framework = tech_blueprint.get('framework', 'keins')
+            project_type = tech_blueprint.get('project_type', 'unbekannt')
+            tech_section = f"""
+### Tech-Stack (WICHTIG - beachte bei Code-Generierung!):
+- Sprache: {language}
+- Framework: {framework}
+- Projekt-Typ: {project_type}
+- ALLE generierten Dateien MUESSEN zur Sprache '{language}' passen!
+"""
+
         desc = f"""## Task: {task.title}
 
 {task.description}
-
+{tech_section}
 ### Betroffene Dateien:
 {chr(10).join(f'- {f}' for f in task.affected_files) if task.affected_files else '- Nicht spezifiziert'}
 
@@ -473,9 +516,17 @@ class TaskDispatcher:
 
     def _extract_modified_files(self, result: str, task: DerivedTask) -> List[str]:
         """Extrahiert geaenderte Dateien aus Ergebnis."""
-        # Suche nach Dateinamen im Ergebnis
-        file_pattern = r'["\']?([a-zA-Z0-9_/\\.-]+\.(?:py|js|jsx|ts|tsx|html|css|json))["\']?'
+        # Suche nach Dateinamen im Ergebnis (laengere Extensions zuerst: jsx vor js, json vor js)
+        file_pattern = r'["\']?([a-zA-Z0-9_/\\.-]+\.(?:py|jsx|json|tsx|js|ts|html|css))["\']?'
         matches = re.findall(file_pattern, result)
+
+        # AENDERUNG 06.02.2026: ROOT-CAUSE-FIX Framework-Namen in Patch-Liste
+        # Symptom: Next.js, Node.js landen als "Dateien" in der Patch-Liste (Patch-Ratio 0%)
+        # Ursache: Regex matcht Framework-Namen (Name.js) als Dateinamen
+        # Loesung: Gleicher Filter wie in task_deriver.py:553-557
+        _FRAMEWORK_NAMES = {"next.js", "vue.js", "node.js", "react.js", "angular.js", "nuxt.js", "svelte.js"}
+        matches = [m for m in matches if m.lower() not in _FRAMEWORK_NAMES]
+
         found = list(set(matches))[:10]
 
         # Fallback auf affected_files
@@ -498,8 +549,19 @@ class TaskDispatcher:
         if not modified_files or not hasattr(self.manager, 'current_code'):
             return
 
+        # FIX 05.02.2026: current_code kann String ODER Dict sein
+        # Wenn String: NICHT konvertieren (würde andere Funktionen wie merge_repaired_files brechen)
+        # Sync nur durchführen wenn current_code bereits ein Dict ist oder None
         if self.manager.current_code is None:
             self.manager.current_code = {}
+        elif isinstance(self.manager.current_code, str):
+            # String belassen - Dateien sind auf Festplatte gespeichert,
+            # beim nächsten Coder-Durchlauf wird Code neu geladen
+            logger.info("[UTDS-Sync] current_code ist String - Sync übersprungen (Dateien sind auf Festplatte)")
+            if hasattr(self.manager, '_ui_log'):
+                self.manager._ui_log("UTDS-Sync", "Info",
+                    f"Dateien direkt gespeichert: {', '.join(modified_files[:3])}")
+            return
 
         synced_count = 0
         for filename in modified_files:

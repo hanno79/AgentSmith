@@ -1,8 +1,9 @@
 """
 Author: rahn
-Datum: 01.02.2026
-Version: 1.8
+Datum: 02.02.2026
+Version: 1.9
 Beschreibung: DevLoop kapselt die Iterationslogik fuer Code-Generierung und Tests.
+              AENDERUNG 02.02.2026: FIX - Augment CLI PATH-Problem mit shutil.which() behoben.
               AENDERUNG 01.02.2026: Documenter + Memory Agent Integration für Orchestrator-Entscheidungen.
               AENDERUNG 01.02.2026: OrchestratorValidator Integration gemäß Dart AI Protokoll.
               AENDERUNG 31.01.2026: HELP_NEEDED Handler Integration fuer automatische Hilfs-Agenten.
@@ -10,13 +11,16 @@ Beschreibung: DevLoop kapselt die Iterationslogik fuer Code-Generierung und Test
               AENDERUNG 31.01.2026: Fehler-Modell-Historie zur Vermeidung von Ping-Pong-Wechseln.
               AENDERUNG 31.01.2026: File-by-File Modus Integration (Anti-Truncation).
               AENDERUNG 31.01.2026: FIX - AsyncIO Event-Loop Bug in Worker-Thread behoben.
-              AENDERUNG 31.01.2026: Targeted Fix Mode - Parallele gezielte Korrekturen statt Neugenerierung.
+              AENDERUNG 03.02.2026: TargetedFix ENTFERNT zugunsten von UTDS.
+              AENDERUNG 03.02.2026: Unified Fix Mode - UTDS für alle Fehlerkorrekturen.
 """
 
 import os
 import json
 import logging
 import shlex
+import shutil
+import asyncio
 from typing import Dict, Any, Tuple
 from concurrent.futures import ThreadPoolExecutor
 
@@ -49,13 +53,12 @@ from .parallel_file_generator import (
     get_file_descriptions_from_plan,
     get_file_list_from_plan
 )
-# AENDERUNG 31.01.2026: Targeted Fix Mode - Parallele gezielte Korrekturen
-from .error_analyzer import ErrorAnalyzer, analyze_errors, get_files_to_fix
-from .parallel_fixer import ParallelFixer, should_use_parallel_fix
 # AENDERUNG 01.02.2026: OrchestratorValidator gemäß Dart AI Kommunikationsprotokoll
 from .orchestration_validator import OrchestratorValidator, ValidatorAction
 # AENDERUNG 01.02.2026: Universal Task Derivation System (UTDS)
 from .dev_loop_task_derivation import DevLoopTaskDerivation, integrate_task_derivation
+# AENDERUNG 05.02.2026: FileStatusDetector für gezielte Fixes
+from .file_status_detector import FileStatusDetector, get_file_status_summary_for_log
 
 # ÄNDERUNG 29.01.2026: Dev-Loop aus OrchestrationManager ausgelagert
 
@@ -65,9 +68,6 @@ class DevLoop:
         self.manager = manager
         self.set_current_agent = set_current_agent
         self.run_with_timeout = run_with_timeout
-        # AENDERUNG 31.01.2026: Targeted Fix Mode Komponenten
-        self._parallel_fixer = None
-        self._error_analyzer = ErrorAnalyzer()
         # AENDERUNG 01.02.2026: OrchestratorValidator für zentrale Prüflogik
         self._orchestrator_validator = OrchestratorValidator(
             manager=manager,
@@ -76,129 +76,8 @@ class DevLoop:
         )
         # AENDERUNG 01.02.2026: Universal Task Derivation System (UTDS)
         self._task_derivation = DevLoopTaskDerivation(manager, manager.config)
-
-    def _try_targeted_fix(
-        self,
-        sandbox_result: str,
-        review_output: str,
-        created_files: list,
-        project_rules: Dict[str, Any],
-        user_goal: str
-    ) -> Tuple[bool, str, list]:
-        """
-        Versucht gezielte Korrekturen statt kompletter Neugenerierung.
-
-        Args:
-            sandbox_result: Sandbox/Test-Output mit Fehlern
-            review_output: Reviewer-Feedback
-            created_files: Liste der erstellten Dateien
-            project_rules: Projektregeln
-            user_goal: Benutzer-Ziel
-
-        Returns:
-            Tuple (erfolg, aktualisierter_code, aktualisierte_dateien)
-        """
-        manager = self.manager
-
-        # Sammle aktuelle Dateiinhalte
-        existing_files = {}
-        for filepath in (created_files or []):
-            full_path = os.path.join(manager.project_path, filepath)
-            if os.path.exists(full_path):
-                try:
-                    with open(full_path, "r", encoding="utf-8") as f:
-                        existing_files[filepath] = f.read()
-                except Exception:
-                    pass
-
-        if not existing_files:
-            manager._ui_log("TargetedFix", "Skip", "Keine Dateien fuer gezielte Korrektur gefunden")
-            return False, "", []
-
-        # Analysiere Fehler
-        errors = analyze_errors(
-            sandbox_output=sandbox_result,
-            review_output=review_output,
-            project_files=existing_files
-        )
-
-        if not errors:
-            manager._ui_log("TargetedFix", "Skip", "Keine analysierbaren Fehler gefunden")
-            return False, "", []
-
-        # AENDERUNG 02.02.2026: Config-basiertes Limit statt hardcodiert (Bug #12)
-        fix_config = manager.config.get("targeted_fix", {})
-        max_files = fix_config.get("max_files", 7)
-
-        affected_files = get_files_to_fix(errors, max_files=max_files)
-        if not should_use_parallel_fix(errors, max_threshold=max_files):
-            manager._ui_log("TargetedFix", "Skip",
-                          f"Zu viele Dateien betroffen ({len(affected_files)}) - nutze Standard-Modus")
-            return False, "", []
-
-        manager._ui_log("TargetedFix", "Start", json.dumps({
-            "affected_files": affected_files,
-            "error_count": len(errors),
-            "error_types": list(set(e.error_type for e in errors))
-        }, ensure_ascii=False))
-
-        # Initialisiere ParallelFixer falls noetig
-        if not self._parallel_fixer:
-            self._parallel_fixer = ParallelFixer(
-                manager=manager,
-                config=manager.config,
-                max_parallel=3,
-                max_retries=2,
-                router=manager.model_router if hasattr(manager, 'model_router') else None
-            )
-
-        # Fuehre parallele Korrekturen durch
-        try:
-            fix_results = self._parallel_fixer.fix_files_parallel(
-                errors=errors,
-                existing_files=existing_files,
-                project_rules=str(project_rules),
-                user_goal=user_goal
-            )
-
-            # Zaehle erfolgreiche Fixes
-            successful = sum(1 for r in fix_results.values() if r.success)
-            total = len(fix_results)
-
-            manager._ui_log("TargetedFix", "Results", json.dumps({
-                "successful": successful,
-                "total": total,
-                "fixed_files": [p for p, r in fix_results.items() if r.success],
-                "failed_files": [p for p, r in fix_results.items() if not r.success]
-            }, ensure_ascii=False))
-
-            if successful == 0:
-                return False, "", []
-
-            # Schreibe korrigierte Dateien zurueck
-            updated_files = []
-            for filepath, result in fix_results.items():
-                if result.success and result.new_content:
-                    full_path = os.path.join(manager.project_path, filepath)
-                    try:
-                        with open(full_path, "w", encoding="utf-8") as f:
-                            f.write(result.new_content)
-                        updated_files.append(filepath)
-                        existing_files[filepath] = result.new_content
-                    except Exception as e:
-                        manager._ui_log("TargetedFix", "WriteError", f"{filepath}: {e}")
-
-            # Baue aktualisierten Code-String
-            all_code = ""
-            for filepath in (created_files or []):
-                if filepath in existing_files:
-                    all_code += f"\n### FILENAME: {filepath}\n{existing_files[filepath]}\n"
-
-            return True, all_code, updated_files
-
-        except Exception as e:
-            manager._ui_log("TargetedFix", "Error", f"Parallele Korrektur fehlgeschlagen: {e}")
-            return False, "", []
+        # AENDERUNG 05.02.2026: FileStatusDetector für gezielte Fixes
+        self._file_detector = FileStatusDetector(str(manager.project_path))
 
     def run(
         self,
@@ -253,9 +132,11 @@ class DevLoop:
                         }, ensure_ascii=False))
 
                         # Schritt 2: Parallele Generierung
+                        # AENDERUNG 02.02.2026: agent_timeout_seconds als Fallback fuer timeout_per_file
                         max_workers = parallel_config.get("max_workers", None)  # None = unbegrenzt
-                        timeout_per_file = parallel_config.get("timeout_per_file", 120)
-                        batch_timeout = parallel_config.get("batch_timeout", 300)
+                        agent_timeout = manager.config.get("agent_timeout_seconds", 300)
+                        timeout_per_file = parallel_config.get("timeout_per_file", agent_timeout)
+                        batch_timeout = parallel_config.get("batch_timeout", agent_timeout * 2)
 
                         results, errors = loop.run_until_complete(
                             run_parallel_file_generation(
@@ -287,15 +168,14 @@ class DevLoop:
                             ]
 
                             if rate_limit_files and len(rate_limit_files) > 0:
-                                import time
                                 manager._ui_log("DevLoop", "ParallelRetry", json.dumps({
                                     "reason": "rate_limit",
                                     "files_to_retry": len(rate_limit_files),
                                     "wait_seconds": 30
                                 }, ensure_ascii=False))
 
-                                # Warte auf Rate-Limit Ablauf
-                                time.sleep(30)
+                                # Warte auf Rate-Limit Ablauf (non-blocking für Event-Loop)
+                                loop.run_until_complete(asyncio.sleep(30))
 
                                 # Retry fuer Rate-Limited Files
                                 retry_file_list = [f for f, _ in rate_limit_files]
@@ -329,7 +209,6 @@ class DevLoop:
                         expected_files = len(file_list)
                         actual_files = len(created_files)
                         success = actual_files >= expected_files  # Strikt: ALLE Dateien müssen erstellt sein
-                        expected_files = len(file_list)  # Für Logging
                     else:
                         # Sequenzieller Modus (Original)
                         success, message, created_files = loop.run_until_complete(
@@ -362,6 +241,11 @@ class DevLoop:
                     manager.current_code = all_code
                     manager._ui_log("DevLoop", "Info",
                                    "File-by-File abgeschlossen, starte Tests und Review...")
+                    # ÄNDERUNG 03.02.2026: is_first_run auch bei File-by-File setzen (Fix 6b)
+                    if manager.is_first_run:
+                        manager.is_first_run = False
+                        manager._ui_log("System", "FirstRunComplete",
+                                       "Erste Iteration abgeschlossen - PatchMode aktiviert")
             except Exception as fbf_err:
                 manager._ui_log("DevLoop", "Warning",
                                f"File-by-File fehlgeschlagen, nutze Standard-Modus: {fbf_err}")
@@ -382,6 +266,9 @@ class DevLoop:
         current_coder_model = manager.model_router.get_model("coder")
         models_used = [current_coder_model]
         failed_attempts_history = []
+        # AENDERUNG 06.02.2026: ROOT-CAUSE-FIX PatchModeFallback
+        # UTDS-modifizierte Dateien sammeln fuer Patch-Modus in naechster Iteration
+        _utds_modified_files = []
 
         while iteration < max_retries:
             manager.iteration = iteration
@@ -392,10 +279,28 @@ class DevLoop:
             coder_model = manager.model_router.get_model("coder") if manager.model_router else "unknown"
             manager._update_worker_status("coder", "working", f"Iteration {iteration + 1}/{max_retries}", coder_model)
 
-            c_prompt = build_coder_prompt(manager, user_goal, feedback, iteration)
-            manager.current_code, manager.agent_coder = run_coder_task(manager, project_rules, c_prompt, manager.agent_coder)
-            # ÄNDERUNG 31.01.2026: Truncation-Status für Modellwechsel-Logik
-            created_files, truncated_files = save_coder_output(manager, manager.current_code, manager.output_path, iteration, max_retries)
+            # ÄNDERUNG 03.02.2026: ROOT-CAUSE-FIX - try-finally für sicheren idle-Reset
+            # Problem: Bei Exception in run_coder_task wurde idle nie erreicht
+            # Lösung: finally garantiert idle-Reset auch bei Exceptions
+            try:
+                # AENDERUNG 06.02.2026: UTDS-Dateien an Coder weiterleiten fuer gezieltes Patching
+                _files_to_patch = list(set(_utds_modified_files)) if _utds_modified_files else None
+                c_prompt = build_coder_prompt(
+                    manager, user_goal, feedback, iteration,
+                    files_to_patch=_files_to_patch
+                )
+                _utds_modified_files = []  # Reset nach Verwendung
+                manager.current_code, manager.agent_coder = run_coder_task(manager, project_rules, c_prompt, manager.agent_coder)
+                # ÄNDERUNG 31.01.2026: Truncation-Status für Modellwechsel-Logik
+                created_files, truncated_files = save_coder_output(manager, manager.current_code, manager.output_path, iteration, max_retries)
+            finally:
+                manager._update_worker_status("coder", "idle")
+
+            # ÄNDERUNG 03.02.2026: is_first_run nach erster Iteration auf False setzen
+            # Fix 6: Ermöglicht PatchMode ab Iteration 2
+            if manager.is_first_run and iteration == 0:
+                manager.is_first_run = False
+                manager._ui_log("System", "FirstRunComplete", "Erste Iteration abgeschlossen - PatchMode aktiviert")
 
             # ÄNDERUNG 30.01.2026: Quality Gate - Code Validierung nach jeder Iteration
             if hasattr(manager, 'quality_gate') and manager.current_code:
@@ -496,39 +401,6 @@ class DevLoop:
                     manager._ui_log("DevLoop", "TruncationRecoveryError",
                                    f"Reparatur-Fehler: {repair_err}")
 
-            # AENDERUNG 31.01.2026: Targeted Fix Mode - Versuche gezielte Korrektur vor Neugenerierung
-            # Nur bei Sandbox-Fehlern und wenn Dateien existieren (nicht erste Iteration)
-            targeted_fix_applied = False
-            if sandbox_failed and iteration > 0 and created_files:
-                manager._ui_log("TargetedFix", "Attempting",
-                              f"Versuche gezielte Korrektur fuer {len(created_files)} Dateien...")
-                fix_success, fixed_code, updated_files = self._try_targeted_fix(
-                    sandbox_result=sandbox_result,
-                    review_output="",  # Noch kein Review in dieser Phase
-                    created_files=created_files,
-                    project_rules=project_rules,
-                    user_goal=user_goal
-                )
-
-                if fix_success and fixed_code:
-                    manager.current_code = fixed_code
-                    targeted_fix_applied = True
-                    manager._ui_log("TargetedFix", "Success",
-                                   f"Gezielte Korrektur erfolgreich: {len(updated_files)} Dateien korrigiert")
-
-                    # Re-run Sandbox mit korrigiertem Code
-                    sandbox_result, sandbox_failed, test_result, ui_result, test_summary = run_sandbox_and_tests(
-                        manager,
-                        manager.current_code,
-                        created_files,
-                        iteration,
-                        manager.tech_blueprint.get("project_type", "webapp")
-                    )
-
-                    if not sandbox_failed:
-                        manager._ui_log("TargetedFix", "Validated",
-                                       "Korrigierter Code hat Sandbox-Tests bestanden")
-
             self.set_current_agent("Reviewer", project_id)
             review_output, review_verdict, _ = run_review(
                 manager,
@@ -623,7 +495,11 @@ class DevLoop:
                 except Exception:
                     pass
 
-            review_says_ok = review_output.strip().upper().startswith("OK") or review_output.strip().upper() == "OK"
+            # AENDERUNG 06.02.2026: ROOT-CAUSE-FIX Endlos-Iteration trotz Reviewer-OK
+            # Symptom: review_says_ok=false obwohl Reviewer "OK" sagt (verdict=OK, isApproved=true)
+            # Ursache: startswith("OK") prueft nur Textanfang, Reviewer antwortet "URSACHE:...OK" (OK am Ende)
+            # Loesung: Nutze review_verdict aus run_review() statt review_output neu zu parsen
+            review_says_ok = review_verdict == "OK"
             file_count = len(created_files) if created_files else 0
             manager._ui_log("Debug", "LoopDecision", json.dumps({
                 "iteration": iteration + 1,
@@ -788,10 +664,17 @@ class DevLoop:
 
             # AENDERUNG 01.02.2026: Universal Task Derivation System (UTDS)
             # Zerlegt Feedback in Tasks und fuehrt sie parallel aus
+            # AENDERUNG 06.02.2026: ROOT-CAUSE-FIX tech_blueprint hinzugefuegt
+            # Symptom: UTDS-Agents erzeugten Code in falscher Sprache
+            # Ursache: Nur tech_stack String, nicht vollstaendiger Blueprint im Kontext
+            # Loesung: tech_blueprint und project_type ebenfalls weitergeben
+            _tech_blueprint = getattr(manager, 'tech_blueprint', {})
             utds_context = {
                 "current_code": manager.current_code,
                 "affected_files": created_files or [],
-                "tech_stack": getattr(manager, 'tech_blueprint', {}).get('language', 'unknown')
+                "tech_stack": _tech_blueprint.get('language', 'unknown'),
+                "tech_blueprint": _tech_blueprint,
+                "project_type": _tech_blueprint.get('project_type', 'webapp')
             }
 
             # AENDERUNG 01.02.2026: Security als UTDS-Quelle (Phase 9)
@@ -806,6 +689,9 @@ class DevLoop:
                     sec_success, sec_summary, sec_modified = self._task_derivation.process_feedback(
                         security_feedback, "security", utds_context
                     )
+                    # AENDERUNG 06.02.2026: UTDS-Dateien fuer PatchMode sammeln
+                    if sec_modified:
+                        _utds_modified_files.extend(sec_modified)
                     if sec_success:
                         manager._ui_log("TaskDerivation", "SecuritySuccess",
                                        f"Security-Tasks erfolgreich: {len(sec_modified)} Dateien geaendert")
@@ -826,6 +712,9 @@ class DevLoop:
                     sb_success, sb_summary, sb_modified = self._task_derivation.process_feedback(
                         sandbox_feedback, "sandbox", utds_context
                     )
+                    # AENDERUNG 06.02.2026: UTDS-Dateien fuer PatchMode sammeln
+                    if sb_modified:
+                        _utds_modified_files.extend(sb_modified)
                     if sb_success:
                         manager._ui_log("TaskDerivation", "SandboxSuccess",
                                        f"Sandbox-Tasks erfolgreich: {len(sb_modified)} Dateien geaendert")
@@ -842,6 +731,9 @@ class DevLoop:
                 td_success, td_summary, td_modified = self._task_derivation.process_feedback(
                     feedback, "reviewer", utds_context
                 )
+                # AENDERUNG 06.02.2026: UTDS-Dateien fuer PatchMode sammeln
+                if td_modified:
+                    _utds_modified_files.extend(td_modified)
                 if td_success:
                     manager._ui_log("TaskDerivation", "Success",
                                    f"Alle Tasks erfolgreich: {len(td_modified)} Dateien geaendert")
@@ -886,6 +778,12 @@ class DevLoop:
                 manager.model_router.mark_error_tried(validator_decision.error_hash, current_coder_model)
                 manager._ui_log("Orchestrator", "ForceModelSwitch",
                                f"Orchestrator erzwingt Modellwechsel für Fehler {validator_decision.error_hash[:8]}")
+                # ÄNDERUNG 03.02.2026: ROOT-CAUSE-FIX - Modellwechsel tatsächlich erzwingen
+                # Symptom: ForceModelSwitch wurde geloggt aber Modell blieb gleich
+                # Ursache: model_attempt war < max_model_attempts, daher wurde in
+                #          handle_model_switch() kein Wechsel durchgeführt
+                # Lösung: model_attempt auf max_model_attempts setzen um Wechsel zu erzwingen
+                model_attempt = max_model_attempts
 
             # AENDERUNG 31.01.2026: sandbox_result und sandbox_failed fuer Fehler-Modell-Historie
             current_coder_model, model_attempt, models_used, feedback = handle_model_switch(
@@ -941,7 +839,7 @@ class DevLoop:
             return ""
 
         try:
-            augment = manager.external_bureau.get_specialist("augment_context")
+            augment = manager.external_bureau.get_specialist("augment")
             if not augment:
                 return ""
 
@@ -954,7 +852,7 @@ class DevLoop:
             # Aktiviere wenn noetig
             from external_specialists.base_specialist import SpecialistStatus
             if augment.status != SpecialistStatus.READY:
-                manager.external_bureau.activate_specialist("augment_context")
+                manager.external_bureau.activate_specialist("augment")
 
             manager._ui_log("Augment", "ContextAnalysis",
                            f"Hole Architektur-Kontext fuer Iteration {iteration + 1}...")
@@ -979,9 +877,28 @@ Was koennte strukturell falsch sein? Gib konkrete Hinweise."""
             timeout = augment_cfg.get("timeout_seconds", 300)  # Default: 5 Minuten
             cli_command = augment_cfg.get("cli_command", "npx @augmentcode/auggie")
 
-            # Command als Argumentliste (ohne shell=True) gegen Shell-Injection
+            # AENDERUNG 02.02.2026: shutil.which() fuer vollstaendigen npx-Pfad
+            # Problem: subprocess.run() mit shell=False findet npx nicht im PATH
+            # Loesung: Vollstaendigen Pfad zu npx ermitteln
+            if cli_command.startswith("npx"):
+                npx_path = shutil.which("npx")
+                if not npx_path:
+                    manager._ui_log("Augment", "NotFound",
+                                   "npx nicht im PATH gefunden - npm install -g @augmentcode/auggie")
+                    return ""
+            else:
+                npx_path = None
+
+            # AENDERUNG 06.02.2026: ROOT-CAUSE-FIX Windows-Pfad-Bug
+            # Symptom: Augment CLI "NotFound" auf Windows (shlex zerlegt Pfad mit Leerzeichen)
+            # Ursache: shlex.split() splittet "C:\Program Files\nodejs\npx.CMD" am Leerzeichen
+            # Loesung: Array direkt bauen statt shlex.split() auf modifizierten String
             short_query = "Gib eine kurze Uebersicht der Projekt-Architektur."
-            cmd_argv = shlex.split(cli_command) + [short_query, "--print"]
+            parts = cli_command.split()  # ["npx", "@augmentcode/auggie"]
+            if npx_path:
+                cmd_argv = [npx_path] + parts[1:] + [short_query, "--print"]
+            else:
+                cmd_argv = parts + [short_query, "--print"]
 
             project_path = str(manager.project_path) if hasattr(manager, 'project_path') else None
             manager._ui_log("Augment", "Debug",
