@@ -10,6 +10,7 @@ Beschreibung: Coder-Funktionen für DevLoop.
               ÄNDERUNG 31.01.2026: Truncation-Detection und Unicode-Sanitization
 """
 
+import logging
 import os
 import json
 import time
@@ -35,6 +36,9 @@ from .dev_loop_helpers import _sanitize_unicode, _check_for_truncation, get_pyth
 from .file_status_detector import get_file_status_summary_for_log
 
 import re
+
+# AENDERUNG 06.02.2026: Logger fuer PatchMode Fuzzy-Matching (Fix 12)
+logger = logging.getLogger(__name__)
 
 
 # ÄNDERUNG 03.02.2026: Fix 8 - Think-Tag Filtering
