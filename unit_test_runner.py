@@ -175,22 +175,38 @@ def _run_npm_test(project_path: str, project_type: str) -> Dict[str, Any]:
         }
 
     # Pruefen ob test-Script in package.json existiert
+    # AENDERUNG 06.02.2026: ROOT-CAUSE-FIX UnitTest-SKIP
+    # Symptom: "Kein 'test' Script in package.json" in jeder Iteration
+    # Ursache: Coder generiert test:e2e aber kein test Script
+    # Loesung: Fallback-Kette: test -> test:unit -> test:e2e -> jest -> vitest
+    test_script_name = None
     try:
         import json
         with open(package_json, 'r', encoding='utf-8') as f:
             pkg = json.load(f)
 
         scripts = pkg.get("scripts", {})
-        if "test" not in scripts:
+        # Fallback-Kette fuer alternative Test-Scripts
+        test_script_candidates = ["test", "test:unit", "test:e2e", "jest", "vitest"]
+        for candidate in test_script_candidates:
+            if candidate in scripts:
+                test_script_name = candidate
+                if candidate != "test":
+                    logger.info(f"Kein 'test' Script, nutze '{candidate}' als Alternative")
+                break
+
+        if not test_script_name:
             return {
                 "status": "SKIP",
-                "summary": "Kein 'test' Script in package.json",
-                "details": "Fuege 'test': 'jest' oder 'vitest' hinzu",
+                "summary": "Kein Test-Script in package.json",
+                "details": f"Verfuegbare Scripts: {', '.join(scripts.keys()) if scripts else 'keine'}. "
+                           "Fuege 'test': 'jest' oder 'vitest' hinzu",
                 "test_count": 0
             }
 
     except Exception as e:
         logger.warning(f"package.json lesen fehlgeschlagen: {e}")
+        test_script_name = "test"  # Fallback auf Standard
 
     try:
         # Validierung und Auflösung von project_path
@@ -206,11 +222,15 @@ def _run_npm_test(project_path: str, project_type: str) -> Dict[str, Any]:
                 "test_count": 0
             }
         
-        # npm test mit --passWithNoTests (falls jest)
-        # shell=False für Sicherheit - Command-Injection verhindern
-        # AENDERUNG 31.01.2026: Vollstaendigen npm_path verwenden (Windows: npm.cmd)
+        # npm run <test_script> mit --passWithNoTests (falls jest)
+        # shell=False fuer Sicherheit - Command-Injection verhindern
+        # AENDERUNG 06.02.2026: Dynamisches Test-Script statt hardcoded "test"
+        npm_cmd = [npm_path, "run", test_script_name, "--", "--passWithNoTests", "--silent"] \
+            if test_script_name != "test" \
+            else [npm_path, "test", "--", "--passWithNoTests", "--silent"]
+        logger.info(f"Fuehre aus: {' '.join(npm_cmd)}")
         result = subprocess.run(
-            [npm_path, "test", "--", "--passWithNoTests", "--silent"],
+            npm_cmd,
             cwd=str(project_path_resolved),
             capture_output=True,
             timeout=180,

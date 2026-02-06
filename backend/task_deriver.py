@@ -1,15 +1,20 @@
 """
 Author: rahn
 Datum: 01.02.2026
-Version: 1.0
-Beschreibung: LLM-basierter Task-Ableiter für das Universal Task Derivation System (UTDS).
-              Zerlegt Feedback aus verschiedenen Quellen in einzelne, ausführbare Tasks.
+Version: 1.1
+Beschreibung: LLM-basierter Task-Ableiter fuer das Universal Task Derivation System (UTDS).
+              Zerlegt Feedback aus verschiedenen Quellen in einzelne, ausfuehrbare Tasks.
+              AENDERUNG 05.02.2026 v1.1: Erweiterte Patterns fuer alle Issue-Typen.
 """
 
 import json
+import logging
+import os
 import re
 import time
-from typing import Any, Dict, List, Optional
+import hashlib
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Set
 from datetime import datetime
 
 from backend.task_models import (
@@ -17,8 +22,36 @@ from backend.task_models import (
     TaskDerivationResult, sort_tasks_by_priority
 )
 
+logger = logging.getLogger(__name__)
 
-# AENDERUNG 01.02.2026: LLM-Prompt Template für Task-Ableitung
+
+# AENDERUNG 06.02.2026: Vorhandene Projekt-Dateien fuer UTDS-Prompt
+# Verhindert dass LLM Dateipfade erfindet
+_IGNORED_DIRS = {"node_modules", ".git", "__pycache__", ".next", "dist", "build", ".cache", "screenshots"}
+
+
+def _get_existing_project_files(context: Dict[str, Any]) -> List[str]:
+    """Extrahiert vorhandene Projekt-Dateien aus current_code oder Festplatte."""
+    current_code = context.get("current_code")
+    if isinstance(current_code, dict) and current_code:
+        return list(current_code.keys())[:30]
+    # Fallback: Dateien vom Projektverzeichnis lesen
+    blueprint = context.get("tech_blueprint", {})
+    project_path = blueprint.get("project_path", "")
+    if project_path and Path(project_path).is_dir():
+        files = []
+        for root, dirs, filenames in os.walk(project_path):
+            dirs[:] = [d for d in dirs if d not in _IGNORED_DIRS]
+            for f in filenames:
+                rel = os.path.relpath(os.path.join(root, f), project_path).replace("\\", "/")
+                files.append(rel)
+                if len(files) >= 30:
+                    return files
+        return files
+    return []
+
+
+# AENDERUNG 01.02.2026: LLM-Prompt Template fuer Task-Ableitung
 TASK_DERIVER_PROMPT = """Analysiere das folgende Feedback und extrahiere einzelne, ausfuehrbare Tasks.
 
 FEEDBACK ({source}):
@@ -26,7 +59,9 @@ FEEDBACK ({source}):
 
 KONTEXT:
 - Betroffene Dateien: {affected_files}
+- Vorhandene Projekt-Dateien: {existing_files}
 - Tech-Stack: {tech_stack}
+- Projekt-Typ: {project_type}
 - Aktueller Code vorhanden: {has_code}
 
 AUSGABE-FORMAT (strikt JSON):
@@ -55,6 +90,8 @@ REGELN:
 5. Test-fehlende Tasks als "high" priorisieren
 6. Syntax-Fehler und Import-Fehler als "critical" priorisieren
 7. Dokumentations-Aufgaben als "low" priorisieren (ausser explizit angefordert)
+8. WICHTIG: affected_files MUESSEN zum Tech-Stack passen! Kein .py fuer JavaScript-Projekte, kein .js fuer Python-Projekte!
+9. WICHTIG: affected_files MUESSEN aus der Liste 'Vorhandene Projekt-Dateien' stammen! Erfinde KEINE Dateipfade!
 
 KATEGORISIERUNG:
 - "code": Code-Aenderungen, Bugfixes, Implementierungen
@@ -161,11 +198,19 @@ class TaskDeriver:
             return []
 
         # Prompt zusammenbauen
+        # AENDERUNG 06.02.2026: project_type hinzugefuegt fuer Tech-Stack-Bewusstsein
+        # ROOT-CAUSE-FIX 06.02.2026 (v2):
+        # Symptom: UTDS erfindet Dateipfade wie nextjs_app/package.js
+        # Ursache: LLM erhielt KEINE Liste der tatsaechlich vorhandenen Projekt-Dateien
+        # Loesung: existing_files aus current_code-Keys oder Festplatte an LLM uebergeben
+        existing_files = _get_existing_project_files(context)
         prompt = TASK_DERIVER_PROMPT.format(
             source=source,
             feedback=feedback[:4000],  # Truncate fuer Token-Limit
             affected_files=", ".join(context.get("affected_files", ["unbekannt"])),
+            existing_files=", ".join(existing_files) if existing_files else "unbekannt",
             tech_stack=context.get("tech_stack", "unbekannt"),
+            project_type=context.get("project_type", "unbekannt"),
             has_code="Ja" if context.get("current_code") else "Nein"
         )
 
@@ -179,7 +224,7 @@ class TaskDeriver:
             return self._parse_llm_response(response_text, source)
 
         except Exception as e:
-            print(f"[TaskDeriver] LLM-Fehler: {e}")
+            logger.exception("[TaskDeriver] LLM-Fehler in derive_tasks")
             return []
 
     def _parse_llm_response(self, response: str, source: str) -> List[DerivedTask]:
@@ -257,7 +302,7 @@ class TaskDeriver:
                 )
                 tasks.append(task)
             except Exception as e:
-                print(f"[TaskDeriver] Task-Konvertierung fehlgeschlagen: {e}")
+                logger.exception("[TaskDeriver] Task-Konvertierung fehlgeschlagen in _convert_to_derived_tasks")
                 continue
 
         return tasks
@@ -270,6 +315,8 @@ class TaskDeriver:
     ) -> List[DerivedTask]:
         """
         Regelbasierte Task-Ableitung als Fallback.
+        AENDERUNG 02.02.2026: Duplikat-Erkennung via Hash hinzugefuegt.
+        AENDERUNG 05.02.2026: Erweiterte Patterns fuer alle Issue-Typen.
 
         Args:
             feedback: Feedback-Text
@@ -277,9 +324,11 @@ class TaskDeriver:
             context: Kontext-Informationen
 
         Returns:
-            Liste abgeleiteter Tasks
+            Liste abgeleiteter Tasks (ohne Duplikate)
         """
         tasks = []
+        # AENDERUNG 02.02.2026: Duplikat-Tracking via Hash
+        seen_issues: Set[str] = set()
         feedback_lower = feedback.lower()
 
         # Pattern-basierte Erkennung
@@ -291,6 +340,19 @@ class TaskDeriver:
 
             for match in matches:
                 match_text = match if isinstance(match, str) else match[0]
+
+                # AENDERUNG 02.02.2026: Duplikat-Check via Hash
+                # Normalisiere den Text fuer bessere Deduplizierung
+                normalized_issue = match_text.lower().strip()[:100]
+                issue_hash = hashlib.md5(normalized_issue.encode()).hexdigest()[:8]
+
+                if issue_hash in seen_issues:
+                    logger.debug(f"[TaskDeriver] Duplikat uebersprungen: {match_text[:50]}...")
+                    continue
+                seen_issues.add(issue_hash)
+
+                # AENDERUNG 06.02.2026: tech_stack an _extract_files_from_text weiterreichen
+                tech_stack = context.get("tech_stack", "") if context else ""
                 task = DerivedTask(
                     id="",
                     title=pattern_info["title_template"].format(match=match_text[:30]),
@@ -298,7 +360,7 @@ class TaskDeriver:
                     category=pattern_info["category"],
                     priority=pattern_info["priority"],
                     target_agent=pattern_info["agent"],
-                    affected_files=self._extract_files_from_text(match_text),
+                    affected_files=self._extract_files_from_text(match_text, tech_stack),
                     dependencies=[],
                     source_issue=match_text,
                     source_type=source,
@@ -326,24 +388,87 @@ class TaskDeriver:
         return tasks
 
     def _get_detection_patterns(self) -> List[Dict[str, Any]]:
-        """Liefert Pattern-Definitionen fuer regelbasierte Erkennung."""
+        """Liefert erweiterte Pattern-Definitionen fuer regelbasierte Erkennung."""
         return [
-            # Syntax-Fehler
+            # JavaScript/JSX Syntax-Fehler (CRITICAL)
             {
-                "pattern": r"SyntaxError[:\s]+(.+?)(?:\n|$)",
-                "title_template": "Syntax-Fehler beheben: {match}",
-                "description": "Syntax-Fehler im Code beheben",
+                "pattern": r"(?:JavaScript[- ]?Syntax(?:Error)?|JSX[- ]?Syntax|unvollstaendig(?:er)?\s*JSX[- ]?Code|parsing[- ]?Fehler)",
+                "title_template": "JavaScript/JSX Syntax-Fehler beheben",
+                "description": "JavaScript-Syntaxfehler oder unvollstaendigen JSX-Code im Code beheben",
                 "category": TaskCategory.CODE,
                 "priority": TaskPriority.CRITICAL,
                 "agent": TargetAgent.FIX
             },
-            # Import-Fehler
+            # Python Syntax-Fehler
+            {
+                "pattern": r"SyntaxError[:\s]+(.+?)(?:\n|$)",
+                "title_template": "Syntax-Fehler beheben: {match}",
+                "description": "Syntax-Fehler im Python-Code beheben",
+                "category": TaskCategory.CODE,
+                "priority": TaskPriority.CRITICAL,
+                "agent": TargetAgent.FIX
+            },
+            # Unvollstaendiger Code / fehlende Klammern/Tags
+            {
+                "pattern": r"(?:ohne\s*schliessend(?:e)?\s*(?:Klammern?|Tags?|Element)|fehlend(?:e)?\s*(?:schliessend(?:e)?\s*)?(?:Klammern?|Tags?|Element)|unvollstaendig(?:er)?\s*(?:Code|JSX))",
+                "title_template": "Unvollstaendigen Code/fehlende Klammern beheben",
+                "description": "Fehlende schliessende Klammern, Tags oder JSX-Elemente ergaenzen",
+                "category": TaskCategory.CODE,
+                "priority": TaskPriority.CRITICAL,
+                "agent": TargetAgent.FIX
+            },
+            # HTML-Tag-Fehler (falsches schliessendes Tag)
+            {
+                "pattern": r"(?:falsch(?:es|er|e)?\s*schliessend(?:e)?\s*Tag|</[h1h2h3h4h5h6p]>\s*statt|Tag\s*statt\s*</)",
+                "title_template": "HTML-Tag-Fehler beheben",
+                "description": "Falsches schliessendes HTML-Tag korrigieren",
+                "category": TaskCategory.CODE,
+                "priority": TaskPriority.CRITICAL,
+                "agent": TargetAgent.FIX
+            },
+            # Import-Fehler / ModuleNotFoundError
             {
                 "pattern": r"(?:ModuleNotFoundError|ImportError)[:\s]+(.+?)(?:\n|$)",
                 "title_template": "Import-Fehler beheben: {match}",
                 "description": "Fehlenden Import oder Modul korrigieren",
                 "category": TaskCategory.CODE,
                 "priority": TaskPriority.CRITICAL,
+                "agent": TargetAgent.FIX
+            },
+            # ReferenceError / nicht definiert
+            {
+                "pattern": r"(?:ReferenceError|NotDefined|nicht\s*definiert|ist\s*nicht\s*definiert)",
+                "title_template": "ReferenceError beheben",
+                "description": "Nicht definierte Variable oder Funktion korrigieren",
+                "category": TaskCategory.CODE,
+                "priority": TaskPriority.CRITICAL,
+                "agent": TargetAgent.FIX
+            },
+            # Fehlende Dependencies/Abhaengigkeiten
+            {
+                "pattern": r"(?:fehlende?\s*(?:Abhaengigkeit|Dependency|Paket|Package)|nicht\s*(?:in\s*package\.json|installiert)|ModuleNotFound)\s*[@\w/-]+",
+                "title_template": "Fehlende Dependency hinzufuegen",
+                "description": "Fehlende Abhaengigkeit in package.json ergaenzen",
+                "category": TaskCategory.CONFIG,
+                "priority": TaskPriority.HIGH,
+                "agent": TargetAgent.FIX
+            },
+            # Fehlende Typdefinitionen
+            {
+                "pattern": r"(?:fehlende?\s*(?:Typ(?:definition|en)?)|@types/|\.d\.ts?|TypeScript\s*Types?|implizites\s*any)",
+                "title_template": "Typdefinitionen hinzufuegen",
+                "description": "Fehlende TypeScript-Typdefinitionen installieren",
+                "category": TaskCategory.CONFIG,
+                "priority": TaskPriority.HIGH,
+                "agent": TargetAgent.FIX
+            },
+            # Fehlende Verzeichnisse/Dateien
+            {
+                "pattern": r"(?:Verzeichnis\s*existiert\s*nicht|ENOENT|db/[\./]|mkdir|verzeichnis\s*nicht\s*erstellt)",
+                "title_template": "Fehlendes Verzeichnis erstellen",
+                "description": "Fehlendes Verzeichnis oder Datei anlegen",
+                "category": TaskCategory.CODE,
+                "priority": TaskPriority.HIGH,
                 "agent": TargetAgent.FIX
             },
             # NameError
@@ -391,6 +516,15 @@ class TaskDeriver:
                 "priority": TaskPriority.CRITICAL,
                 "agent": TargetAgent.SECURITY
             },
+            # Sandbox/Server konnte nicht gestartet werden
+            {
+                "pattern": r"(?:Server\s+konnte\s+nicht\s+gestartet\s+werden|Sandbox[- ]?Fehler|Test[- ]?Server[- ]?Start)",
+                "title_template": "Server/Start-Problem beheben",
+                "description": "Serverstart-Problem oder Sandbox-Fehler beheben",
+                "category": TaskCategory.CODE,
+                "priority": TaskPriority.HIGH,
+                "agent": TargetAgent.FIX
+            },
             # Fehlende Dokumentation
             {
                 "pattern": r"(?:dokumentation\s*fehlt|keine?\s*(?:doc|doku))",
@@ -402,11 +536,60 @@ class TaskDeriver:
             },
         ]
 
-    def _extract_files_from_text(self, text: str) -> List[str]:
-        """Extrahiert Dateinamen aus Text."""
-        file_pattern = r'["\']?([a-zA-Z0-9_/\\.-]+\.(?:py|js|jsx|ts|tsx|html|css|json|yaml|yml|md))["\']?'
+    def _extract_files_from_text(self, text: str, tech_stack: str = "",
+                                   existing_files: Optional[List[str]] = None) -> List[str]:
+        """
+        Extrahiert Dateinamen aus Text, gefiltert nach Tech-Stack und vorhandenen Dateien.
+
+        AENDERUNG 06.02.2026: ROOT-CAUSE-FIX UTDS Sprach-Mismatch + Pfad-Validierung
+        Symptom: UTDS erfindet Pfade wie nextjs_app/package.js, Next.js als Dateiname
+        Ursache: Keine Laenge-/Existenz-Pruefung, project_type als Prefix
+        Loesung: Mindestlaenge, Prefix-Bereinigung, Validierung gegen vorhandene Dateien
+        """
+        # Laengere Extensions zuerst (jsx vor js, tsx vor ts, json vor js)
+        file_pattern = r'["\']?([a-zA-Z0-9_/\\.-]+\.(?:py|jsx|json|tsx|js|ts|html|css|yaml|yml|md))["\']?'
         matches = re.findall(file_pattern, text)
-        return list(set(matches))[:5]  # Max 5 Dateien
+
+        # Framework-Namen ausfiltern (Next.js, Vue.js, Node.js etc. sind keine Dateien)
+        _FRAMEWORK_NAMES = {"next.js", "vue.js", "node.js", "react.js", "angular.js", "nuxt.js", "svelte.js"}
+        matches = [m for m in matches
+                   if m.lower() not in _FRAMEWORK_NAMES
+                   and (len(m) > 4 or "/" in m)]
+
+        # Prefix-Bereinigung: project_type als Verzeichnis entfernen
+        cleaned = []
+        for m in matches:
+            # Entferne project_type-Prefixe wie "nextjs_app/", "nodejs_express/"
+            parts = m.replace("\\", "/").split("/")
+            if len(parts) > 1 and "_" in parts[0] and parts[0] not in ("node_modules",):
+                cleaned.append("/".join(parts[1:]))
+            else:
+                cleaned.append(m.replace("\\", "/"))
+        matches = cleaned
+
+        # Tech-Stack-aware Filterung: Inkompatible Extensions entfernen
+        if tech_stack:
+            tech_lower = tech_stack.lower()
+            filtered = []
+            for m in matches:
+                ext = "." + m.rsplit(".", 1)[-1].lower() if "." in m else ""
+                if ext == ".py" and tech_lower in ("javascript", "typescript"):
+                    continue
+                if ext in (".js", ".jsx", ".ts", ".tsx") and tech_lower == "python":
+                    continue
+                filtered.append(m)
+            matches = filtered
+
+        # Validierung gegen vorhandene Dateien (wenn verfuegbar)
+        if existing_files and matches:
+            existing_basenames = {os.path.basename(f) for f in existing_files}
+            validated = [m for m in matches if m in existing_files or os.path.basename(m) in existing_basenames]
+            if validated:
+                matches = validated
+            else:
+                logger.warning(f"[TaskDeriver] Keine extrahierten Dateien in Projekt gefunden: {matches[:3]}")
+
+        return list(set(matches))[:5]
 
     def _assign_task_ids(self, tasks: List[DerivedTask]) -> List[DerivedTask]:
         """Weist eindeutige IDs zu."""

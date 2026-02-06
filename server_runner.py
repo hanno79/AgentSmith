@@ -2,10 +2,12 @@
 """
 Author: rahn
 Datum: 29.01.2026
-Version: 1.1
+Version: 1.2
 Beschreibung: Server Runner - Startet Projekt-Server und wartet auf Verfügbarkeit.
               Ermöglicht stabile Tests gegen laufende Server.
               ÄNDERUNG 29.01.2026: app_type-basierte Server-Erkennung (Desktop/CLI brauchen keinen Server)
+              ÄNDERUNG 06.02.2026: Pre-Server Dependency-Installation, Framework-aware Timeouts,
+                                   App-Readiness-Check nach Port-Bind (Root-Cause-Fix für Next.js-Fehler)
 """
 
 import os
@@ -13,6 +15,7 @@ import socket
 import subprocess
 import time
 import logging
+import urllib.request
 from typing import Optional, Dict, Any, Tuple
 from dataclasses import dataclass
 from contextlib import contextmanager
@@ -23,6 +26,18 @@ logger = logging.getLogger(__name__)
 DEFAULT_STARTUP_TIMEOUT = 30  # Sekunden
 DEFAULT_PORT_CHECK_INTERVAL = 0.5  # Sekunden
 DEFAULT_PORT = 5000
+
+# ÄNDERUNG 06.02.2026: Framework-basierte Startup-Timeouts
+# Node.js-Projekte brauchen deutlich mehr Zeit (npm install + Compile)
+FRAMEWORK_STARTUP_TIMEOUTS = {
+    "nodejs": 90,
+    "nextjs": 90,
+    "react": 90,
+    "vue": 90,
+    "angular": 90,
+    "python": 30,
+    "default": 45,
+}
 
 
 @dataclass
@@ -198,6 +213,108 @@ def requires_server(tech_blueprint: Dict[str, Any]) -> bool:
     return project_type in server_types
 
 
+# ÄNDERUNG 06.02.2026: Hilfsfunktionen fuer robusteren Server-Start
+
+
+def _detect_framework_key(tech_blueprint: Dict[str, Any]) -> str:
+    """
+    Erkennt Framework-Key für Timeout-Lookup.
+
+    Args:
+        tech_blueprint: Projekt-Blueprint
+
+    Returns:
+        Key aus FRAMEWORK_STARTUP_TIMEOUTS
+    """
+    language = tech_blueprint.get("language", "").lower()
+    project_type = tech_blueprint.get("project_type", "").lower()
+    framework = tech_blueprint.get("framework", "").lower()
+
+    for key in [framework, project_type, language]:
+        if key in FRAMEWORK_STARTUP_TIMEOUTS:
+            return key
+        if any(n in key for n in ["node", "next", "react", "vue", "angular", "express"]):
+            return "nodejs"
+        if "python" in key or key in ["flask", "fastapi", "django"]:
+            return "python"
+    return "default"
+
+
+def _install_dependencies(project_path: str, tech_blueprint: Dict[str, Any]) -> bool:
+    """
+    Installiert Projekt-Dependencies vor Server-Start.
+    Node.js: npm install wenn node_modules fehlt.
+    Python: pip install -r requirements.txt wenn vorhanden.
+    """
+    language = tech_blueprint.get("language", "").lower()
+    project_type = tech_blueprint.get("project_type", "").lower()
+
+    # Node.js: npm install wenn node_modules fehlt
+    is_nodejs = (
+        language in ["javascript", "typescript"] or
+        any(n in project_type for n in ["node", "next", "react", "vue", "angular"])
+    )
+
+    if is_nodejs:
+        package_json = os.path.join(project_path, "package.json")
+        node_modules = os.path.join(project_path, "node_modules")
+        if os.path.exists(package_json) and not os.path.exists(node_modules):
+            logger.info("Node.js-Projekt: Fuehre npm install aus...")
+            try:
+                result = subprocess.run(
+                    ["npm", "install"],
+                    cwd=project_path, capture_output=True, text=True,
+                    timeout=120, shell=(os.name == 'nt')
+                )
+                if result.returncode != 0:
+                    logger.error(f"npm install fehlgeschlagen: {result.stderr[:500]}")
+                    return False
+                logger.info("npm install erfolgreich")
+            except subprocess.TimeoutExpired:
+                logger.error("npm install Timeout nach 120s")
+                return False
+            except Exception as e:
+                logger.error(f"npm install Fehler: {e}")
+                return False
+
+    # Python: pip install wenn requirements.txt existiert
+    elif language == "python" or "python" in project_type:
+        req_txt = os.path.join(project_path, "requirements.txt")
+        if os.path.exists(req_txt):
+            logger.info("Python-Projekt: Fuehre pip install aus...")
+            try:
+                subprocess.run(
+                    ["pip", "install", "-r", "requirements.txt"],
+                    cwd=project_path, capture_output=True, text=True,
+                    timeout=120, shell=(os.name == 'nt')
+                )
+            except Exception as e:
+                logger.warning(f"pip install Warning: {e}")
+
+    return True
+
+
+def _wait_for_app_ready(url: str, timeout: int = 15) -> bool:
+    """
+    Wartet bis die App tatsaechlich Inhalt liefert (nicht nur Port offen).
+    Verhindert "leere Seite" bei Next.js/React wo Port gebunden aber App noch kompiliert.
+    """
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        try:
+            response = urllib.request.urlopen(url, timeout=3)
+            content = response.read().decode("utf-8", errors="ignore")
+            if len(content) > 100 and ("<div" in content or "<html" in content):
+                logger.info(f"App bereit nach {time.time() - start_time:.1f}s")
+                return True
+        except Exception:
+            pass
+        time.sleep(1)
+
+    logger.warning(f"App-Readiness-Timeout nach {timeout}s - Test wird trotzdem versucht")
+    return False
+
+
 def start_server(project_path: str, tech_blueprint: Dict[str, Any],
                  timeout: int = DEFAULT_STARTUP_TIMEOUT) -> Optional[ServerInfo]:
     """
@@ -213,6 +330,11 @@ def start_server(project_path: str, tech_blueprint: Dict[str, Any],
     """
     if not requires_server(tech_blueprint):
         logger.info("Projekt benötigt keinen Server")
+        return None
+
+    # ÄNDERUNG 06.02.2026: Dependencies vor Server-Start installieren
+    if not _install_dependencies(project_path, tech_blueprint):
+        logger.error("Dependency-Installation fehlgeschlagen - Server-Start abgebrochen")
         return None
 
     port = detect_server_port(tech_blueprint)
@@ -256,16 +378,48 @@ def start_server(project_path: str, tech_blueprint: Dict[str, Any],
             creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == 'nt' else 0
         )
 
-        # Warte auf Port
-        startup_timeout = tech_blueprint.get("server_startup_time_ms", timeout * 1000) / 1000
+        # ÄNDERUNG 06.02.2026: Framework-basierter Timeout statt hartem 30s Default
+        # ROOT-CAUSE-FIX 06.02.2026 (v2):
+        # Symptom: Server-Start scheiterte mit 3s Timeout bei Next.js
+        # Ursache: TechStack-Agent generiert server_startup_time_ms: 3000 (Beispiel-Wert)
+        #          -> 3s Timeout, FRAMEWORK_STARTUP_TIMEOUTS (90s) wurde NIE erreicht
+        # Loesung: max(blueprint_wert, framework_minimum) - Blueprint darf nur ERHOEHEN, nicht senken
+        framework_key = _detect_framework_key(tech_blueprint)
+        framework_timeout = FRAMEWORK_STARTUP_TIMEOUTS.get(
+            framework_key, FRAMEWORK_STARTUP_TIMEOUTS["default"]
+        )
+        blueprint_timeout_ms = tech_blueprint.get("server_startup_time_ms")
+        if blueprint_timeout_ms is not None:
+            blueprint_timeout = blueprint_timeout_ms / 1000
+            startup_timeout = max(blueprint_timeout, framework_timeout)
+            if blueprint_timeout < framework_timeout:
+                logger.warning(
+                    f"Blueprint-Timeout ({blueprint_timeout}s) unter Framework-Minimum "
+                    f"({framework_timeout}s fuer {framework_key}) - verwende {startup_timeout}s"
+                )
+        else:
+            startup_timeout = framework_timeout
+
+        logger.info(f"Server-Timeout: {startup_timeout}s")
 
         if wait_for_port(port, timeout=int(startup_timeout)):
+            # ÄNDERUNG 06.02.2026: Warte auf tatsaechliche App-Bereitschaft
+            _wait_for_app_ready(url, timeout=15)
             logger.info(f"Server gestartet auf {url}")
             return ServerInfo(process=process, port=port, url=url, project_path=project_path)
         else:
-            # Timeout - Server stoppen
+            # ÄNDERUNG 06.02.2026: stderr-Capture fuer bessere Fehler-Diagnostik
+            stderr_output = ""
+            try:
+                if process.stderr:
+                    stderr_output = process.stderr.read(500).decode("utf-8", errors="ignore")
+            except Exception:
+                pass
             stop_server(ServerInfo(process=process, port=port, url=url, project_path=project_path))
-            logger.error(f"Server-Start fehlgeschlagen (Timeout nach {startup_timeout}s)")
+            error_msg = f"Server-Start fehlgeschlagen (Timeout nach {startup_timeout}s)"
+            if stderr_output:
+                error_msg += f". stderr: {stderr_output.strip()}"
+            logger.error(error_msg)
             return None
 
     except Exception as e:

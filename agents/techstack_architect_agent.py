@@ -76,7 +76,7 @@ def create_techstack_architect(config: Dict[str, Any], project_rules: Dict[str, 
             '  "run_command": "node index.js",\n'
             '  "requires_server": true,\n'
             '  "server_port": 3000,\n'
-            '  "server_startup_time_ms": 3000,\n'
+            '  "server_startup_time_ms": 90000,\n'
             '  "reasoning": "Kurze Begründung..."\n'
             "}\n"
             "```\n\n"
@@ -94,7 +94,11 @@ def create_techstack_architect(config: Dict[str, Any], project_rules: Dict[str, 
             "**Test-relevante Felder (WICHTIG für automatisiertes Testen):**\n"
             "- `requires_server`: true wenn das Projekt einen laufenden Server benötigt\n"
             "- `server_port`: Der Port auf dem der Server läuft (z.B. 3000 für Node, 5000 für Flask, 8000 für FastAPI)\n"
-            "- `server_startup_time_ms`: Geschätzte Startzeit des Servers in Millisekunden (Standard: 3000)\n\n"
+            "- `server_startup_time_ms`: Geschaetzte Startzeit des Servers in Millisekunden. Empfohlene Werte:\n"
+            "  - Next.js/React/Vue/Angular: 90000 (Compile-Zeit!)\n"
+            "  - Node.js/Express: 10000\n"
+            "  - Python/Flask/FastAPI: 5000\n"
+            "  - Static HTML: 0 (kein Server)\n\n"
             "**Typische Port-Zuordnungen (nur für webapps relevant):**\n"
             "- Flask: 5000\n"
             "- FastAPI/Uvicorn: 8000\n"
@@ -117,6 +121,12 @@ def create_techstack_architect(config: Dict[str, Any], project_rules: Dict[str, 
             "Berücksichtige bei Web-Projekten sowohl Backend als auch Frontend. "
             "Der `install_command` und `run_command` sollten, wenn möglich, alle nötigen Schritte "
             "automatisieren (z.B. `npm install && npm run build` oder `pip install -r requirements.txt`).\n\n"
+            "**WARNUNG - Frontend-Pakete sind KEINE Python-Pakete:**\n"
+            "Die folgenden sind CSS/JS-Frameworks und werden NICHT über pip installiert:\n"
+            "- bootstrap, tailwindcss, bulma (CSS-Frameworks) - Einbinden per CDN oder npm\n"
+            "- react, vue, angular (JS-Frameworks) - Nur fuer Node.js/npm\n"
+            "- jquery, lodash (JS-Bibliotheken) - Nur fuer Node.js/npm\n"
+            "Fuer Python-Webapps: CSS-Frameworks per CDN in HTML einbinden!\n\n"
             f"{combined_rules}"
         ),
         llm=model,
