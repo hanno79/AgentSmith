@@ -49,6 +49,7 @@ from file_utils import find_html_file
 
 # ÄNDERUNG 29.01.2026: Discovery Session für strukturierte Projektaufnahme
 from discovery_session import DiscoverySession
+from model_router import get_model_router
 
 # CrewAI Imports
 from crewai import Task, Crew
@@ -113,8 +114,14 @@ def save_multi_file_output(project_path: str, code_output: str, default_filename
             console.print(f"[yellow]⚠️ Ungültiger Dateiname übersprungen: {raw_filename[:50]}[/yellow]")
             continue
 
-        # Code-Blöcke entfernen
-        content = content.replace("```html", "").replace("```python", "").replace("```css", "").replace("```javascript", "").replace("```json", "").replace("```", "")
+        # ROOT-CAUSE-FIX 06.02.2026:
+        # Symptom: Jede generierte Datei hatte Sprach-Marker (js, bat, css) auf Zeile 1
+        # Ursache: replace("```", "") entfernte nur Backticks, nicht den Sprach-Hint dahinter
+        #          z.B. "```js\ncode\n```" wurde zu "js\ncode" statt "code"
+        # Loesung: Regex entfernt den gesamten oeffnenden Fence (```sprache) + schliessenden Fence
+        content = re.sub(r'^```[a-zA-Z0-9]*\s*\n', '', content)       # Oeffnender Fence: ```js, ```python etc.
+        content = re.sub(r'\n```\s*$', '', content)                    # Schliessender Fence am Ende
+        content = re.sub(r'^```\s*$', '', content, flags=re.MULTILINE) # Alleinstehende ``` mittendrin
 
         # Markdown-Artefakte (---, ***, ===) an Zeilenanfang/-ende entfernen
         lines = content.splitlines()
@@ -155,7 +162,25 @@ def save_multi_file_output(project_path: str, code_output: str, default_filename
             f.write(content)
 
         created_files.append(filename)
-        
+
+    # AENDERUNG 02.02.2026: Fix #9 - Automatisch pytest hinzufuegen wenn Tests existieren
+    # Verhindert "No module named pytest" Fehler in Docker-Tests
+    try:
+        from backend.dev_loop_helpers import _ensure_test_dependencies
+
+        req_path = os.path.join(project_path, "requirements.txt")
+        if os.path.exists(req_path):
+            with open(req_path, "r", encoding="utf-8") as f:
+                req_content = f.read()
+
+            updated_req = _ensure_test_dependencies(req_content, created_files)
+            if updated_req != req_content:
+                with open(req_path, "w", encoding="utf-8") as f:
+                    f.write(updated_req)
+    except ImportError:
+        # Backend nicht verfuegbar (z.B. bei CLI-Nutzung) - ignorieren
+        pass
+
     return created_files
 
 def main():
@@ -201,7 +226,11 @@ def main():
         # Discovery Session starten
         console.print("\n[bold cyan]Starte Discovery Session...[/bold cyan]\n")
         try:
-            discovery = DiscoverySession(config=config, memory_path=memory_path)
+            discovery = DiscoverySession(
+                config=config,
+                memory_path=memory_path,
+                model_router=get_model_router(config)
+            )
             discovery.on_log = lambda agent, event, msg: log_event(agent, event, str(msg)[:500])
 
             # Meta-Orchestrator fuer Team-Zusammenstellung

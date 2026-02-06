@@ -145,7 +145,8 @@ def validate_page_content(page, tech_blueprint: Optional[Dict[str, Any]] = None)
 
             if any(kw in project_type for kw in ["react", "next", "vue", "angular"]) or \
                (language == "javascript" and "node" in project_type):
-                react_result = _check_react_content(page)
+                # AENDERUNG 06.02.2026: tech_blueprint an _check_react_content weiterreichen
+                react_result = _check_react_content(page, tech_blueprint)
                 result.issues.extend(react_result.issues)
                 result.warnings.extend(react_result.warnings)
                 result.checks_performed.extend(react_result.checks_performed)
@@ -286,17 +287,38 @@ def _check_basic_content(page) -> ContentValidationResult:
     return result
 
 
-def _check_react_content(page) -> ContentValidationResult:
-    """Prueft React-spezifische Rendering-Probleme."""
+def _check_react_content(page, tech_blueprint=None) -> ContentValidationResult:
+    """
+    Prueft React-spezifische Rendering-Probleme.
+
+    AENDERUNG 06.02.2026: ROOT-CAUSE-FIX Framework-spezifische Container-IDs
+    Symptom: "Kein #root oder #app Container gefunden" bei Next.js-Projekten
+    Ursache: Hardcoded getElementById('root')||getElementById('app'), aber Next.js nutzt #__next
+    Loesung: Container-IDs dynamisch basierend auf Framework waehlen
+    """
     result = ContentValidationResult()
     result.checks_performed.append("react_content")
 
-    try:
-        react_info = page.evaluate("""() => {
-            const root = document.getElementById('root') || document.getElementById('app');
-            if (!root) return { hasRoot: false };
+    # AENDERUNG 06.02.2026: Framework-spezifische Container-IDs
+    container_ids = ["root", "app"]  # Standard: React (CRA/Vite)
+    if tech_blueprint:
+        project_type = str(tech_blueprint.get("project_type", "")).lower()
+        if "next" in project_type:
+            container_ids = ["__next", "root", "app"]
+        elif "vue" in project_type:
+            container_ids = ["app", "root"]
+        elif "angular" in project_type:
+            container_ids = ["root", "app-root"]
 
-            return {
+    # JavaScript-Code dynamisch mit Container-IDs bauen
+    ids_js = " || ".join(f"document.getElementById('{cid}')" for cid in container_ids)
+
+    try:
+        react_info = page.evaluate(f"""() => {{
+            const root = {ids_js};
+            if (!root) return {{ hasRoot: false }};
+
+            return {{
                 hasRoot: true,
                 rootId: root.id,
                 rootChildren: root.children.length,
@@ -309,14 +331,16 @@ def _check_react_content(page) -> ContentValidationResult:
                 ),
                 rawReactVisible: (document.body.innerText || '').includes('React.createElement'),
                 rawJsxVisible: (document.body.innerText || '').includes('import React')
-            };
-        }""")
+            }};
+        }}""")
 
         if not react_info.get("hasRoot"):
+            # AENDERUNG 06.02.2026: Fehlermeldung mit Framework-spezifischen Container-IDs
+            ids_text = ", ".join(f"#{cid}" for cid in container_ids)
             result.issues.append(
-                "Kein #root oder #app Container gefunden - "
-                "React-App ist nicht korrekt eingebunden. "
-                "Stelle sicher dass index.html ein <div id=\"root\"></div> enthaelt."
+                f"Kein {ids_text} Container gefunden - "
+                f"App ist nicht korrekt eingebunden. "
+                f"Stelle sicher dass ein <div id=\"{container_ids[0]}\"></div> vorhanden ist."
             )
             result.is_critical_failure = True
             return result
@@ -528,6 +552,26 @@ def validate_run_bat(project_path: str, tech_blueprint: Dict[str, Any]) -> Conte
         result.warnings.append(
             f"run.bat enthaelt nicht den Start-Befehl '{run_cmd}' (oder Variante mit src/) - "
             "Anwendung wird moeglicherweise nicht gestartet"
+        )
+
+    # AENDERUNG 06.02.2026: Doppelklick-Faehigkeit und Sprach-Marker pruefen
+    # Symptom: run.bat hatte "bat" als Zeile 1 und erforderte Argumente
+    # Ursache: Coder generierte run.bat mit Argument-Pflicht und Sprach-Marker wurde nicht entfernt
+    raw_content_lower = bat_content
+
+    # Pruefen ob Sprach-Marker auf Zeile 1 (z.B. "bat" statt "@echo off")
+    first_line = raw_content_lower.split("\n")[0].strip() if raw_content_lower else ""
+    if first_line in ("bat", "batch", "cmd", "shell", "bash", "sh"):
+        result.warnings.append(
+            f"run.bat beginnt mit Sprach-Marker '{first_line}' statt '@echo off' - "
+            "moeglicherweise Markdown-Artefakt"
+        )
+
+    # Pruefen ob Argument-Pflicht vorhanden (User erwartet Doppelklick)
+    if 'if "%~1"==""' in raw_content_lower or "if \"%~1\"==\"\"" in raw_content_lower:
+        result.warnings.append(
+            "run.bat erfordert Argument (z.B. 'run.bat dev') - "
+            "sollte direkt per Doppelklick lauffaehig sein ohne Argumente"
         )
 
     result.has_visible_content = True  # run.bat hat Inhalt

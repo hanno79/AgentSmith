@@ -528,6 +528,28 @@ def build_coder_prompt(
         c_prompt += "- Python: pytest + Flask test_client oder requests\n"
         c_prompt += "- JavaScript: jest + supertest\n"
 
+    # AENDERUNG 06.02.2026: run.bat und Framework-Verzeichnisstruktur Regeln
+    c_prompt += "\n\n📁 RUN.BAT PFLICHT-REGELN:\n"
+    c_prompt += "- run.bat MUSS direkt per Doppelklick lauffaehig sein (KEINE Argumente erforderlich!)\n"
+    c_prompt += "- MUSS mit '@echo off' beginnen\n"
+    c_prompt += "- MUSS Dependencies installieren (npm install / pip install -r requirements.txt)\n"
+    c_prompt += "- MUSS den Server in neuem Fenster starten: start \"\" cmd /c \"npm run dev\"\n"
+    c_prompt += "- MUSS den Browser oeffnen: start \"\" http://localhost:PORT\n"
+    c_prompt += "- MUSS am Ende 'pause > nul' haben\n"
+    c_prompt += "- VERBOTEN: Argumente wie run.bat [dev|build|start]\n"
+
+    # Framework-spezifische Verzeichnisstruktur
+    framework = ""
+    if manager.tech_blueprint:
+        framework = manager.tech_blueprint.get("framework", "").lower()
+        project_type = manager.tech_blueprint.get("project_type", "").lower()
+        if "next" in framework or "next" in project_type:
+            c_prompt += "\n📂 NEXT.JS VERZEICHNISSTRUKTUR (WICHTIG!):\n"
+            c_prompt += "- Dateien in pages/, components/, lib/, styles/ (DIREKT im Root!)\n"
+            c_prompt += "- NICHT unter src/pages/ oder src/components/ (Next.js ignoriert src/!)\n"
+            c_prompt += "- API-Routen: pages/api/...\n"
+            c_prompt += "- Erstelle jsconfig.json mit: { \"compilerOptions\": { \"baseUrl\": \".\" } }\n"
+
     c_prompt += "\nFormat: ### FILENAME: path/to/file.ext"
     return c_prompt
 
