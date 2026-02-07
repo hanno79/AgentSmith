@@ -33,7 +33,7 @@ from agents.memory_agent import (
 from backend.docker_executor import create_docker_executor
 from unit_test_runner import run_unit_tests
 from agents.tester_agent import test_project, summarize_ui_result
-from content_validator import validate_run_bat, validate_nextjs_structure
+from content_validator import validate_run_bat, validate_nextjs_structure, validate_import_dependencies, validate_template_structure, validate_no_inline_svg
 from .agent_factory import init_agents
 from .orchestration_helpers import (
     is_rate_limit_error,
@@ -330,7 +330,18 @@ def run_sandbox_and_tests(
     except Exception as bat_err:
         manager._ui_log("Tester", "Warning", f"run.bat-Validierung fehlgeschlagen: {bat_err}")
 
-    # AENDERUNG 07.02.2026: Next.js Pflichtdateien pruefen (pages/_app.js, react-dom etc.)
+    # AENDERUNG 07.02.2026: Template-basierte Struktur-Validierung (generisch)
+    try:
+        tmpl_result = validate_template_structure(manager.project_path, manager.tech_blueprint)
+        if tmpl_result.issues:
+            for issue in tmpl_result.issues:
+                manager._ui_log("Sandbox", "TemplateStruktur", issue)
+                sandbox_result += f"\nTemplate-Strukturfehler: {issue}"
+                sandbox_failed = True
+    except Exception as tmpl_err:
+        manager._ui_log("Sandbox", "Warning", f"Template-Validierung fehlgeschlagen: {tmpl_err}")
+
+    # AENDERUNG 07.02.2026: Next.js Pflichtdateien pruefen (Fallback fuer Projekte ohne Template)
     try:
         nextjs_result = validate_nextjs_structure(manager.project_path, manager.tech_blueprint)
         if nextjs_result.issues:
@@ -343,6 +354,30 @@ def run_sandbox_and_tests(
                 manager._ui_log("Sandbox", "NextJsInfo", warning)
     except Exception as njs_err:
         manager._ui_log("Sandbox", "Warning", f"Next.js-Validierung fehlgeschlagen: {njs_err}")
+
+    # AENDERUNG 07.02.2026: Import-Dependency-Vollstaendigkeitspruefung
+    # ROOT-CAUSE-FIX: Coder importiert Packages die nicht in package.json stehen
+    # Symptom: Internal Server Error / Module not found zur Laufzeit
+    try:
+        dep_result = validate_import_dependencies(manager.project_path, manager.tech_blueprint)
+        if dep_result.issues:
+            for issue in dep_result.issues:
+                manager._ui_log("Sandbox", "FehlendeDeps", issue)
+                sandbox_result += f"\nDependency-Fehler: {issue}"
+                sandbox_failed = True
+    except Exception as dep_err:
+        manager._ui_log("Sandbox", "Warning", f"Dependency-Validierung fehlgeschlagen: {dep_err}")
+
+    # AENDERUNG 07.02.2026: Inline-SVG Data-URL Pruefung (Fix 20)
+    # ROOT-CAUSE-FIX: SVG Data-URLs brechen JSX-Parsing wegen unescapter Anfuehrungszeichen
+    try:
+        svg_result = validate_no_inline_svg(manager.project_path, manager.tech_blueprint)
+        if svg_result.warnings:
+            for warning in svg_result.warnings:
+                manager._ui_log("Sandbox", "InlineSVG", warning)
+                sandbox_result += f"\nInline-SVG WARNING: {warning}"
+    except Exception as svg_err:
+        manager._ui_log("Sandbox", "Warning", f"Inline-SVG-Pruefung fehlgeschlagen: {svg_err}")
 
     if sandbox_failed:
         try:
@@ -543,8 +578,9 @@ Wenn der Code FEHLERFREI ist und alle Tests bestanden: Antworte mit "OK"
     manager._update_worker_status("reviewer", "working", "Prüfe Code...", manager.model_router.get_model("reviewer") if manager.model_router else "")
 
     MAX_REVIEW_RETRIES = 6  # Erhöht: 2 Versuche pro Modell x 3 Modelle
-    # ÄNDERUNG 30.01.2026: Timeout aus globaler Config
-    REVIEWER_TIMEOUT_SECONDS = manager.config.get("agent_timeout_seconds", 300)
+    # AENDERUNG 07.02.2026: Pro-Agent Timeout aus agent_timeouts Dict
+    agent_timeouts = manager.config.get("agent_timeouts", {})
+    REVIEWER_TIMEOUT_SECONDS = agent_timeouts.get("reviewer", manager.config.get("agent_timeout_seconds", 300))
     # ÄNDERUNG 29.01.2026: Modellwechsel erst nach X gleichen Fehlern
     ERRORS_BEFORE_MODEL_SWITCH = 2
     review_output = None
@@ -662,10 +698,33 @@ Wenn der Code FEHLERFREI ist und alle Tests bestanden: Antworte mit "OK"
                 manager.agent_reviewer = agent_reviewer
                 error_tracker = {}  # Tracker zurücksetzen
                 continue
-            # ÄNDERUNG 03.02.2026: ROOT-CAUSE-FIX - idle vor raise
-            # Problem: raise ohne idle ließ Reviewer auf "working" stecken
-            manager._update_worker_status("reviewer", "idle")
-            raise
+            # AENDERUNG 07.02.2026: litellm-interne Fehler abfangen statt DevLoop crashen
+            # ROOT-CAUSE-FIX:
+            # Symptom: AttributeError: 'Exception' object has no attribute 'request' (litellm Bug)
+            # Ursache: litellm exception_mapping_utils.py erwartet HTTPStatusError, bekommt generische Exception
+            # Loesung: Behandle als Model-Fehler → Modellwechsel + Retry statt DevLoop-Crash
+            error_type = "model_error"
+            error_key = (current_model, error_type)
+            if last_error_type and last_error_type != error_type:
+                error_tracker = {}
+            last_error_type = error_type
+            error_tracker[error_key] = error_tracker.get(error_key, 0) + 1
+            error_count = error_tracker[error_key]
+            manager._ui_log("Reviewer", "ModelError",
+                            f"Unerwarteter Fehler bei {current_model}: {type(error).__name__}: {str(error)[:200]} "
+                            f"(Fehler {error_count}/{ERRORS_BEFORE_MODEL_SWITCH})")
+            if error_count >= ERRORS_BEFORE_MODEL_SWITCH:
+                manager._ui_log("Reviewer", "Status", f"Modellwechsel nach {error_count} Fehlern")
+                manager.model_router.mark_rate_limited_sync(current_model)
+                # AENDERUNG 06.02.2026: tech_blueprint fuer Tech-Stack-Kontext
+                agent_reviewer = init_agents(
+                    manager.config, project_rules, router=manager.model_router,
+                    include=["reviewer"],
+                    tech_blueprint=getattr(manager, 'tech_blueprint', None)
+                ).get("reviewer")
+                manager.agent_reviewer = agent_reviewer
+                error_tracker = {}
+            continue
 
     if is_empty_or_invalid_response(review_output):
         review_output = "FEHLER: Alle Review-Modelle haben versagt. Bitte prüfe die API-Verbindung und Modell-Verfügbarkeit."
@@ -705,21 +764,32 @@ def run_security_rescan(manager, project_rules: Dict[str, Any], current_code: st
     security_passed = True
     security_rescan_vulns = []
     MAX_SECURITY_RETRIES = 3
-    # ÄNDERUNG 30.01.2026: Timeout aus globaler Config
-    SECURITY_TIMEOUT = manager.config.get("agent_timeout_seconds", 300)
+    # AENDERUNG 07.02.2026: Pro-Agent Timeout aus agent_timeouts Dict
+    agent_timeouts = manager.config.get("agent_timeouts", {})
+    SECURITY_TIMEOUT = agent_timeouts.get("security", manager.config.get("agent_timeout_seconds", 300))
 
     if manager.agent_security and current_code:
         manager._ui_log("Security", "RescanStart", f"Prüfe generierten Code (Iteration {iteration + 1})...")
 
+        # AENDERUNG 07.02.2026: Security-Prompt mit [DATEI:...] Pflicht (Fix 20)
+        # ROOT-CAUSE-FIX:
+        # Symptom: SQL Injection wird erkannt aber nie gefixt (5+ Iterationen)
+        # Ursache: Security-Output enthaelt keinen Dateinamen → affected_file=None
+        #          → Coder bekommt "DATEI: None" → PatchMode kann keine Dateien extrahieren
+        #          → Fallback auf FullMode → komplett neuer Code → selbes Pattern
+        # Loesung: Prompt fordert explizit [DATEI:dateiname.js] im Output
         security_rescan_prompt = f"""Prüfe diesen Code auf Sicherheitsprobleme:
 
 {current_code}
 
 ANTWORT-FORMAT (eine Zeile pro Problem):
-VULNERABILITY: [Problem-Beschreibung] | FIX: [Konkrete Lösung mit Code-Beispiel] | SEVERITY: [CRITICAL/HIGH/MEDIUM/LOW]
+VULNERABILITY: [DATEI:dateiname.js] [Problem-Beschreibung] | FIX: [Konkrete Lösung mit Code-Beispiel] | SEVERITY: [CRITICAL/HIGH/MEDIUM/LOW]
 
 BEISPIEL:
-VULNERABILITY: innerHTML in Zeile 15 ermöglicht XSS-Angriffe | FIX: Ersetze element.innerHTML = userInput mit element.textContent = userInput oder nutze DOMPurify.sanitize(userInput) | SEVERITY: HIGH
+VULNERABILITY: [DATEI:components/UserForm.js] innerHTML in Zeile 15 ermöglicht XSS-Angriffe | FIX: Ersetze element.innerHTML = userInput mit element.textContent = userInput oder nutze DOMPurify.sanitize(userInput) | SEVERITY: HIGH
+
+BEISPIEL SQL INJECTION:
+VULNERABILITY: [DATEI:pages/api/tasks.js] String-Konkatenation in SQL-Query ermoeglicht SQL Injection | FIX: Verwende parametrisierte Queries: db.prepare('SELECT * FROM tasks WHERE id = ?').get(id) statt db.prepare(`SELECT * FROM tasks WHERE id = ${{id}}`) | SEVERITY: CRITICAL
 
 PRÜFE NUR auf die 3 wichtigsten Kategorien:
 1. XSS (innerHTML, document.write, eval mit User-Input)
@@ -727,6 +797,7 @@ PRÜFE NUR auf die 3 wichtigsten Kategorien:
 3. Hardcoded Secrets (API-Keys, Passwörter im Code)
 
 WICHTIG:
+- JEDE Vulnerability MUSS mit [DATEI:dateiname] beginnen!
 - Bei Taschenrechner-Apps: eval() mit Button-Input ist LOW severity (kein User-Text-Input)
 - Bei statischen Webseiten: innerHTML ohne User-Input ist kein Problem
 - Gib für JEDEN Fix KONKRETEN Code der das Problem löst

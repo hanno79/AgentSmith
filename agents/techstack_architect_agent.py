@@ -1,28 +1,28 @@
 # -*- coding: utf-8 -*-
 """
 Author: rahn
-Datum: 29.01.2026
-Version: 1.2
-Beschreibung: TechStack-Architect Agent - Analysiert Anforderungen und entscheidet über die technische Umsetzung.
+Datum: 07.02.2026
+Version: 2.0
+Beschreibung: TechStack-Architect Agent - Waehlt aus vordefinierten Templates oder
+              erstellt Custom-Blueprints fuer neue Tech-Stacks.
+              AENDERUNG 07.02.2026: Template-basierter Ansatz statt Blueprint-Erfindung.
 """
-# ÄNDERUNG 29.01.2026: app_type und test_strategy zum Blueprint hinzugefügt für Desktop-App Unterstützung
 
 from typing import Any, Dict, List, Optional
 from crewai import Agent
 
-# ÄNDERUNG 24.01.2026: Zentrale Hilfsfunktion verwenden (Single Source of Truth)
 from agents.agent_utils import get_model_from_config, combine_project_rules
 
 
 def create_techstack_architect(config: Dict[str, Any], project_rules: Dict[str, List[str]], router=None) -> Agent:
     """
     Erstellt den TechStack-Architect Agenten.
-    Analysiert Anforderungen und gibt einen JSON-Blueprint aus.
+    Waehlt das passende Template und passt es an spezifische Anforderungen an.
 
     Args:
         config: Anwendungskonfiguration mit mode und models
         project_rules: Dictionary mit globalen und rollenspezifischen Regeln
-        router: Optional ModelRouter für Fallback bei Rate Limits
+        router: Optional ModelRouter fuer Fallback bei Rate Limits
 
     Returns:
         Konfigurierte CrewAI Agent-Instanz
@@ -34,101 +34,95 @@ def create_techstack_architect(config: Dict[str, Any], project_rules: Dict[str, 
 
     combined_rules = combine_project_rules(project_rules, "techstack_architect")
 
+    # AENDERUNG 07.02.2026: Template-Summary dynamisch laden
+    template_summary = _get_template_summary()
+
     return Agent(
         role="TechStack-Architect",
         goal=(
-            "Analysiere die Projektanforderungen und entscheide, welche Technologien "
-            "und welches Ausgabeformat am besten geeignet sind. "
-            "Gib einen strukturierten JSON-Blueprint aus."
+            "Analysiere die Projektanforderungen und waehle das beste verfuegbare Template. "
+            "Ergaenze spezifische Dependencies die das Template nicht abdeckt. "
+            "Gib einen strukturierten JSON-Output aus."
         ),
         backstory=(
-            "Du bist ein erfahrener Software-Architekt mit Expertise in verschiedenen Tech-Stacks. "
-            "Du analysierst Anforderungen und entscheidest die optimale technische Umsetzung.\n\n"
-            "Technologie-Entscheidung:\n\n"
-            "1. **static_html**: Einfache Webseiten (HTML/CSS/JS)\n"
-            "   - Sprache: html, app_type: webapp\n"
-            "   - Keine Build-Tools nötig\n\n"
-            "2. **python_cli** / **python_script**: Python-Anwendungen (Kommandozeile)\n"
-            "   - Sprache: python, app_type: cli\n"
-            "   - Package-File: requirements.txt\n\n"
-            "3. **flask_app** / **fastapi_app**: Python Web-Backends\n"
-            "   - Sprache: python, app_type: webapp\n"
-            "   - Package-File: requirements.txt\n\n"
-            "4. **nodejs_app**: Node.js Anwendungen (Backend oder CLI)\n"
-            "   - Sprache: javascript, app_type: webapp oder cli\n"
-            "   - Package-File: package.json\n\n"
-            "5. **tkinter_desktop** / **pyqt_desktop**: Python Desktop-Anwendungen mit GUI\n"
-            "   - Sprache: python, app_type: desktop\n"
-            "   - Package-File: requirements.txt\n"
-            "   - Für Desktop-GUIs wie Tkinter, PyQt5, wxPython\n\n"
-            "6. **php_app**, **cpp_app**, **go_app**, etc.: Beliebige andere Stacks\n\n"
-            "Du gibst IMMER einen validen JSON-Block aus mit:\n"
+            "Du bist ein erfahrener Software-Architekt. Dir stehen vordefinierte, "
+            "getestete Tech-Stack Templates zur Verfuegung. Diese Templates enthalten "
+            "bewaehrte Dependency-Kombinationen mit exakten Versionen.\n\n"
+            f"{template_summary}\n\n"
+            "DEINE AUFGABE:\n"
+            "1. Analysiere die Benutzeranforderungen\n"
+            "2. Waehle das BESTE passende Template (template_id)\n"
+            "3. Definiere ZUSAETZLICHE Dependencies die das Template noch braucht\n"
+            "   (z.B. openai fuer KI-Features, react-speech-recognition fuer Spracheingabe)\n"
+            "4. Passe database und server_port an falls noetig\n\n"
+            "AUSGABE-FORMAT (JSON):\n"
             "```json\n"
             "{\n"
-            '  "project_type": "nodejs_express",\n'
-            '  "app_type": "webapp",\n'
-            '  "test_strategy": "playwright",\n'
-            '  "language": "javascript",\n'
-            '  "database": "sqlite",\n'
-            '  "package_file": "package.json",\n'
-            '  "dependencies": ["express", "sqlite3"],\n'
-            '  "install_command": "npm install",\n'
-            '  "run_command": "node index.js",\n'
-            '  "requires_server": true,\n'
-            '  "server_port": 3000,\n'
-            '  "server_startup_time_ms": 90000,\n'
-            '  "reasoning": "Kurze Begründung..."\n'
+            '  "selected_template": "nextjs_tailwind",\n'
+            '  "additional_dependencies": {"sqlite3": "5.1.7", "sqlite": "5.0.0"},\n'
+            '  "customizations": {\n'
+            '    "database": "sqlite",\n'
+            '    "server_port": 3000\n'
+            "  },\n"
+            '  "reasoning": "Kurze Begruendung..."\n'
             "}\n"
             "```\n\n"
-            "**WICHTIG - app_type und test_strategy (für automatisiertes Testen):**\n"
-            "- `app_type`: Der Anwendungstyp - bestimmt WIE getestet wird:\n"
-            "  - `webapp`: Web-Anwendung mit Browser-UI (Flask, FastAPI, Node.js, React, etc.)\n"
-            "  - `desktop`: Desktop-Anwendung mit GUI (Tkinter, PyQt5, wxPython)\n"
-            "  - `cli`: Kommandozeilen-Tool ohne GUI\n"
-            "  - `api`: Reine API ohne Frontend\n\n"
-            "- `test_strategy`: Die Test-Methode passend zum app_type:\n"
-            "  - `playwright`: Für webapps - Browser-basierte UI-Tests\n"
-            "  - `pyautogui`: Für desktop apps - Screenshot und GUI-Automation\n"
-            "  - `cli_test`: Für cli apps - Stdout/Stderr Prüfung\n"
-            "  - `pytest_only`: Nur Unit-Tests, keine UI-Tests\n\n"
-            "**Test-relevante Felder (WICHTIG für automatisiertes Testen):**\n"
-            "- `requires_server`: true wenn das Projekt einen laufenden Server benötigt\n"
-            "- `server_port`: Der Port auf dem der Server läuft (z.B. 3000 für Node, 5000 für Flask, 8000 für FastAPI)\n"
-            "- `server_startup_time_ms`: Geschaetzte Startzeit des Servers in Millisekunden. Empfohlene Werte:\n"
-            "  - Next.js/React/Vue/Angular: 90000 (Compile-Zeit!)\n"
-            "  - Node.js/Express: 10000\n"
-            "  - Python/Flask/FastAPI: 5000\n"
-            "  - Static HTML: 0 (kein Server)\n\n"
-            "**Typische Port-Zuordnungen (nur für webapps relevant):**\n"
-            "- Flask: 5000\n"
-            "- FastAPI/Uvicorn: 8000\n"
-            "- Node.js/Express: 3000\n"
-            "- Django: 8000\n"
-            "- static_html: keinen Server (requires_server: false)\n"
-            "- python_cli: keinen Server (requires_server: false)\n"
-            "- tkinter_desktop: keinen Server (requires_server: false, app_type: desktop)\n"
-            "- pyqt_desktop: keinen Server (requires_server: false, app_type: desktop)\n\n"
-            "Falls keine Bibliotheken nötig sind (z.B. static_html), lass install_command leer.\n"
-            "Definiere run_command so, dass es direkt im Projektordner ausgeführt werden kann.\n\n"
-            "**WICHTIG - run_command für Python-Projekte:**\n"
-            "Bei Python-Projekten IMMER `run_command: \"python src/main.py\"` setzen,\n"
-            "da die Standard-Projektstruktur den Quellcode im src/ Ordner erwartet.\n"
-            "Beispiele:\n"
-            "- python_cli: `\"run_command\": \"python src/main.py\"`\n"
-            "- pyqt_desktop: `\"run_command\": \"python src/main.py\"`\n"
-            "- flask_app: `\"run_command\": \"python src/app.py\"` oder `\"python src/main.py\"`\n\n"
-            "WICHTIG: Dein Blueprint MUSS die Grundlage für ein sofort ausführbares Ergebnis sein. "
-            "Berücksichtige bei Web-Projekten sowohl Backend als auch Frontend. "
-            "Der `install_command` und `run_command` sollten, wenn möglich, alle nötigen Schritte "
-            "automatisieren (z.B. `npm install && npm run build` oder `pip install -r requirements.txt`).\n\n"
-            "**WARNUNG - Frontend-Pakete sind KEINE Python-Pakete:**\n"
-            "Die folgenden sind CSS/JS-Frameworks und werden NICHT über pip installiert:\n"
-            "- bootstrap, tailwindcss, bulma (CSS-Frameworks) - Einbinden per CDN oder npm\n"
-            "- react, vue, angular (JS-Frameworks) - Nur fuer Node.js/npm\n"
-            "- jquery, lodash (JS-Bibliotheken) - Nur fuer Node.js/npm\n"
-            "Fuer Python-Webapps: CSS-Frameworks per CDN in HTML einbinden!\n\n"
+            "WENN KEIN Template passt (z.B. Rust, Go, exotischer Stack):\n"
+            "```json\n"
+            "{\n"
+            '  "selected_template": null,\n'
+            '  "blueprint": {\n'
+            '    "project_type": "go_app",\n'
+            '    "app_type": "cli",\n'
+            '    "test_strategy": "cli_test",\n'
+            '    "language": "go",\n'
+            '    "database": "none",\n'
+            '    "package_file": "go.mod",\n'
+            '    "dependencies": ["github.com/spf13/cobra"],\n'
+            '    "install_command": "go mod download",\n'
+            '    "run_command": "go run main.go",\n'
+            '    "requires_server": false,\n'
+            '    "server_port": 0,\n'
+            '    "server_startup_time_ms": 0,\n'
+            '    "reasoning": "Go CLI braucht kein vordefiniertes Template..."\n'
+            "  }\n"
+            "}\n"
+            "```\n\n"
+            "WICHTIG:\n"
+            "- Waehle das SPEZIFISCHSTE Template (nextjs_sqlite > nextjs_tailwind wenn Datenbank noetig)\n"
+            "- Fuer additional_dependencies: Verwende EXAKTE Versionen (kein ^ oder ~)\n"
+            "- Template-Dependencies sind bereits getestet — aendere sie NICHT\n"
+            "- app_type bestimmt die Test-Strategie: webapp=playwright, desktop=pyautogui, cli=cli_test\n"
+            "- WARNUNG: Frontend-Pakete (bootstrap, tailwindcss, react) sind KEINE Python-Pakete!\n\n"
             f"{combined_rules}"
         ),
         llm=model,
         verbose=True
+    )
+
+
+def _get_template_summary() -> str:
+    """Laedt Template-Summary fuer den Agent-Prompt. Graceful Fallback bei Fehler."""
+    try:
+        from techstack_templates.template_loader import get_template_summary_for_prompt
+        summary = get_template_summary_for_prompt()
+        if summary:
+            return summary
+    except ImportError:
+        pass
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("Template-Summary konnte nicht geladen werden: %s", e)
+    # Fallback: Minimale Template-Liste
+    return (
+        "VERFUEGBARE TEMPLATES:\n"
+        "- nextjs_tailwind: Next.js + Tailwind CSS (Webapp)\n"
+        "- nextjs_sqlite: Next.js + Tailwind + SQLite (Webapp mit DB)\n"
+        "- flask_webapp: Flask + Jinja2 + SQLite (Python Webapp)\n"
+        "- fastapi_api: FastAPI + SQLAlchemy (Python API)\n"
+        "- python_cli: Python CLI Tool\n"
+        "- python_tkinter: Python Desktop (Tkinter)\n"
+        "- static_html: Reines HTML/CSS/JS\n"
+        "- express_api: Node.js Express API\n"
+        "- react_vite: React + Vite SPA"
     )

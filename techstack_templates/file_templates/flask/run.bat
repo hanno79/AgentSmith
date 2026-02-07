@@ -1,0 +1,6 @@
+@echo off
+echo Installiere Abhaengigkeiten...
+pip install -r requirements.txt
+echo Starte Flask Server...
+start http://localhost:5000
+python src/app.py

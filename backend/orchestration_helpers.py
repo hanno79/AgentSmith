@@ -300,12 +300,23 @@ def extract_vulnerabilities(security_result: str) -> List[Dict[str, Any]]:
 
         severity = severity_text if severity_text in ["critical", "high", "medium", "low"] else "medium"
 
-        file_match = re.search(
-            r'(?:in|file|datei|zeile\s+\d+\s+in)\s+["\']?([a-zA-Z0-9_./\\-]+\.[a-z]{2,4})["\']?',
-            vuln_text,
-            re.IGNORECASE
-        )
-        affected_file = file_match.group(1) if file_match else None
+        # AENDERUNG 07.02.2026: Erweiterte Datei-Extraktion fuer Security-Findings (Fix 20)
+        # ROOT-CAUSE-FIX:
+        # Symptom: affected_file=None bei 90% der Security-Findings
+        # Ursache: Nur ein Regex-Pattern, erkennt nicht [DATEI:filename] Format
+        # Loesung: 4 Patterns in Prioritaetsreihenfolge, nehme ersten Treffer
+        file_patterns = [
+            r'\[DATEI:([^\]]+)\]',                                            # [DATEI:filename.js]
+            r'(?:in|file|datei)\s+["\']?([a-zA-Z0-9_./\\-]+\.[a-z]{2,4})["\']?',  # in filename.js
+            r'([a-zA-Z0-9_./\\-]+\.[jt]sx?)\s+(?:Zeile|line|L)\s+\d+',       # file.js Zeile 42
+            r'(?:Zeile|line|L)\s+\d+\s+(?:in|von)\s+([a-zA-Z0-9_./\\-]+\.[jt]sx?)',  # Zeile 42 in file.js
+        ]
+        affected_file = None
+        for fp in file_patterns:
+            file_match = re.search(fp, vuln_text, re.IGNORECASE)
+            if file_match:
+                affected_file = file_match.group(1).strip()
+                break
 
         vulnerabilities.append({
             "severity": severity,
@@ -337,12 +348,18 @@ def extract_vulnerabilities(security_result: str) -> List[Dict[str, Any]]:
             elif any(word in vuln_text.lower() for word in ["low", "niedrig", "info", "informational", "minimal"]):
                 severity = "low"
 
-            file_match = re.search(
+            # AENDERUNG 07.02.2026: Gleiche erweiterte Datei-Extraktion wie oben (Fix 20)
+            affected_file = None
+            for fp in [
+                r'\[DATEI:([^\]]+)\]',
                 r'(?:in|file|datei)\s+["\']?([a-zA-Z0-9_./\\-]+\.[a-z]{2,4})["\']?',
-                vuln_text,
-                re.IGNORECASE
-            )
-            affected_file = file_match.group(1) if file_match else None
+                r'([a-zA-Z0-9_./\\-]+\.[jt]sx?)\s+(?:Zeile|line|L)\s+\d+',
+                r'(?:Zeile|line|L)\s+\d+\s+(?:in|von)\s+([a-zA-Z0-9_./\\-]+\.[jt]sx?)',
+            ]:
+                file_match = re.search(fp, vuln_text, re.IGNORECASE)
+                if file_match:
+                    affected_file = file_match.group(1).strip()
+                    break
 
             vulnerabilities.append({
                 "severity": severity,

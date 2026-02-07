@@ -59,3 +59,11 @@ frontend/dist/
 
 # Test-Screenshots
 tests/screenshots/
+
+# Coverage-Artefakte
+.coverage
+.coverage.*
+coverage_raw.txt
+coverage*.txt
+htmlcov/
+.pytest_cache/

@@ -11,6 +11,8 @@ Beschreibung: Server Runner - Startet Projekt-Server und wartet auf Verfügbarke
 """
 
 import os
+import json
+import re
 import socket
 import subprocess
 import time
@@ -257,12 +259,47 @@ def _detect_framework_key(tech_blueprint: Dict[str, Any]) -> str:
     return "default"
 
 
+def _normalize_package_json_versions(project_path: str) -> None:
+    """
+    AENDERUNG 07.02.2026: Entfernt ^ und ~ Prefixe aus package.json Versionen.
+    ROOT-CAUSE-FIX: Coder generiert "next": "^13.5.6" → npm installiert 16.x statt 13.x
+    Symptom: Turbopack-Crash weil Next.js 16 inkompatibel mit Pages-Router Setup
+    Ursache: Caret-Range ^13.x erlaubt npm freie Versions-Wahl jenseits Major-Version
+    Loesung: System-Level Version-Pinning BEVOR npm install laeuft — unabhaengig vom Coder
+    """
+    pkg_path = os.path.join(project_path, "package.json")
+    if not os.path.exists(pkg_path):
+        return
+    try:
+        with open(pkg_path, "r", encoding="utf-8") as f:
+            pkg = json.load(f)
+        changed = False
+        for dep_key in ("dependencies", "devDependencies", "peerDependencies"):
+            deps = pkg.get(dep_key)
+            if not deps or not isinstance(deps, dict):
+                continue
+            for name, version in list(deps.items()):
+                if isinstance(version, str) and version and version[0] in ("^", "~"):
+                    deps[name] = version[1:]
+                    changed = True
+        if changed:
+            with open(pkg_path, "w", encoding="utf-8") as f:
+                json.dump(pkg, f, indent=2, ensure_ascii=False)
+            logger.info("package.json: Caret/Tilde-Versionen auf exakte Versionen normalisiert")
+    except (json.JSONDecodeError, OSError) as e:
+        logger.warning(f"package.json Version-Normalisierung fehlgeschlagen: {e}")
+
+
 def _install_dependencies(project_path: str, tech_blueprint: Dict[str, Any]) -> bool:
     """
     Installiert Projekt-Dependencies vor Server-Start.
     AENDERUNG 07.02.2026: Dispatch-Tabelle statt hardcoded if/elif.
     Unterstuetzt: npm, pip, mvn, gradle, go mod, cargo, bundle, dotnet, composer.
     """
+    # AENDERUNG 07.02.2026: Version-Normalisierung VOR npm install
+    # Entfernt ^ und ~ aus package.json → verhindert unkontrollierte Major-Version-Spruenge
+    _normalize_package_json_versions(project_path)
+
     language = tech_blueprint.get("language", "").lower()
     project_type = tech_blueprint.get("project_type", "").lower()
 

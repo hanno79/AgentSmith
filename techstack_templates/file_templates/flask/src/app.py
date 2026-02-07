@@ -1,0 +1,18 @@
+"""
+Author: rahn
+Datum: 07.02.2026
+Version: 1.0
+Beschreibung: Flask Anwendung - Einstiegspunkt
+"""
+from flask import Flask, render_template
+from flask_cors import CORS
+
+app = Flask(__name__)
+CORS(app)
+
+@app.route('/')
+def index():
+    return render_template('base.html')
+
+if __name__ == '__main__':
+    app.run(debug=True, port=5000)

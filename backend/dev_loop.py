@@ -60,6 +60,8 @@ from .orchestration_validator import OrchestratorValidator, ValidatorAction
 from .dev_loop_task_derivation import DevLoopTaskDerivation, integrate_task_derivation
 # AENDERUNG 05.02.2026: FileStatusDetector für gezielte Fixes
 from .file_status_detector import FileStatusDetector, get_file_status_summary_for_log
+# AENDERUNG 07.02.2026: Version-Normalisierung nach Code-Speicherung
+from server_runner import _normalize_package_json_versions
 
 # ÄNDERUNG 29.01.2026: Dev-Loop aus OrchestrationManager ausgelagert
 
@@ -294,6 +296,12 @@ class DevLoop:
                 manager.current_code, manager.agent_coder = run_coder_task(manager, project_rules, c_prompt, manager.agent_coder)
                 # ÄNDERUNG 31.01.2026: Truncation-Status für Modellwechsel-Logik
                 created_files, truncated_files = save_coder_output(manager, manager.current_code, manager.output_path, iteration, max_retries)
+
+                # AENDERUNG 07.02.2026: Version-Normalisierung direkt nach Code-Speicherung
+                # ROOT-CAUSE-FIX: Coder generiert ^/~ Versionen in package.json → npm installiert
+                # inkompatible Major-Versionen. Normalisierung VOR rebuild damit current_code korrekt ist.
+                if manager.output_path and os.path.exists(str(manager.output_path)):
+                    _normalize_package_json_versions(str(manager.output_path))
 
                 # ROOT-CAUSE-FIX 07.02.2026: PatchMode Merge
                 # Symptom: PatchMode-Output (2 Dateien) ueberschrieb alle 13 Dateien in current_code

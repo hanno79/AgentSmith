@@ -1,0 +1,31 @@
+{
+  "nextjs_tailwind": {
+    "total_uses": 4,
+    "successes": 4,
+    "failures": 0,
+    "success_rate": 1.0,
+    "last_used": "2026-02-07T19:52:41.655484",
+    "projects": [
+      {
+        "project_id": "proj_no_extra",
+        "success": true,
+        "timestamp": "2026-02-07T19:49:51.677026"
+      },
+      {
+        "project_id": "proj_no_extra",
+        "success": true,
+        "timestamp": "2026-02-07T19:50:19.884940"
+      },
+      {
+        "project_id": "proj_no_extra",
+        "success": true,
+        "timestamp": "2026-02-07T19:50:51.266383"
+      },
+      {
+        "project_id": "proj_no_extra",
+        "success": true,
+        "timestamp": "2026-02-07T19:52:41.655484"
+      }
+    ]
+  }
+}

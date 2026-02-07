@@ -83,6 +83,8 @@ def get_config():
         "available_modes": ["test", "production", "premium"],
         # ÄNDERUNG 03.02.2026: Feature 10a - Token-Limits
         "token_limits": manager.config.get("token_limits", {"default": 4096}),
+        # AENDERUNG 07.02.2026: Pro-Agent Timeouts
+        "agent_timeouts": manager.config.get("agent_timeouts", {"default": 750}),
         # AENDERUNG 06.02.2026: Docker-Status fuer Frontend-Toggle
         "docker_enabled": manager.config.get("docker", {}).get("enabled", False)
     }
@@ -128,6 +130,28 @@ def set_agent_timeout(request: AgentTimeoutRequest):
     manager.config["agent_timeout_seconds"] = request.agent_timeout_seconds
     _save_config()
     return {"status": "ok", "agent_timeout_seconds": request.agent_timeout_seconds}
+
+
+# AENDERUNG 07.02.2026: Pro-Agent Timeout Endpoint
+@router.put("/config/agent-timeout/{agent_role}")
+def set_agent_timeout_per_role(agent_role: str, request: AgentTimeoutRequest):
+    """Setzt das Timeout fuer einen spezifischen Agent (60-1800 Sekunden)."""
+    if not 60 <= request.agent_timeout_seconds <= 1800:
+        raise HTTPException(
+            status_code=400,
+            detail="Timeout muss zwischen 60 und 1800 Sekunden liegen"
+        )
+    # Initialisiere agent_timeouts falls nicht vorhanden
+    if "agent_timeouts" not in manager.config:
+        manager.config["agent_timeouts"] = {"default": 750}
+    manager.config["agent_timeouts"][agent_role] = request.agent_timeout_seconds
+    _save_config()
+    logger.info("[AgentTimeout] %s auf %s Sekunden gesetzt", agent_role, request.agent_timeout_seconds)
+    return {
+        "status": "ok",
+        "agent": agent_role,
+        "timeout_seconds": request.agent_timeout_seconds
+    }
 
 
 # AENDERUNG 06.02.2026: Docker-Toggle ueber UI
@@ -474,6 +498,9 @@ def _save_config():
             # ÄNDERUNG 30.01.2026: Globaler Agent-Timeout speichern
             if "agent_timeout_seconds" in manager.config:
                 existing_data["agent_timeout_seconds"] = manager.config["agent_timeout_seconds"]
+            # AENDERUNG 07.02.2026: Pro-Agent Timeouts persistieren
+            if "agent_timeouts" in manager.config:
+                existing_data["agent_timeouts"] = manager.config["agent_timeouts"]
             if "include_designer" in manager.config:
                 existing_data["include_designer"] = manager.config["include_designer"]
             if "project_type" in manager.config:

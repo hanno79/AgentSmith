@@ -22,8 +22,12 @@ def get_model_for_error(router, agent_role: str, error_hash: str) -> str:
     available_untried = []
     rate_limited_untried = []
 
+    # AENDERUNG 07.02.2026: Permanently unavailable Modelle ueberspringen
+    # ROOT-CAUSE-FIX: Unavailable Modelle wurden ausgewaehlt, API-Call schlug fehl, verschwendete Iteration+Budget
     for model in all_models:
         if model not in tried_models:
+            if router.is_permanently_unavailable(model):
+                continue
             if not router._is_rate_limited_sync(model):
                 available_untried.append(model)
             else:
@@ -48,6 +52,8 @@ def get_model_for_error(router, agent_role: str, error_hash: str) -> str:
     clear_error_history(router, error_hash)
 
     for model in all_models:
+        if router.is_permanently_unavailable(model):
+            continue
         if not router._is_rate_limited_sync(model):
             router._track_usage(model)
             return model

@@ -1,0 +1,3 @@
+@echo off
+echo Oeffne Webseite im Browser...
+start index.html

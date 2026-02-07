@@ -1,0 +1,49 @@
+{
+  "template_id": "express_api",
+  "template_version": "1.0",
+  "display_name": "Express.js API + SQLite",
+  "source": "manual",
+  "match_keywords": ["express", "node", "nodejs", "api", "backend", "server", "javascript"],
+  "match_priority": 7,
+  "blueprint": {
+    "project_type": "express",
+    "app_type": "api",
+    "test_strategy": "pytest_only",
+    "language": "javascript",
+    "database": "sqlite",
+    "package_file": "package.json",
+    "dependencies": {
+      "express": "4.18.2",
+      "cors": "2.8.5",
+      "sqlite3": "5.1.7",
+      "sqlite": "5.0.0"
+    },
+    "install_command": "npm install",
+    "run_command": "node src/app.js",
+    "requires_server": true,
+    "server_port": 3000,
+    "server_startup_time_ms": 10000
+  },
+  "required_files": [
+    "src/app.js",
+    "package.json",
+    "run.bat"
+  ],
+  "directory_structure": {
+    "src/": "Quellcode der Anwendung",
+    "src/routes/": "Modulare Express-Router",
+    "tests/": "Test-Dateien"
+  },
+  "coder_rules": [
+    "ES6 import/export verwenden - KEIN require() oder module.exports",
+    "Einstiegspunkt ist src/app.js",
+    "Modulare Routen in src/routes/ ablegen",
+    "Exakte Versionsnummern verwenden - KEIN ^ oder ~ Prefix",
+    "package.json muss 'type': 'module' enthalten fuer ES6-Imports",
+    "cors Middleware fuer Cross-Origin-Requests einbinden",
+    "run.bat muss ohne Argumente per Doppelklick funktionieren",
+    "NIEMALS package-lock.json oder node_modules/ generieren"
+  ],
+  "file_templates_dir": "express",
+  "container_ids": []
+}

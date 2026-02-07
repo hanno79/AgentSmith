@@ -1,0 +1,45 @@
+{
+  "template_id": "python_tkinter",
+  "template_version": "1.0",
+  "display_name": "Python Desktop mit Tkinter",
+  "source": "manual",
+  "match_keywords": ["python", "desktop", "tkinter", "gui", "fenster", "anwendung", "programm"],
+  "match_priority": 7,
+  "blueprint": {
+    "project_type": "python_tkinter",
+    "app_type": "desktop",
+    "test_strategy": "pyautogui",
+    "language": "python",
+    "database": "none",
+    "package_file": "requirements.txt",
+    "dependencies": {
+      "pillow": "10.1.0"
+    },
+    "install_command": "pip install -r requirements.txt",
+    "run_command": "python src/main.py",
+    "requires_server": false,
+    "server_port": 0,
+    "server_startup_time_ms": 0
+  },
+  "required_files": [
+    "src/main.py",
+    "requirements.txt",
+    "run.bat"
+  ],
+  "directory_structure": {
+    "src/": "Quellcode der Anwendung",
+    "src/views/": "GUI-Fenster und Dialoge",
+    "tests/": "Test-Dateien"
+  },
+  "coder_rules": [
+    "Hauptfenster in src/main.py erstellen",
+    "Einzelne Views und Dialoge in src/views/ ablegen",
+    "Ausfuehrung mit 'python src/main.py'",
+    "tkinter ist in Python eingebaut - KEIN pip install noetig",
+    "pillow nur fuer Bildverarbeitung importieren wenn benoetigt",
+    "run.bat muss ohne Argumente per Doppelklick funktionieren",
+    "ttk-Widgets fuer moderneres Aussehen bevorzugen"
+  ],
+  "file_templates_dir": "python_tkinter",
+  "container_ids": []
+}

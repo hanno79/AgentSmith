@@ -42,6 +42,8 @@ const MainframeHub = ({
   const [agentTimeout, setAgentTimeout] = useState(900);
   // ÄNDERUNG 07.02.2026: Token-Limits als Dict für alle Agents (statt nur Coder)
   const [tokenLimits, setTokenLimits] = useState({});
+  // ÄNDERUNG 07.02.2026: Agent-Timeouts als Dict pro Agent (analog zu tokenLimits)
+  const [agentTimeouts, setAgentTimeouts] = useState({});
   // AENDERUNG 06.02.2026: Docker-Toggle
   const [dockerEnabled, setDockerEnabled] = useState(false);
   // ÄNDERUNG 25.01.2026: Lokaler State für Modellwechsel
@@ -103,6 +105,8 @@ const MainframeHub = ({
       setAgentTimeout(configRes.data.agent_timeout_seconds || 900);
       // ÄNDERUNG 07.02.2026: Alle Token-Limits laden (Dict für alle Agents)
       setTokenLimits(configRes.data.token_limits || {});
+      // ÄNDERUNG 07.02.2026: Agent-Timeouts pro Agent laden (analog zu tokenLimits)
+      setAgentTimeouts(configRes.data.agent_timeouts || {});
       // AENDERUNG 06.02.2026: Docker-Status laden
       setDockerEnabled(configRes.data.docker_enabled || false);
     } catch (err) {
@@ -248,6 +252,18 @@ const MainframeHub = ({
     } catch (err) {
       console.error(`Token-Limit für ${agentRole} fehlgeschlagen:`, err);
       setTokenLimits(previousLimits);
+    }
+  };
+
+  // ÄNDERUNG 07.02.2026: Handler fuer Agent-Timeout pro Agent (analog zu updateTokenLimit)
+  const updateAgentTimeoutPerAgent = async (agentRole, seconds) => {
+    const previousTimeouts = { ...agentTimeouts };
+    setAgentTimeouts(prev => ({ ...prev, [agentRole]: seconds }));
+    try {
+      await axios.put(`${API_BASE}/config/agent-timeout/${agentRole}`, { agent_timeout_seconds: seconds });
+    } catch (err) {
+      console.error(`Timeout für ${agentRole} fehlgeschlagen:`, err);
+      setAgentTimeouts(previousTimeouts);
     }
   };
 
@@ -430,6 +446,8 @@ const MainframeHub = ({
         configMode={config?.mode}
         tokenLimits={tokenLimits}
         onTokenLimitChange={updateTokenLimit}
+        agentTimeouts={agentTimeouts}
+        onAgentTimeoutChange={updateAgentTimeoutPerAgent}
       />
 
     </div>

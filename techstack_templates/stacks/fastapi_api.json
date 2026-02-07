@@ -1,0 +1,49 @@
+{
+  "template_id": "fastapi_api",
+  "template_version": "1.0",
+  "display_name": "FastAPI + SQLAlchemy + Uvicorn",
+  "source": "manual",
+  "match_keywords": ["fastapi", "api", "rest", "backend", "python", "uvicorn", "schnell"],
+  "match_priority": 8,
+  "blueprint": {
+    "project_type": "fastapi",
+    "app_type": "api",
+    "test_strategy": "pytest_only",
+    "language": "python",
+    "database": "sqlite",
+    "package_file": "requirements.txt",
+    "dependencies": {
+      "fastapi": "0.104.1",
+      "uvicorn": "0.24.0",
+      "sqlalchemy": "2.0.23",
+      "pydantic": "2.5.2"
+    },
+    "install_command": "pip install -r requirements.txt",
+    "run_command": "uvicorn src.main:app --host 0.0.0.0 --port 8000",
+    "requires_server": true,
+    "server_port": 8000,
+    "server_startup_time_ms": 5000
+  },
+  "required_files": [
+    "src/main.py",
+    "requirements.txt",
+    "run.bat"
+  ],
+  "directory_structure": {
+    "src/": "Quellcode der Anwendung",
+    "src/models/": "SQLAlchemy-Modelle und Pydantic-Schemas",
+    "src/routers/": "Modulare API-Router",
+    "tests/": "Test-Dateien"
+  },
+  "coder_rules": [
+    "Einstiegspunkt ist src/main.py mit FastAPI-App-Instanz",
+    "Modulare Router in src/routers/ verwenden und in main.py einbinden",
+    "Datenbank-Modelle in src/models/ ablegen",
+    "Server starten mit 'uvicorn src.main:app --host 0.0.0.0 --port 8000'",
+    "Pydantic-Schemas fuer Request/Response-Validierung nutzen",
+    "SQLAlchemy fuer Datenbank-Zugriff verwenden",
+    "run.bat muss ohne Argumente per Doppelklick funktionieren"
+  ],
+  "file_templates_dir": "fastapi",
+  "container_ids": []
+}

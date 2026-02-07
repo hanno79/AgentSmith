@@ -18,6 +18,28 @@ VERSIONSHISTORIE
 ========================================
 
 ----------------------------------------
+Version 0.31 - 07.02.2026 (Fix 21)
+----------------------------------------
+
+# AENDERUNG [07.02.2026]: Fix 21 — Modell-Rotation + Dependency-Fixes
+
+# Bug A: get_all_models_for_role() gab nur primary+fallback zurueck, extended_fallback fehlte.
+#         Error-Rotation sah nur 2 statt 5 Modelle → Ping-Pong zwischen 2 LLMs.
+# Betroffene Dateien: model_router.py
+
+# Bug B: get_model_for_error() pruefte nicht is_permanently_unavailable().
+#         Unavailable Modelle wurden ausgewaehlt, API-Call schlug fehl, verschwendete Budget.
+# Betroffene Dateien: model_router_error_history.py
+
+# Bug C: validate_import_dependencies() meldete @/lib/utils als fehlende npm-Dependency.
+#         @/ ist ein jsconfig.json Path-Alias, kein Scoped Package.
+# Betroffene Dateien: content_validator.py
+
+# Bug D: Coder nutzte better-sqlite3 statt template-konformem sqlite3+sqlite.
+#         Neue Coder-Regel im Template verbietet better-sqlite3.
+# Betroffene Dateien: techstack_templates/stacks/nextjs_sqlite.json
+
+----------------------------------------
 Version 0.10 - 03.02.2026
 ----------------------------------------
 

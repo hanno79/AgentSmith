@@ -112,6 +112,18 @@ def _validate_jsx(code: str) -> str:
     Returns:
         Validierungsergebnis als String
     """
+    # AENDERUNG 07.02.2026: SVG Data-URLs neutralisieren VOR Strukturanalyse
+    # ROOT-CAUSE-FIX:
+    # Symptom: "Nicht geschlossenes String-Literal" bei SVG Data-URLs (Fehler-Hash 6dc27ea5)
+    # Ursache: url("data:image/svg+xml,<svg ...>") enthaelt unescapte Anfuehrungszeichen
+    #          die den String-Tracker durcheinander bringen
+    # Loesung: SVG Data-URLs durch Platzhalter ersetzen VOR der Bracket-Balance-Pruefung
+    code = re.sub(
+        r'url\(["\']?data:image/svg\+xml[^)]*\)',
+        'url("__SVG_PLACEHOLDER__")',
+        code
+    )
+
     issues = []
 
     # 1. Klammerbalance pruefen (ignoriere Klammern in Strings/Kommentaren)

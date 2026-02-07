@@ -528,6 +528,35 @@ def build_coder_prompt(
     except Exception as dep_err:
         manager._ui_log("Coder", "Warning", f"Dependency-Versionen konnten nicht geladen werden: {dep_err}")
 
+    # AENDERUNG 07.02.2026: Security Fix-Templates mit konkreten Code-Beispielen (Fix 20)
+    # ROOT-CAUSE-FIX:
+    # Symptom: SQL Injection wird erkannt aber Coder schreibt selben unsicheren Code
+    # Ursache: Coder bekommt nur "Verwende parametrisierte Queries" ohne konkretes Beispiel
+    # Loesung: Template mit FALSCH/RICHTIG Vergleich fuer bekannte Vulnerability-Typen
+    _SECURITY_FIX_TEMPLATES = {
+        "sql_injection": {
+            "keywords": ["sql injection", "sql-injection", "string-konkatenation in sql",
+                         "string concatenation", "template literal", "sql query"],
+            "fix_example": (
+                "FALSCH: db.prepare(`SELECT * FROM t WHERE id = ${id}`)\n"
+                "FALSCH: db.prepare(`UPDATE task SET ${updates.join(', ')} WHERE id = ?`)\n"
+                "RICHTIG: Feste Feld-Liste mit individuellen Parametern:\n"
+                "  const stmt = db.prepare('UPDATE task SET title = ?, description = ?, status = ? WHERE id = ?');\n"
+                "  stmt.run(title, description, status, id);\n"
+                "REGEL: KEINE Template-Literals oder String-Konkatenation in SQL! "
+                "Jeder Wert als separater ? Parameter."
+            )
+        },
+        "xss": {
+            "keywords": ["xss", "innerhtml", "document.write", "dangerouslysetinnerhtml"],
+            "fix_example": (
+                "FALSCH: element.innerHTML = userInput\n"
+                "RICHTIG: element.textContent = userInput\n"
+                "Oder: DOMPurify.sanitize(userInput) wenn HTML noetig"
+            )
+        },
+    }
+
     if hasattr(manager, 'security_vulnerabilities') and manager.security_vulnerabilities:
         severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
         sorted_vulns = sorted(
@@ -556,9 +585,17 @@ def build_coder_prompt(
             })
 
             file_hint = f"\n   -> DATEI: {affected_file}" if affected_file else ""
+            # AENDERUNG 07.02.2026: Template-Fix anhaengen wenn bekannter Vulnerability-Typ
+            template_hint = ""
+            desc_lower = description.lower()
+            for tmpl_key, tmpl_data in _SECURITY_FIX_TEMPLATES.items():
+                if any(kw in desc_lower for kw in tmpl_data["keywords"]):
+                    template_hint = f"\n   -> KONKRETES BEISPIEL:\n   {tmpl_data['fix_example']}"
+                    break
+
             task_prompt_lines.append(
                 f"TASK {task_id} [{severity}]: {description}{file_hint}\n"
-                f"   -> LÖSUNG: {fix}"
+                f"   -> LÖSUNG: {fix}{template_hint}"
             )
 
         manager._ui_log("Coder", "CoderTasksOutput", json.dumps({
@@ -595,39 +632,64 @@ def build_coder_prompt(
     c_prompt += "- MUSS am Ende 'pause > nul' haben\n"
     c_prompt += "- VERBOTEN: Argumente wie run.bat [dev|build|start]\n"
 
-    # Framework-spezifische Verzeichnisstruktur
-    framework = ""
+    # AENDERUNG 07.02.2026: Dynamische Template-Regeln statt hartcodierte Framework-Regeln
+    # ROOT-CAUSE-FIX: Templates kodifizieren bewaehrtes Wissen, statt es dem LLM zu ueberlassen
+    _source_template = None
     if manager.tech_blueprint:
-        framework = manager.tech_blueprint.get("framework", "").lower()
-        project_type = manager.tech_blueprint.get("project_type", "").lower()
-        if "next" in framework or "next" in project_type:
-            c_prompt += "\n📂 NEXT.JS VERZEICHNISSTRUKTUR (WICHTIG!):\n"
-            c_prompt += "- Dateien in pages/, components/, lib/, styles/ (DIREKT im Root!)\n"
-            c_prompt += "- NICHT unter src/pages/ oder src/components/ (Next.js ignoriert src/!)\n"
-            c_prompt += "- API-Routen: pages/api/...\n"
-            c_prompt += "- Erstelle jsconfig.json mit: { \"compilerOptions\": { \"baseUrl\": \".\" } }\n"
+        _source_template = manager.tech_blueprint.get("_source_template")
 
-            # AENDERUNG 07.02.2026: Next.js Pflichtdateien + Import-Pfade + API-Konsistenz
-            c_prompt += "\n🔧 NEXT.JS PFLICHTDATEIEN:\n"
-            c_prompt += "- pages/_app.js MUSS existieren mit: import '../styles/globals.css'\n"
-            c_prompt += "- styles/globals.css MUSS existieren mit: @tailwind base; @tailwind components; @tailwind utilities;\n"
-            c_prompt += "- OHNE _app.js und globals.css funktioniert Tailwind CSS NICHT!\n"
+    if _source_template:
+        # Template-basierte Regeln — dynamisch aus Template laden
+        try:
+            from techstack_templates.template_loader import get_template_by_id, get_coder_rules
+            template = get_template_by_id(_source_template)
+            if template:
+                coder_rules = get_coder_rules(template)
+                if coder_rules:
+                    c_prompt += f"\n\n{coder_rules}\n"
+                # Pinned-Versionen aus Template als Referenz
+                pinned = manager.tech_blueprint.get("_pinned_versions", {})
+                if pinned:
+                    c_prompt += "\nGEPINNTE VERSIONEN (verwende EXAKT diese):\n"
+                    for pkg, ver in pinned.items():
+                        c_prompt += f"  {pkg}: {ver}\n"
+                # AENDERUNG 07.02.2026: SVG Data-URL Verbot auch bei Template-Projekten (Fix 20)
+                c_prompt += "\nKEINE INLINE SVG DATA-URLs:\n"
+                c_prompt += "- NIEMALS url(\"data:image/svg+xml,...\") in CSS oder JSX verwenden!\n"
+                c_prompt += "- Stattdessen: CSS-Gradienten, separate .svg in public/, Unicode-Zeichen\n"
+        except ImportError:
+            pass
+    else:
+        # Fallback: Hartcodierte Regeln fuer Projekte ohne Template
+        language = ""
+        if manager.tech_blueprint:
+            language = manager.tech_blueprint.get("language", "").lower()
+        if language in ("javascript", "typescript"):
+            c_prompt += "\n\nDEPENDENCY-VOLLSTAENDIGKEIT (KRITISCH!):\n"
+            c_prompt += "- JEDE importierte Bibliothek MUSS in package.json 'dependencies' stehen!\n"
+            c_prompt += "- Verwende EXAKTE Versionen (KEIN ^ oder ~ Prefix)!\n"
+            c_prompt += "- Node.js built-ins (fs, path, crypto) NICHT in package.json.\n"
+        framework = ""
+        if manager.tech_blueprint:
+            framework = manager.tech_blueprint.get("framework", "").lower()
+            project_type = manager.tech_blueprint.get("project_type", "").lower()
+            if "next" in framework or "next" in project_type:
+                c_prompt += "\nNEXT.JS REGELN:\n"
+                c_prompt += "- ES6 import/export (KEIN require/module.exports)\n"
+                c_prompt += "- Dateien in pages/, components/, lib/ DIREKT im Root (NICHT src/)\n"
+                c_prompt += "- pages/_app.js + styles/globals.css MUESSEN existieren\n"
+                c_prompt += "- API-Routen: export default function handler(req, res)\n"
+                c_prompt += "- Verwende next/jest, NICHT @next/jest\n"
+                # AENDERUNG 07.02.2026: SVG Data-URL Verbot (Fix 20)
+                c_prompt += "- KEINE inline SVG Data-URLs in CSS oder JSX! "
+                c_prompt += "Verwende stattdessen: CSS-Gradienten (radial-gradient, linear-gradient), "
+                c_prompt += "separate .svg Dateien in public/, oder Unicode-Zeichen.\n"
 
-            c_prompt += "\n📦 REACT/NEXT.JS DEPENDENCIES (PFLICHT):\n"
-            c_prompt += "- package.json MUSS 'react-dom' enthalten wenn 'react' vorhanden ist!\n"
-            c_prompt += "- Next.js Minimum: next, react, react-dom\n"
-            c_prompt += "- Tailwind: tailwindcss, postcss, autoprefixer\n"
-
-            c_prompt += "\n🔗 IMPORT-PFADE KORREKT BERECHNEN:\n"
-            c_prompt += "- Von pages/index.js zu components/: '../components/...'\n"
-            c_prompt += "- Von pages/api/xyz.js zu lib/: '../../lib/...'\n"
-            c_prompt += "- ZAEHLE die Verzeichnisebenen! Jedes ../ geht EINE Ebene hoch.\n"
-            c_prompt += "- pages/api/ = 2 Ebenen tief -> ../../ fuer Root-Level Ordner\n"
-
-            c_prompt += "\n🔄 API-ROUTEN KONSISTENZ:\n"
-            c_prompt += "- Wenn Frontend fetch('/api/todos/${id}') aufruft, MUSS pages/api/todos/[id].js existieren\n"
-            c_prompt += "- ODER: Frontend sendet ID im Body/Query und nutzt nur /api/todos\n"
-            c_prompt += "- Frontend-Calls und API-Dateien MUESSEN zusammenpassen!\n"
+    # AENDERUNG 07.02.2026: Datei-Blacklist (gilt fuer ALLE Frameworks)
+    c_prompt += "\nDIESE DATEIEN NIEMALS GENERIEREN:\n"
+    c_prompt += "- package-lock.json (wird automatisch durch npm install erstellt)\n"
+    c_prompt += "- node_modules/ (wird automatisch durch npm install erstellt)\n"
+    c_prompt += "- .next/ (wird automatisch durch next build erstellt)\n"
 
     c_prompt += "\nFormat: ### FILENAME: path/to/file.ext"
     return c_prompt
@@ -640,8 +702,9 @@ def run_coder_task(manager, project_rules: Dict[str, Any], c_prompt: str, agent_
     """
     task_coder = Task(description=c_prompt, expected_output="Code", agent=agent_coder)
     MAX_CODER_RETRIES = 6  # Erhöht: 2 Versuche pro Modell x 3 Modelle
-    # ÄNDERUNG 30.01.2026: Timeout aus globaler Config
-    CODER_TIMEOUT_SECONDS = manager.config.get("agent_timeout_seconds", 300)
+    # AENDERUNG 07.02.2026: Pro-Agent Timeout aus agent_timeouts Dict
+    agent_timeouts = manager.config.get("agent_timeouts", {})
+    CODER_TIMEOUT_SECONDS = agent_timeouts.get("coder", manager.config.get("agent_timeout_seconds", 300))
     # ÄNDERUNG 29.01.2026: Modellwechsel erst nach X gleichen Fehlern
     ERRORS_BEFORE_MODEL_SWITCH = 2
     current_code = ""

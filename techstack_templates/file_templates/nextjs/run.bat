@@ -1,0 +1,6 @@
+@echo off
+echo Installiere Abhaengigkeiten...
+call npm install
+echo Starte Entwicklungsserver...
+start http://localhost:3000
+call npm run dev

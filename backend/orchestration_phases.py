@@ -29,88 +29,12 @@ from .quality_gate import QualityGate
 
 logger = logging.getLogger(__name__)
 
-# AENDERUNG 02.02.2026: Blacklist fuer ungueltige Python-Pakete (Frontend-only)
-# Diese Pakete werden vom LLM manchmal faelschlicherweise als Python-Dependencies empfohlen
-INVALID_PYTHON_PACKAGES = {
-    # CSS-Frameworks (nur per CDN oder npm)
-    "bootstrap", "tailwindcss", "bulma", "foundation", "materialize",
-    "semantic-ui", "pure-css", "skeleton", "milligram",
-    # JS-Frameworks (nur npm)
-    "react", "vue", "angular", "svelte", "ember", "backbone",
-    # JS-Bibliotheken (nur npm)
-    "jquery", "lodash", "axios", "moment", "d3", "chart.js", "three.js",
-    # CSS-in-JS (nur npm)
-    "styled-components", "emotion", "tailwind",
-}
-
-
-def _ensure_required_dependencies(deps: list, language: str, project_type: str, ui_log_callback: Callable) -> list:
-    """
-    AENDERUNG 07.02.2026: Fuegt fehlende Pflicht-Dependencies hinzu basierend auf Framework.
-    Symptom: react-dom fehlte in package.json -> Next.js App startet nicht.
-    Ursache: LLM vergisst haeufig Co-Dependencies (react-dom, postcss, autoprefixer).
-    Loesung: Automatische Ergaenzung nach Blueprint-Parsing.
-    """
-    if not deps or language.lower() not in ("javascript", "typescript"):
-        return deps
-    deps_lower = [d.lower() for d in deps]
-    added = []
-    # React braucht zwingend react-dom
-    if "react" in deps_lower and "react-dom" not in deps_lower:
-        deps.append("react-dom")
-        added.append("react-dom")
-    # Next.js braucht react + react-dom
-    if "next" in deps_lower:
-        if "react" not in deps_lower:
-            deps.append("react")
-            added.append("react")
-        if "react-dom" not in deps_lower:
-            deps.append("react-dom")
-            added.append("react-dom")
-    # Tailwind braucht postcss + autoprefixer
-    if "tailwindcss" in deps_lower:
-        if "postcss" not in deps_lower:
-            deps.append("postcss")
-            added.append("postcss")
-        if "autoprefixer" not in deps_lower:
-            deps.append("autoprefixer")
-            added.append("autoprefixer")
-    if added:
-        ui_log_callback("TechArchitect", "Info",
-            f"Pflicht-Dependencies automatisch ergaenzt: {', '.join(added)}")
-    return deps
-
-
-def _sanitize_python_dependencies(deps: list, language: str, ui_log_callback: Callable) -> list:
-    """
-    Entfernt ungueltige Python-Pakete aus der Dependencies-Liste.
-
-    Args:
-        deps: Liste der Dependencies vom TechArchitect
-        language: Sprache des Projekts (python, javascript, etc.)
-        ui_log_callback: Callback fuer Logging
-
-    Returns:
-        Bereinigte Liste ohne ungueltige Pakete
-    """
-    if language != "python" or not deps:
-        return deps
-
-    sanitized = []
-    removed = []
-
-    for dep in deps:
-        dep_lower = dep.lower().strip()
-        if dep_lower in INVALID_PYTHON_PACKAGES:
-            removed.append(dep)
-        else:
-            sanitized.append(dep)
-
-    if removed:
-        ui_log_callback("TechArchitect", "Warning",
-            f"Ungueltige Python-Pakete entfernt (Frontend-only): {', '.join(removed)}")
-
-    return sanitized
+# AENDERUNG 07.02.2026: Dependency-Helpers extrahiert nach orchestration_deps.py (Regel 1)
+from .orchestration_deps import (
+    ensure_required_dependencies as _ensure_required_dependencies,
+    sanitize_python_dependencies as _sanitize_python_dependencies,
+    apply_template_if_selected as _apply_template_if_selected,
+)
 
 
 def run_techstack_phase(
@@ -210,7 +134,12 @@ def run_techstack_phase(
             tech_blueprint = _infer_blueprint_from_requirements(user_goal)
             ui_log_callback("TechArchitect", "Warning", f"Blueprint-Parsing fehlgeschlagen ({e}), verwende requirement-basierten Fallback: {tech_blueprint['project_type']}")
 
+    # AENDERUNG 07.02.2026: Template-basierte Blueprint-Erstellung
+    # Wenn Agent ein Template gewaehlt hat, Blueprint aus Template bauen
+    tech_blueprint = _apply_template_if_selected(tech_blueprint, project_path, ui_log_callback)
+
     # AENDERUNG 02.02.2026: Ungueltige Python-Pakete entfernen (Bug #2 Fix)
+    # Safety Net: Laeuft IMMER, auch bei Template-basierten Blueprints
     if "dependencies" in tech_blueprint:
         tech_blueprint["dependencies"] = _sanitize_python_dependencies(
             tech_blueprint["dependencies"],

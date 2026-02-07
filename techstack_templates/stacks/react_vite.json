@@ -1,0 +1,62 @@
+{
+  "template_id": "react_vite",
+  "template_version": "1.0",
+  "display_name": "React SPA mit Vite + Tailwind",
+  "source": "manual",
+  "match_keywords": ["react", "vite", "spa", "single-page", "frontend", "tailwind"],
+  "match_priority": 8,
+  "blueprint": {
+    "project_type": "react_vite",
+    "app_type": "webapp",
+    "test_strategy": "playwright",
+    "language": "javascript",
+    "database": "none",
+    "package_file": "package.json",
+    "dependencies": {
+      "react": "18.2.0",
+      "react-dom": "18.2.0",
+      "tailwindcss": "3.4.1",
+      "postcss": "8.4.31",
+      "autoprefixer": "10.4.16"
+    },
+    "dev_dependencies": {
+      "vite": "5.0.8",
+      "@vitejs/plugin-react": "4.2.1"
+    },
+    "install_command": "npm install",
+    "run_command": "npm run dev",
+    "requires_server": true,
+    "server_port": 5173,
+    "server_startup_time_ms": 15000
+  },
+  "required_files": [
+    "index.html",
+    "src/App.jsx",
+    "src/main.jsx",
+    "src/index.css",
+    "package.json",
+    "vite.config.js",
+    "tailwind.config.js",
+    "postcss.config.js",
+    "run.bat"
+  ],
+  "directory_structure": {
+    "src/": "Quellcode der Anwendung",
+    "src/components/": "Wiederverwendbare React-Komponenten",
+    "public/": "Statische Assets"
+  },
+  "coder_rules": [
+    "ES6 import/export verwenden - KEIN require() oder module.exports",
+    "Einstiegspunkt ist src/main.jsx - rendert App-Komponente in #root",
+    "Root-Komponente ist src/App.jsx",
+    "Server starten mit 'npm run dev' (Vite Dev Server)",
+    "Exakte Versionsnummern verwenden - KEIN ^ oder ~ Prefix",
+    "index.html im Root-Verzeichnis mit <div id='root'></div>",
+    "Tailwind-Klassen direkt in JSX verwenden",
+    "src/index.css muss Tailwind-Direktiven enthalten (@tailwind base/components/utilities)",
+    "run.bat muss ohne Argumente per Doppelklick funktionieren",
+    "NIEMALS package-lock.json oder node_modules/ generieren"
+  ],
+  "file_templates_dir": "react_vite",
+  "container_ids": ["root", "app"]
+}

@@ -1,0 +1,6 @@
+@echo off
+echo Installiere Abhaengigkeiten...
+call npm install
+echo Starte Express Server...
+start http://localhost:3000
+call node src/app.js

@@ -13,12 +13,11 @@ import os
 import json
 import uuid
 import logging
-import copy
-import hashlib
-import re
 from datetime import datetime
 from typing import Dict, Any, List, Optional
-from pathlib import Path
+
+# AENDERUNG 07.02.2026: Sanitizer-Funktionen extrahiert nach library_sanitizer.py (Regel 1)
+from .library_sanitizer import prepare_archive_payload
 
 logger = logging.getLogger(__name__)
 
@@ -205,134 +204,6 @@ class LibraryManager:
         else:
             return str(content)
 
-    # ÄNDERUNG [31.01.2026]: Sanitizer für Archive (Pfad/Secret/Stacktrace)
-    def _hash_text(self, text: str) -> str:
-        return hashlib.sha256(text.encode("utf-8")).hexdigest()[:10]
-
-    def _sanitize_paths(self, text: str) -> str:
-        # Windows User-Pfade anonymisieren
-        text = re.sub(r"([A-Za-z]:\\Users\\)([^\\]+)(\\[^\s\"']*)", r"\1<USER>\3", text)
-        text = re.sub(r"([A-Za-z]:/Users/)([^/]+)(/[^\s\"']*)", r"\1<USER>\3", text)
-
-        def _windows_replacer(match: re.Match) -> str:
-            path = match.group(0)
-            return path if "<USER>" in path else "<LOCAL_PATH>"
-
-        text = re.sub(r"[A-Za-z]:[\\/][^\s\"']+", _windows_replacer, text)
-
-        # Unix User-Pfade anonymisieren
-        text = re.sub(r"(/(?:Users|home)/)([^/]+)(/[^\s\"']*)", r"\1<USER>\3", text)
-
-        def _unix_replacer(match: re.Match) -> str:
-            path = match.group(0)
-            return path if "<USER>" in path else "<LOCAL_PATH>"
-
-        text = re.sub(r"/(?:Users|home|var|tmp|private|opt|etc|usr|root|Volumes)[^\s\"']+", _unix_replacer, text)
-        return text
-
-    def _redact_stack_traces(self, text: str) -> str:
-        if "Traceback (most recent call last)" in text:
-            trace_id = self._hash_text(text)
-            return re.sub(
-                r"Traceback \(most recent call last\):[\s\S]*",
-                f"[STACK_TRACE_REDACTED:{trace_id}]",
-                text
-            )
-
-        stack_line_re = re.compile(r"^\s*at .+\(.+:\d+:\d+\)\s*$", re.MULTILINE)
-        if stack_line_re.search(text):
-            trace_id = self._hash_text(text)
-            return stack_line_re.sub(f"[STACK_TRACE_REDACTED:{trace_id}]", text)
-        return text
-
-    def _sanitize_text(self, text: str) -> str:
-        sanitized = text
-
-        # .env Inhalte redigieren
-        sanitized = re.sub(
-            r"(### FILENAME: \.env)([\s\S]*?)(?=### FILENAME:|\Z)",
-            r"\1\n[ENV_DATEI_REDAKTIERT]\n",
-            sanitized
-        )
-
-        # Geheimnisse anonymisieren
-        sanitized = re.sub(r"(?i)(DART_TOKEN|SECRET_KEY)\s*=\s*([^\r\n]+)", r"\1=<REDACTED_SECRET>", sanitized)
-        sanitized = re.sub(
-            r"(app\.config\[['\"]SECRET_KEY['\"]\]\s*=\s*)['\"][^'\"]+['\"]",
-            r"\1'<REDACTED_SECRET>'",
-            sanitized
-        )
-        sanitized = re.sub(
-            r"os\.environ\.get\(['\"]SECRET_KEY['\"],\s*['\"][^'\"]+['\"]\)",
-            "os.environ.get('SECRET_KEY')",
-            sanitized
-        )
-
-        # User-IDs anonymisieren
-        sanitized = re.sub(r'("user_id"\s*:\s*")[^"]+(")', r'\1<REDACTED_USER>\2', sanitized)
-        sanitized = re.sub(r"(user_id\s*[:=]\s*)([A-Za-z0-9_\-]+)", r"\1<REDACTED_USER>", sanitized)
-
-        sanitized = self._sanitize_paths(sanitized)
-        sanitized = self._redact_stack_traces(sanitized)
-        return sanitized
-
-    def _sanitize_structure(self, value: Any) -> Any:
-        if isinstance(value, dict):
-            sanitized_dict = {}
-            for key, item in value.items():
-                if key == "files" and isinstance(item, list):
-                    item = [entry for entry in item if not (isinstance(entry, str) and entry.strip().endswith(".env"))]
-                sanitized_dict[key] = self._sanitize_structure(item)
-            return sanitized_dict
-        if isinstance(value, list):
-            return [self._sanitize_structure(item) for item in value]
-        if isinstance(value, str):
-            return self._sanitize_text(value)
-        return value
-
-    def _recalculate_totals(self, project: Dict[str, Any]) -> None:
-        total_tokens = 0
-        total_cost = 0.0
-        found_metrics = False
-
-        for entry in project.get("entries", []):
-            if entry.get("type") == "TokenMetrics":
-                content = entry.get("content")
-                try:
-                    metrics = json.loads(content) if isinstance(content, str) else (content or {})
-                except json.JSONDecodeError:
-                    metrics = {}
-                tokens = metrics.get("total_tokens") or metrics.get("token_count")
-                cost = metrics.get("total_cost") or metrics.get("cost")
-                if tokens is not None:
-                    total_tokens += int(tokens)
-                    found_metrics = True
-                if cost is not None:
-                    total_cost += float(cost)
-                    found_metrics = True
-            elif entry.get("metadata"):
-                tokens = entry["metadata"].get("tokens")
-                cost = entry["metadata"].get("cost")
-                if tokens is not None:
-                    total_tokens += int(tokens)
-                    found_metrics = True
-                if cost is not None:
-                    total_cost += float(cost)
-                    found_metrics = True
-
-        if found_metrics:
-            project["total_tokens"] = total_tokens
-            project["total_cost"] = round(total_cost, 6)
-        else:
-            project["total_tokens"] = None
-            project["total_cost"] = None
-
-    def _prepare_archive_payload(self, project: Dict[str, Any]) -> Dict[str, Any]:
-        sanitized_project = copy.deepcopy(project)
-        sanitized_project = self._sanitize_structure(sanitized_project)
-        self._recalculate_totals(sanitized_project)
-        return sanitized_project
-
     def add_created_file(self, filename: str):
         """Fügt eine erstellte Datei zur Projektliste hinzu."""
         if self.current_project and filename not in self.current_project["files_created"]:
@@ -373,9 +244,13 @@ class LibraryManager:
             return
 
         try:
-            archive_payload = self._prepare_archive_payload(self.current_project)
+            archive_payload = prepare_archive_payload(self.current_project)
             with open(archive_file, 'w', encoding='utf-8') as f:
                 json.dump(archive_payload, f, ensure_ascii=False, indent=2)
+
+            # AENDERUNG 07.02.2026: Lernschleife — erfolgreiche Projekte als Template-Basis
+            if status == "success":
+                self._try_learn_from_project(self.current_project)
 
             if os.path.exists(self.current_project_file):
                 os.remove(self.current_project_file)
@@ -388,6 +263,21 @@ class LibraryManager:
 
         # Current project zurücksetzen
         self.current_project = None
+
+    def _try_learn_from_project(self, project: Dict[str, Any]):
+        """
+        AENDERUNG 07.02.2026: Versucht aus erfolgreichem Projekt ein Template zu lernen.
+        Graceful Fallback — Fehler hier stoppen nicht den Archivierungsprozess.
+        """
+        try:
+            from techstack_templates.template_learning import try_learn_from_project
+            new_template = try_learn_from_project(project, self.archive_dir)
+            if new_template:
+                logger.info("Neues Template aus Projekt gelernt: %s", new_template)
+        except ImportError:
+            pass
+        except Exception as e:
+            logger.warning("Template-Lernschleife fehlgeschlagen (nicht kritisch): %s", e)
 
     def get_current_project(self) -> Optional[Dict[str, Any]]:
         """Gibt das aktuelle Projekt zurück."""

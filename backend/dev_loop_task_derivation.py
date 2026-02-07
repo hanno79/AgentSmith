@@ -185,26 +185,28 @@ class DevLoopTaskDerivation:
             sm = get_session_manager()
             if hasattr(sm, 'broadcast_event'):
                 sm.broadcast_event("utds", event_type, event_data)
-        except Exception:
-            pass
-        
+        except Exception as e:
+            self._log("UTDS", "BroadcastFehler",
+                      f"Event '{event_type}' konnte nicht gesendet werden: {e}")
+
         # Server-Output-Log schreiben
         try:
+            from datetime import datetime
             log_entry = json.dumps({
                 "timestamp": datetime.now().isoformat(),
                 "agent": "UTDS",
                 "action": event_type,
                 "content": event_data
             }, ensure_ascii=False)
-            
+
             # In server_output.log schreiben falls vorhanden
-            import os
             log_path = os.path.join(os.path.dirname(__file__), '..', 'server_output.log')
             if os.path.exists(log_path):
                 with open(log_path, 'a', encoding='utf-8') as f:
                     f.write(log_entry + '\n')
-        except Exception:
-            pass
+        except Exception as e:
+            self._log("UTDS", "LogDateiFehler",
+                      f"Event '{event_type}' konnte nicht in server_output.log geschrieben werden: {e}")
 
     def _record_to_memory(self, result: TaskDerivationResult, success: bool) -> None:
         """Speichert Task-Derivation im Memory-System."""

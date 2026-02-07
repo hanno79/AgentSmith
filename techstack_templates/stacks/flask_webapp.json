@@ -1,0 +1,50 @@
+{
+  "template_id": "flask_webapp",
+  "template_version": "1.0",
+  "display_name": "Flask + Jinja2 + SQLite",
+  "source": "manual",
+  "match_keywords": ["flask", "python", "webapp", "web", "server", "backend", "api", "jinja"],
+  "match_priority": 8,
+  "blueprint": {
+    "project_type": "flask",
+    "app_type": "webapp",
+    "test_strategy": "playwright",
+    "language": "python",
+    "database": "sqlite",
+    "package_file": "requirements.txt",
+    "dependencies": {
+      "flask": "3.0.0",
+      "flask-cors": "4.0.0",
+      "gunicorn": "21.2.0"
+    },
+    "install_command": "pip install -r requirements.txt",
+    "run_command": "python src/app.py",
+    "requires_server": true,
+    "server_port": 5000,
+    "server_startup_time_ms": 5000
+  },
+  "required_files": [
+    "src/app.py",
+    "requirements.txt",
+    "run.bat",
+    "src/templates/base.html",
+    "src/static/style.css"
+  ],
+  "directory_structure": {
+    "src/": "Quellcode der Anwendung",
+    "src/templates/": "Jinja2 HTML-Templates",
+    "src/static/": "Statische Dateien (CSS, JS, Bilder)",
+    "tests/": "Test-Dateien"
+  },
+  "coder_rules": [
+    "Flask-App in src/app.py als Einstiegspunkt",
+    "Templates in src/templates/ ablegen und Jinja2-Vererbung nutzen",
+    "Statische Dateien (CSS, JS, Bilder) in src/static/ ablegen",
+    "Server starten mit 'python src/app.py'",
+    "flask-cors fuer API-Endpunkte verwenden",
+    "SQLite-Datenbank in src/ Verzeichnis anlegen",
+    "run.bat muss ohne Argumente per Doppelklick funktionieren"
+  ],
+  "file_templates_dir": "flask",
+  "container_ids": ["app", "root"]
+}

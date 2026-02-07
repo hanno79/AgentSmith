@@ -11,6 +11,7 @@ Beschreibung: Content Validator - Erkennt leere Seiten, fehlende Inhalte und
 
 import json
 import os
+import re
 import logging
 from typing import Any, Dict, List, Optional
 from dataclasses import dataclass, field
@@ -579,7 +580,54 @@ def validate_run_bat(project_path: str, tech_blueprint: Dict[str, Any]) -> Conte
     return result
 
 
-# AENDERUNG 07.02.2026: Next.js Pflichtdateien-Pruefung
+# AENDERUNG 07.02.2026: Generische Template-Struktur-Validierung
+def validate_template_structure(project_path: str, tech_blueprint: Dict[str, Any]) -> ContentValidationResult:
+    """
+    Generische Validierung: Prueft ob alle required_files aus dem Template vorhanden sind.
+    Wird NUR bei Template-basierten Projekten aufgerufen (_source_template gesetzt).
+    Ersetzt die hartcodierte validate_nextjs_structure() fuer Template-Projekte.
+
+    Args:
+        project_path: Projektverzeichnis
+        tech_blueprint: Blueprint mit _source_template Feld
+
+    Returns:
+        ContentValidationResult mit Fehlern fuer fehlende Dateien
+    """
+    result = ContentValidationResult()
+    result.checks_performed.append("template_structure")
+
+    source_template_id = tech_blueprint.get("_source_template")
+    if not source_template_id:
+        return result
+
+    try:
+        from techstack_templates.template_loader import get_template_by_id
+        template = get_template_by_id(source_template_id)
+        if not template:
+            return result
+
+        required_files = template.get("required_files", [])
+        missing = []
+        for req_file in required_files:
+            filepath = os.path.join(project_path, req_file)
+            if not os.path.exists(filepath):
+                missing.append(req_file)
+
+        if missing:
+            result.issues.append(
+                f"Pflichtdateien fehlen (Template '{source_template_id}'): {', '.join(missing)}"
+            )
+            result.is_critical_failure = True
+    except ImportError:
+        pass
+    except Exception as e:
+        logger.warning("Template-Struktur-Validierung fehlgeschlagen: %s", e)
+
+    return result
+
+
+# AENDERUNG 07.02.2026: Next.js Pflichtdateien-Pruefung (Fallback fuer Projekte ohne Template)
 # ROOT-CAUSE-FIX:
 # Symptom: Generiertes Next.js-Projekt startet nicht / Tailwind wirkt nicht
 # Ursache: Coder vergisst pages/_app.js, styles/globals.css, react-dom
@@ -621,9 +669,11 @@ def validate_nextjs_structure(project_path: str, tech_blueprint: Dict[str, Any])
         for name in css_names
     )
     if not css_found:
-        result.warnings.append(
-            "styles/globals.css fehlt - Kein globales Styling. "
-            "Erstelle styles/globals.css mit @tailwind base/components/utilities"
+        # AENDERUNG 07.02.2026: Von warnings auf issues geaendert
+        # ROOT-CAUSE-FIX: Als WARNING wurde es vom Coder ignoriert → globals.css nie erstellt
+        result.issues.append(
+            "styles/globals.css fehlt - Tailwind CSS funktioniert NICHT ohne globals.css. "
+            "Erstelle styles/globals.css mit: @tailwind base; @tailwind components; @tailwind utilities;"
         )
 
     # 3. package.json: react-dom vorhanden?
@@ -638,9 +688,209 @@ def validate_nextjs_structure(project_path: str, tech_blueprint: Dict[str, Any])
                     "react-dom fehlt in package.json - Next.js/React braucht zwingend react-dom. "
                     "Fuege 'react-dom' mit gleicher Version wie 'react' hinzu"
                 )
+            # AENDERUNG 07.02.2026: @next/jest existiert nicht auf npm
+            # ROOT-CAUSE-FIX: Coder deklariert @next/jest als devDependency → npm install schlaegt fehl
+            # Loesung: Validator meldet ERROR damit Coder in naechster Iteration korrigiert
+            dev_deps = pkg.get("devDependencies", {})
+            if "@next/jest" in dev_deps or "@next/jest" in deps:
+                result.issues.append(
+                    "Das Paket @next/jest existiert nicht auf npm. "
+                    "Verwende next/jest (import aus 'next/jest') statt @next/jest als separates Paket. "
+                    "Entferne @next/jest aus devDependencies und nutze: "
+                    "const nextJest = require('next/jest')({ dir: './' })"
+                )
         except (json.JSONDecodeError, OSError) as e:
             logger.warning(f"package.json konnte nicht geprueft werden: {e}")
 
+    # AENDERUNG 07.02.2026: API-Routen Pattern pruefen
+    # ROOT-CAUSE-FIX: Coder generiert exports.get/post statt Next.js export default handler
+    api_dir = os.path.join(project_path, "pages", "api")
+    if os.path.isdir(api_dir):
+        for api_file in os.listdir(api_dir):
+            if api_file.endswith(('.js', '.jsx', '.ts', '.tsx')):
+                api_path = os.path.join(api_dir, api_file)
+                try:
+                    with open(api_path, "r", encoding="utf-8") as f:
+                        api_content = f.read()
+                    if "exports." in api_content and "export default" not in api_content:
+                        result.issues.append(
+                            f"pages/api/{api_file} verwendet 'exports.get/post' statt Next.js Pattern. "
+                            "MUSS 'export default function handler(req, res)' verwenden mit "
+                            "if (req.method === 'GET') / 'POST' etc."
+                        )
+                except Exception:
+                    pass
+
     result.is_critical_failure = len(result.issues) > 0
     result.has_visible_content = not result.is_critical_failure
+    return result
+
+
+# AENDERUNG 07.02.2026: Import-Dependency-Vollstaendigkeitspruefung
+# ROOT-CAUSE-FIX: Coder importiert Packages im Code die nicht in package.json stehen
+# Symptom: Internal Server Error / Module not found zur Laufzeit
+# Ursache: Kein Validator vergleicht import-Statements mit package.json
+# Loesung: Generischer Import-Scanner mit Feedback an Coder
+# Node.js built-in Module die NICHT in package.json stehen muessen
+_NODE_BUILTINS = frozenset({
+    "assert", "buffer", "child_process", "cluster", "console", "constants",
+    "crypto", "dgram", "dns", "domain", "events", "fs", "http", "http2",
+    "https", "inspector", "module", "net", "os", "path", "perf_hooks",
+    "process", "punycode", "querystring", "readline", "repl", "stream",
+    "string_decoder", "sys", "timers", "tls", "trace_events", "tty",
+    "url", "util", "v8", "vm", "wasi", "worker_threads", "zlib",
+})
+
+# Next.js / React interne Module (werden durch das Framework bereitgestellt)
+_FRAMEWORK_MODULES = frozenset({
+    "react", "react-dom", "next", "react/jsx-runtime", "react/jsx-dev-runtime",
+    "next/router", "next/link", "next/image", "next/head", "next/script",
+    "next/dynamic", "next/font", "next/font/google", "next/font/local",
+    "next/navigation", "next/headers", "next/server",
+})
+
+
+# AENDERUNG 07.02.2026: Inline-SVG Data-URL Erkennung (Fix 20)
+# ROOT-CAUSE-FIX:
+# Symptom: SVG Data-URLs in CSS/JSX brechen Sandbox-Parsing (unescapte Anfuehrungszeichen)
+# Ursache: Coder generiert background-image: url("data:image/svg+xml,<svg ...>")
+# Loesung: Validator meldet WARNING damit Coder in naechster Iteration korrigiert
+def validate_no_inline_svg(project_path: str, tech_blueprint: Dict[str, Any]) -> ContentValidationResult:
+    """
+    Prueft ob CSS/JS/JSX-Dateien inline SVG Data-URLs enthalten.
+
+    Inline SVGs verursachen Parser-Fehler weil unescapte Anfuehrungszeichen
+    den Code brechen. Alternativen: separate .svg Dateien, CSS-Gradienten,
+    oder URL-encoded SVGs mit %3C/%22.
+
+    Args:
+        project_path: Projektverzeichnis
+        tech_blueprint: Blueprint mit language-Info
+
+    Returns:
+        ContentValidationResult mit Warnungen bei Inline-SVG-Fund
+    """
+    result = ContentValidationResult()
+    result.checks_performed.append("inline_svg_check")
+
+    svg_pattern = re.compile(r'data:image/svg\+xml', re.IGNORECASE)
+    found_files = []
+
+    for root_dir, dirs, files in os.walk(project_path):
+        dirs[:] = [d for d in dirs if d not in ("node_modules", ".next", ".git")]
+        for fname in files:
+            if fname.endswith((".css", ".js", ".jsx", ".tsx", ".ts")):
+                fpath = os.path.join(root_dir, fname)
+                try:
+                    with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
+                        content = f.read()
+                    if svg_pattern.search(content):
+                        rel_path = os.path.relpath(fpath, project_path).replace("\\", "/")
+                        found_files.append(rel_path)
+                except Exception:
+                    pass
+
+    if found_files:
+        result.warnings.append(
+            f"Inline SVG Data-URL gefunden in: {', '.join(found_files[:5])}. "
+            "Verwende separate .svg Dateien in public/ oder URL-Encoding "
+            "(%3C statt <, %22 statt Anfuehrungszeichen). "
+            "Inline SVGs brechen Parser wegen unescapter Anfuehrungszeichen."
+        )
+
+    return result
+
+
+def validate_import_dependencies(project_path: str, tech_blueprint: Dict[str, Any]) -> ContentValidationResult:
+    """
+    Prueft ob alle importierten Packages in package.json deklariert sind.
+
+    Scannt alle JS/TS-Dateien nach import/require-Statements und vergleicht
+    die externen Package-Namen mit den deklarierten Dependencies in package.json.
+
+    Args:
+        project_path: Projektverzeichnis
+        tech_blueprint: Blueprint mit language-Info
+
+    Returns:
+        ContentValidationResult mit fehlenden Dependencies als issues
+    """
+    result = ContentValidationResult()
+    result.checks_performed.append("import_dependencies")
+
+    language = str(tech_blueprint.get("language", "")).lower()
+    if language not in ("javascript", "typescript"):
+        return result
+
+    pkg_path = os.path.join(project_path, "package.json")
+    if not os.path.exists(pkg_path):
+        return result
+
+    # 1. Package.json Dependencies lesen
+    try:
+        with open(pkg_path, "r", encoding="utf-8") as f:
+            pkg = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return result
+
+    declared_deps = set()
+    for key in ("dependencies", "devDependencies", "peerDependencies"):
+        declared_deps.update(pkg.get(key, {}).keys())
+
+    # 2. Alle JS/TS/JSX/TSX Dateien nach Imports scannen
+    import_pattern = re.compile(
+        r"""(?:import\s+.*?\s+from\s+['"]([^'"./][^'"]*?)['"]|"""
+        r"""require\(\s*['"]([^'"./][^'"]*?)['"]\s*\))"""
+    )
+    imported_packages = set()
+
+    for root_dir, dirs, files in os.walk(project_path):
+        dirs[:] = [d for d in dirs if d not in ("node_modules", ".next", ".git", "tests")]
+        for fname in files:
+            if fname.endswith((".js", ".jsx", ".ts", ".tsx", ".mjs")):
+                fpath = os.path.join(root_dir, fname)
+                try:
+                    with open(fpath, "r", encoding="utf-8") as f:
+                        content = f.read()
+                    for match in import_pattern.finditer(content):
+                        pkg_name = match.group(1) or match.group(2)
+                        # Scoped packages: @scope/name/sub → @scope/name
+                        if pkg_name.startswith("@"):
+                            # AENDERUNG 07.02.2026: Path-Aliases filtern (@/lib/utils ist kein npm-Package)
+                            # ROOT-CAUSE-FIX: jsconfig.json Aliases (@/) wurden als Scoped Packages gemeldet
+                            if pkg_name.startswith(("@/", "@\\")):
+                                continue
+                            parts = pkg_name.split("/")
+                            if len(parts) >= 2:
+                                pkg_name = f"{parts[0]}/{parts[1]}"
+                        else:
+                            # Unscoped: name/sub → name
+                            pkg_name = pkg_name.split("/")[0]
+                        imported_packages.add(pkg_name)
+                except Exception:
+                    pass
+
+    # 3. Fehlende Packages ermitteln
+    missing = []
+    for pkg in sorted(imported_packages):
+        # Node.js built-ins ueberspringen
+        base_name = pkg.split("/")[0] if not pkg.startswith("@") else pkg
+        if base_name in _NODE_BUILTINS:
+            continue
+        # Framework-Module ueberspringen (werden durch next/react bereitgestellt)
+        if pkg in _FRAMEWORK_MODULES:
+            continue
+        # In package.json deklariert?
+        if pkg in declared_deps:
+            continue
+        missing.append(pkg)
+
+    if missing:
+        result.issues.append(
+            f"Fehlende Dependencies in package.json: {', '.join(missing)}. "
+            "JEDES importierte Package MUSS in package.json dependencies stehen. "
+            f"Fuege hinzu: {', '.join(missing)}"
+        )
+        result.is_critical_failure = True
+
     return result

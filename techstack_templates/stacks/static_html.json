@@ -1,0 +1,40 @@
+{
+  "template_id": "static_html",
+  "template_version": "1.0",
+  "display_name": "Statische HTML/CSS/JS Webseite",
+  "source": "manual",
+  "match_keywords": ["html", "css", "statisch", "einfach", "webseite", "landingpage", "portfolio"],
+  "match_priority": 4,
+  "blueprint": {
+    "project_type": "static_html",
+    "app_type": "webapp",
+    "test_strategy": "playwright",
+    "language": "html",
+    "database": "none",
+    "package_file": "",
+    "dependencies": {},
+    "install_command": "",
+    "run_command": "start index.html",
+    "requires_server": false,
+    "server_port": 0,
+    "server_startup_time_ms": 0
+  },
+  "required_files": [
+    "index.html",
+    "styles.css",
+    "script.js",
+    "run.bat"
+  ],
+  "directory_structure": {},
+  "coder_rules": [
+    "Keine Build-Tools oder npm verwenden",
+    "Reines HTML, CSS und JavaScript ohne Frameworks",
+    "index.html direkt im Browser oeffnen",
+    "run.bat oeffnet index.html im Standard-Browser",
+    "Alle Styles in styles.css, alle Skripte in script.js",
+    "Kein package.json oder node_modules noetig",
+    "Vanilla JavaScript ohne externe Bibliotheken"
+  ],
+  "file_templates_dir": "static_html",
+  "container_ids": []
+}

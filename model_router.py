@@ -100,11 +100,33 @@ class ModelRouter:
         """Prüft ob der aktuelle Mode ein Free-Tier ist (mode=test)."""
         return self.config.get("mode", "test") == "test"
 
+    def _get_configured_models(self) -> set:
+        """
+        Sammelt alle explizit in config.yaml konfigurierten Modelle (primary + fallbacks).
+
+        AENDERUNG 07.02.2026: Fuer Mixed-Tier — erlaubt bezahlte Modelle die
+        bewusst in config.yaml konfiguriert wurden, auch im Test-Modus.
+        """
+        configured = set()
+        mode = self.config.get("mode", "test")
+        models_config = self.config.get("models", {}).get(mode, {})
+        for role_config in models_config.values():
+            if isinstance(role_config, dict):
+                primary = role_config.get("primary", "")
+                if primary:
+                    configured.add(primary)
+                for fb in role_config.get("fallback", []):
+                    configured.add(fb)
+                for fb in role_config.get("extended_fallback", []):
+                    configured.add(fb)
+        return configured
+
     def _validate_model_for_mode(self, model: str) -> bool:
         """
-        BUDGET-SCHUTZ: Stellt sicher dass im Free-Tier nur :free Modelle verwendet werden.
+        BUDGET-SCHUTZ: Im Free-Tier nur :free oder explizit konfigurierte Modelle erlauben.
 
-        AENDERUNG 02.02.2026: Sicherheitsmassnahme gegen unbeabsichtigte Kosten.
+        AENDERUNG 07.02.2026: Mixed-Tier — Explizit konfigurierte Paid-Modelle erlaubt.
+        Dynamischer Fallback bleibt auf :free beschraenkt (siehe _get_dynamic_fallback).
 
         Args:
             model: Die Modell-ID die validiert werden soll
@@ -115,10 +137,14 @@ class ModelRouter:
         if not self._is_free_tier_mode():
             return True  # In production/premium sind alle Modelle erlaubt
 
-        # Im Test-Modus NUR :free Modelle erlauben
+        # Explizit konfigurierte Modelle IMMER erlauben (bewusste Entscheidung)
+        if model in self._get_configured_models():
+            return True
+
+        # Dynamisch gewaehlte Modelle: nur :free
         if not model.endswith(":free"):
             log_event("ModelRouter", "BUDGET_PROTECTION",
-                      f"BLOCKIERT: {model} ist kein Free-Modell im Test-Modus!")
+                      f"BLOCKIERT: {model} ist kein Free-Modell und nicht explizit konfiguriert!")
             return False
         return True
 
@@ -523,6 +549,9 @@ class ModelRouter:
         if model_config.get("primary"):
             models.append(model_config["primary"])
         models.extend(model_config.get("fallback", []))
+        # AENDERUNG 07.02.2026: extended_fallback fehlte → Error-Rotation sah nur primary+fallback
+        # ROOT-CAUSE-FIX: get_model_for_error() nutzt get_all_models_for_role() und bekam unvollstaendige Liste
+        models.extend(model_config.get("extended_fallback", []))
 
         return models
 

@@ -1,0 +1,41 @@
+{
+  "template_id": "python_cli",
+  "template_version": "1.0",
+  "display_name": "Python CLI Tool",
+  "source": "manual",
+  "match_keywords": ["python", "cli", "kommandozeile", "script", "terminal", "tool", "konverter", "parser"],
+  "match_priority": 6,
+  "blueprint": {
+    "project_type": "python_cli",
+    "app_type": "cli",
+    "test_strategy": "cli_test",
+    "language": "python",
+    "database": "none",
+    "package_file": "requirements.txt",
+    "dependencies": {},
+    "install_command": "pip install -r requirements.txt",
+    "run_command": "python src/main.py",
+    "requires_server": false,
+    "server_port": 0,
+    "server_startup_time_ms": 0
+  },
+  "required_files": [
+    "src/main.py",
+    "requirements.txt",
+    "run.bat"
+  ],
+  "directory_structure": {
+    "src/": "Quellcode der Anwendung",
+    "tests/": "Test-Dateien"
+  },
+  "coder_rules": [
+    "Einstiegspunkt ist src/main.py",
+    "argparse fuer Kommandozeilen-Argumente verwenden",
+    "Ausfuehrung mit 'python src/main.py'",
+    "run.bat muss ohne Argumente per Doppelklick funktionieren",
+    "Hilfreiche --help Ausgabe implementieren",
+    "Exit-Codes korrekt setzen (0=Erfolg, 1=Fehler)"
+  ],
+  "file_templates_dir": "python_cli",
+  "container_ids": []
+}

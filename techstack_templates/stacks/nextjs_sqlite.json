@@ -1,0 +1,64 @@
+{
+  "template_id": "nextjs_sqlite",
+  "template_version": "1.0",
+  "display_name": "Next.js 14 + Tailwind CSS + SQLite",
+  "source": "manual",
+  "match_keywords": ["next", "nextjs", "react", "sqlite", "datenbank", "database", "todo", "aufgabe", "webapp"],
+  "match_priority": 12,
+  "blueprint": {
+    "project_type": "nextjs",
+    "app_type": "webapp",
+    "test_strategy": "playwright",
+    "language": "javascript",
+    "database": "sqlite",
+    "package_file": "package.json",
+    "dependencies": {
+      "next": "14.2.15",
+      "react": "18.2.0",
+      "react-dom": "18.2.0",
+      "tailwindcss": "3.4.1",
+      "postcss": "8.4.31",
+      "autoprefixer": "10.4.16",
+      "sqlite3": "5.1.7",
+      "sqlite": "5.0.0"
+    },
+    "install_command": "npm install",
+    "run_command": "npm run dev",
+    "requires_server": true,
+    "server_port": 3000,
+    "server_startup_time_ms": 90000
+  },
+  "required_files": [
+    "pages/_app.js",
+    "styles/globals.css",
+    "package.json",
+    "tailwind.config.js",
+    "postcss.config.js",
+    "next.config.js",
+    "jsconfig.json",
+    "run.bat"
+  ],
+  "directory_structure": {
+    "pages/": "Next.js Seiten (Pages Router)",
+    "pages/api/": "API-Routen",
+    "components/": "Wiederverwendbare React-Komponenten",
+    "lib/": "Hilfsfunktionen, Utilities und Datenbank-Setup",
+    "styles/": "CSS und Tailwind Styles",
+    "public/": "Statische Assets"
+  },
+  "coder_rules": [
+    "ES6 import/export verwenden - KEIN require() oder module.exports",
+    "Alle Dateien im Root-Verzeichnis ablegen, NICHT unter src/",
+    "Exakte Versionsnummern verwenden - KEIN ^ oder ~ Prefix",
+    "API-Routen muessen 'export default function handler(req, res)' exportieren",
+    "NIEMALS package-lock.json, node_modules/ oder .next/ generieren",
+    "pages/_app.js MUSS '../styles/globals.css' importieren",
+    "sqlite3 ist das C-Binding, sqlite ist der Promise-Wrapper - beide werden benoetigt",
+    "Verwende sqlite3 + sqlite fuer SQLite-Zugriff, NICHT better-sqlite3 oder sql.js",
+    "Datenbank-Zugriff ueber 'import sqlite from sqlite' und 'import sqlite3 from sqlite3'",
+    "Datenbank-Initialisierung in lib/db.js als wiederverwendbares Modul",
+    "next.config.js mit module.exports ist die einzige Ausnahme fuer CommonJS"
+  ],
+  "file_templates_dir": "nextjs",
+  "container_ids": ["__next", "root", "app"]
+}

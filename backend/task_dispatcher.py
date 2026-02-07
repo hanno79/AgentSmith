@@ -354,8 +354,18 @@ class TaskDispatcher:
             result = crew.kickoff()
             result_text = str(result) if result else ""
 
+            # AENDERUNG 07.02.2026: existing_files fuer Dateiname-Validierung (Fix 20)
+            existing_files = []
+            project_path = getattr(self.manager, 'project_path', None)
+            if project_path and os.path.isdir(str(project_path)):
+                for root, dirs, files in os.walk(str(project_path)):
+                    dirs[:] = [d for d in dirs if d not in ('node_modules', '.next', '.git', '__pycache__')]
+                    for fname in files:
+                        rel = os.path.relpath(os.path.join(root, fname), str(project_path)).replace("\\", "/")
+                        existing_files.append(rel)
+
             # Ergebnis analysieren
-            modified_files = self._extract_modified_files(result_text, task)
+            modified_files = self._extract_modified_files(result_text, task, existing_files=existing_files)
 
             # ÄNDERUNG 03.02.2026: UTDS-Fixes zu manager.current_code synchronisieren
             # Verhindert dass Fixes bei nächster Coder-Iteration verloren gehen
@@ -547,23 +557,66 @@ class TaskDispatcher:
             graph[task.id] = task.dependencies
         return graph
 
-    def _extract_modified_files(self, result: str, task: DerivedTask) -> List[str]:
-        """Extrahiert geaenderte Dateien aus Ergebnis."""
+    def _extract_modified_files(self, result: str, task: DerivedTask,
+                                existing_files: List[str] = None) -> List[str]:
+        """
+        Extrahiert geaenderte Dateien aus Ergebnis.
+
+        AENDERUNG 07.02.2026: Fix 20 — Blacklist + Tech-Stack-Filter + Dateivalidierung
+        ROOT-CAUSE-FIX:
+        Symptom: UTDS/Fix-Agent erstellt UNBEKANNTE_DATEI.js, module.ex, ./globals.css
+        Ursache: Regex akzeptiert .ex (Elixir) obwohl Projekt JS ist, keine Validierung
+        Loesung: Dreifach-Filter: Blacklist + Tech-Stack + Validierung gegen existierende Dateien
+
+        Args:
+            result: Ergebnis-Text mit Code-Bloecken
+            task: DerivedTask mit affected_files
+            existing_files: Optionale Liste existierender Projektdateien
+        """
         # AENDERUNG 07.02.2026: Extensions fuer alle 12 unterstuetzten Sprachen
         # Laengere Extensions zuerst (jsx vor js, json vor js, tsx vor ts)
         file_pattern = r'["\']?([a-zA-Z0-9_/\\.-]+\.(?:py|jsx|json|tsx|js|ts|html|css|yaml|yml|md|java|go|rs|cs|cpp|hpp|kt|kts|rb|swift|php|vue|svelte|dart|scala|ex|xml|gradle|sql|sh|bat|toml))["\']?'
         matches = re.findall(file_pattern, result)
 
         # AENDERUNG 06.02.2026: ROOT-CAUSE-FIX Framework-Namen in Patch-Liste
-        # Symptom: Next.js, Node.js landen als "Dateien" in der Patch-Liste (Patch-Ratio 0%)
-        # Ursache: Regex matcht Framework-Namen (Name.js) als Dateinamen
-        # Loesung: Gleicher Filter wie in task_deriver.py:553-557
-        # AENDERUNG 07.02.2026: Erweitert um weitere JS-Frameworks
         _FRAMEWORK_NAMES = {
             "next.js", "vue.js", "node.js", "react.js", "angular.js", "nuxt.js", "svelte.js",
             "express.js", "gatsby.js", "remix.js", "ember.js",
         }
         matches = [m for m in matches if m.lower() not in _FRAMEWORK_NAMES]
+
+        # AENDERUNG 07.02.2026: Schritt 1 — Blacklist fuer Muell-Dateinamen (Fix 20)
+        _GARBAGE_PATTERNS = [
+            r'^UNBEKANNTE',           # Platzhalter "UNBEKANNTE_DATEI"
+            r'^BeispielDatei',        # Platzhalter
+            r'^\.\/',                 # Relative Pfade "./globals.css"
+            r'^module\.ex$',          # Elixir-Fehlmatch
+            r'DATEI',                 # "DATEI" als Name
+        ]
+        matches = [m for m in matches if not any(re.search(p, m) for p in _GARBAGE_PATTERNS)]
+
+        # AENDERUNG 07.02.2026: Schritt 2 — Tech-Stack-Filter (Fix 20)
+        tech_blueprint = getattr(self.manager, 'tech_blueprint', {})
+        if tech_blueprint:
+            lang = tech_blueprint.get('language', '').lower()
+            framework = tech_blueprint.get('framework', '').lower()
+            if lang in ('javascript', 'typescript') or 'next' in framework or 'react' in framework:
+                matches = [m for m in matches if not m.endswith(('.py', '.ex', '.rb', '.go', '.rs', '.kt', '.swift', '.java'))]
+            elif lang == 'python':
+                matches = [m for m in matches if not m.endswith(('.jsx', '.tsx', '.ex', '.rb', '.go', '.rs', '.kt', '.swift'))]
+
+        # AENDERUNG 07.02.2026: Schritt 3 — Validierung gegen existierende Dateien (Fix 20)
+        if existing_files:
+            validated = []
+            for m in matches:
+                m_normalized = m.replace("\\", "/")
+                m_basename = os.path.basename(m_normalized)
+                if (m_normalized in existing_files
+                        or m_basename in [os.path.basename(ef) for ef in existing_files]
+                        or any(ef.endswith(f"/{m_normalized}") for ef in existing_files)):
+                    validated.append(m)
+            if validated:
+                matches = validated
 
         found = list(set(matches))[:10]
 

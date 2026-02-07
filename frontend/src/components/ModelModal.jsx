@@ -9,7 +9,7 @@
 
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, Zap } from 'lucide-react';
+import { Check, Zap, Clock } from 'lucide-react';
 import SortableModelList from './SortableModelList';
 import { PROVIDER_OPTIONS } from '../hooks/useModelFilter';
 
@@ -32,7 +32,10 @@ const ModelModal = ({
   configMode,
   providerOptions = PROVIDER_OPTIONS,
   tokenLimits = {},
-  onTokenLimitChange
+  onTokenLimitChange,
+  // ÄNDERUNG 07.02.2026: Agent-Timeout pro Agent (analog zu tokenLimits)
+  agentTimeouts = {},
+  onAgentTimeoutChange
 }) => {
   // ÄNDERUNG 07.02.2026: Token-Limit-Slider pro Agent im Modal
   const [localTokenLimit, setLocalTokenLimit] = React.useState(8192);
@@ -42,6 +45,27 @@ const ModelModal = ({
       setLocalTokenLimit(tokenLimits[selectedAgent.role] || tokenLimits.default || 8192);
     }
   }, [selectedAgent, tokenLimits]);
+
+  // ÄNDERUNG 07.02.2026: Timeout-Slider pro Agent im Modal (analog zu Token-Limit)
+  const [localTimeout, setLocalTimeout] = React.useState(750);
+
+  React.useEffect(() => {
+    if (selectedAgent && agentTimeouts) {
+      setLocalTimeout(agentTimeouts[selectedAgent.role] || agentTimeouts.default || 750);
+    }
+  }, [selectedAgent, agentTimeouts]);
+
+  // Diskrete Timeout-Steps in Sekunden (60s bis 1800s / 1 bis 30 Minuten)
+  const TIMEOUT_STEPS = [60, 90, 120, 180, 240, 300, 360, 420, 480, 540, 600, 750, 900, 1200, 1500, 1800];
+
+  const timeoutStepIndex = TIMEOUT_STEPS.reduce((best, s, i) =>
+    Math.abs(s - localTimeout) < Math.abs(TIMEOUT_STEPS[best] - localTimeout) ? i : best, 0);
+
+  // Formatierung: Minuten + Sekunden in Klammern
+  const formatTimeout = (seconds) => {
+    const min = Math.floor(seconds / 60);
+    return `${min} Min (${seconds}s)`;
+  };
 
   const formatTokens = (v) => v >= 1024 ? `${Math.round(v / 1024)}K` : String(v);
 
@@ -58,6 +82,10 @@ const ModelModal = ({
   const handleSaveAll = async () => {
     if (onTokenLimitChange && selectedAgent) {
       await onTokenLimitChange(selectedAgent.role, localTokenLimit);
+    }
+    // ÄNDERUNG 07.02.2026: Timeout ebenfalls speichern beim Save
+    if (onAgentTimeoutChange && selectedAgent) {
+      await onAgentTimeoutChange(selectedAgent.role, localTimeout);
     }
     onSave();
   };
@@ -239,6 +267,34 @@ const ModelModal = ({
                   }}
                 />
                 <span className="text-[10px] text-[#9cbaa6] font-mono">128K</span>
+              </div>
+            </div>
+
+            {/* ÄNDERUNG 07.02.2026: Timeout-Slider pro Agent (analog zu Token-Limit) */}
+            <div className="px-6 py-3 border-t border-[#28392e]">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-[#9cbaa6] text-xs font-bold uppercase tracking-widest flex items-center gap-2">
+                  <Clock size={14} className="text-amber-400" />
+                  Agent Timeout
+                </span>
+                <span className="text-amber-400 font-mono font-bold text-lg">
+                  {formatTimeout(localTimeout)}
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-[10px] text-[#9cbaa6] font-mono">1 Min</span>
+                <input
+                  type="range"
+                  min="0"
+                  max={TIMEOUT_STEPS.length - 1}
+                  value={timeoutStepIndex}
+                  onChange={(e) => setLocalTimeout(TIMEOUT_STEPS[parseInt(e.target.value)])}
+                  className="flex-1 mainframe-slider token-slider"
+                  style={{
+                    background: `linear-gradient(to right, #f59e0b 0%, #f59e0b ${(timeoutStepIndex / (TIMEOUT_STEPS.length - 1)) * 100}%, #28392e ${(timeoutStepIndex / (TIMEOUT_STEPS.length - 1)) * 100}%, #28392e 100%)`
+                  }}
+                />
+                <span className="text-[10px] text-[#9cbaa6] font-mono">30 Min</span>
               </div>
             </div>
 
