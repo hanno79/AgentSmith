@@ -7,10 +7,11 @@ Beschreibung: Memory Agent Verschlüsselungs-Funktionen.
               Extrahiert aus memory_agent.py (Regel 1: Max 500 Zeilen)
 """
 
+import logging
 import os
-import base64
 from typing import Optional
 
+logger = logging.getLogger(__name__)
 
 # Check if encryption is enabled
 MEMORY_ENCRYPTION_ENABLED = os.getenv("MEMORY_ENCRYPTION_ENABLED", "false").lower() == "true"
@@ -26,24 +27,38 @@ def _get_fernet() -> Optional['Fernet']:
         # Ensure key is properly formatted (base64 32-byte key)
         key = MEMORY_ENCRYPTION_KEY.encode() if isinstance(MEMORY_ENCRYPTION_KEY, str) else MEMORY_ENCRYPTION_KEY
         return Fernet(key)
-    except Exception:
+    except ImportError as e:
+        logger.error(
+            "Fernet-Instanz konnte nicht erstellt werden: cryptography-Modul fehlt oder ist fehlerhaft. "
+            "MEMORY_ENCRYPTION_KEY ist gesetzt, aber Abhängigkeit nicht verfügbar: %s",
+            e,
+            exc_info=True,
+        )
+        return None
+    except Exception as e:
+        logger.error(
+            "Fernet-Instanz konnte nicht erstellt werden: MEMORY_ENCRYPTION_KEY ungültig oder falsches Format "
+            "(erwartet: base64-codierter 32-Byte-Schlüssel). Fehler: %s",
+            e,
+            exc_info=True,
+        )
         return None
 
 
 def encrypt_data(data: str) -> str:
-    """Encrypt data if encryption is enabled."""
+    """Encrypt data if encryption is enabled. Fernet.encrypt returns base64 bytes; no extra encoding."""
     fernet = _get_fernet()
     if fernet:
-        encrypted = fernet.encrypt(data.encode())
-        return f"ENCRYPTED:{base64.b64encode(encrypted).decode()}"
+        encrypted_bytes = fernet.encrypt(data.encode())
+        return f"ENCRYPTED:{encrypted_bytes.decode()}"
     return data
 
 
 def decrypt_data(data: str) -> str:
-    """Decrypt data if it's encrypted."""
+    """Decrypt data if it's encrypted. Payload after ENCRYPTED: is Fernet base64; pass as bytes to decrypt."""
     if data.startswith("ENCRYPTED:"):
         fernet = _get_fernet()
         if fernet:
-            encrypted = base64.b64decode(data[10:])
-            return fernet.decrypt(encrypted).decode()
+            payload = data[10:].encode()
+            return fernet.decrypt(payload).decode()
     return data

@@ -339,12 +339,16 @@ class LibraryManager:
             self.current_project["files_created"].append(filename)
             self._save_current_project()
 
-    def complete_project(self, status: str = "success"):
+    def complete_project(self, status: str = "success", allow_error_archives: bool = False):
         """
         Schließt das aktuelle Projekt ab und archiviert es.
 
+        Nur Projekte mit status != "error" werden ins Archiv geschrieben,
+        sofern nicht allow_error_archives=True gesetzt ist.
+
         Args:
-            status: Endstatus (success, failed, cancelled)
+            status: Endstatus (success, failed, cancelled, error)
+            allow_error_archives: Wenn True, werden auch fehlerhafte Projekte archiviert.
         """
         if not self.current_project:
             return
@@ -352,11 +356,21 @@ class LibraryManager:
         self.current_project["completed_at"] = datetime.now().isoformat()
         self.current_project["status"] = status
 
-        # In Archiv verschieben
         archive_file = os.path.join(
             self.archive_dir,
             f"{self.current_project['project_id']}.json"
         )
+
+        # Nur erfolgreiche (nicht error) Projekte archivieren, außer allow_error_archives
+        if status == "error" and not allow_error_archives:
+            logger.info("Projekt mit status=error wird nicht archiviert (allow_error_archives=False).")
+            if os.path.exists(self.current_project_file):
+                try:
+                    os.remove(self.current_project_file)
+                except OSError as e:
+                    logger.warning("Aktuelle Projektdatei konnte nicht entfernt werden: %s", e)
+            self.current_project = None
+            return
 
         try:
             archive_payload = self._prepare_archive_payload(self.current_project)

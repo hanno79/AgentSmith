@@ -1,0 +1,254 @@
+{
+  "project_id": "proj_2026-01-30_08-49-59_ff2fe6",
+  "name": "erstelle eine umfassende todoliste app für mich in",
+  "goal": "erstelle eine umfassende todoliste app für mich in welcher ich code bugs und neue ideen erfassen kann welche ich beim testen gefunden habe. ich brauche eine spalte NR, Name, Beschreibung, Status.die bugs und ideen müssen erfasst werden können und der status muss gewechselt werden können. die bugs sollen in einer lokalen sqlite datenbank gespeichert werden. ich brauche eine umwerfende GUI mit perfekter usability und schönen glassmorphismus elementen mit hover und schatten effekten und frost glas elementen. sauber und modern. trau dich etwas.",
+  "briefing": null,
+  "briefing_preview": "",
+  "started_at": "2026-01-30T08:49:59.234722",
+  "completed_at": "2026-01-30T08:53:00.744868",
+  "status": "error",
+  "iterations": 0,
+  "total_tokens": 0,
+  "total_cost": 0.0,
+  "agents_involved": [
+    "Library",
+    "Researcher",
+    "Orchestrator",
+    "TechArchitect",
+    "TechStack",
+    "System"
+  ],
+  "files_created": [],
+  "entries": [
+    {
+      "id": "entry_0001",
+      "timestamp": "2026-01-30T08:49:59.236732",
+      "iteration": 0,
+      "from_agent": "Library",
+      "to_agent": "System",
+      "type": "ProjectStart",
+      "content": "Protokollierung gestartet: proj_2026-01-30_08-49-59_ff2fe6",
+      "metadata": {}
+    },
+    {
+      "id": "entry_0002",
+      "timestamp": "2026-01-30T08:49:59.238737",
+      "iteration": 0,
+      "from_agent": "Researcher",
+      "to_agent": "System",
+      "type": "ResearchOutput",
+      "content": "{\"query\": \"Suche technische Details für: erstelle eine umfassende todoliste app für mich in welcher ich code bugs und neue ideen erfassen kann welche ich beim testen gefunden habe. ich brauche eine spalte NR, Name, Beschreibung, Status.die bugs und ideen müssen erfasst werden können und der status muss gewechselt werden können. die bugs sollen in einer lokalen sqlite datenbank gespeichert werden. ich brauche eine umwerfende GUI mit perfekter usability und schönen glassmorphismus elementen mit hover und schatten effekten und frost glas elementen. sauber und modern. trau dich etwas.\", \"result\": \"\", \"status\": \"searching\", \"model\": \"openrouter/meta-llama/llama-3.1-405b-instruct:free\", \"timeout_seconds\": 300}",
+      "metadata": {}
+    },
+    {
+      "id": "entry_0003",
+      "timestamp": "2026-01-30T08:49:59.241969",
+      "iteration": 0,
+      "from_agent": "Researcher",
+      "to_agent": "System",
+      "type": "Status",
+      "content": "Sucht Kontext... (max. 300s)",
+      "metadata": {}
+    },
+    {
+      "id": "entry_0004",
+      "timestamp": "2026-01-30T08:49:59.243988",
+      "iteration": 0,
+      "from_agent": "Researcher",
+      "to_agent": "System",
+      "type": "WorkerStatus",
+      "content": "{\"office\": \"researcher\", \"pool_status\": {\"office\": \"researcher\", \"total_workers\": 1, \"active_workers\": 1, \"idle_workers\": 0, \"workers\": [{\"id\": \"researcher_1\", \"name\": \"Sage\", \"office\": \"researcher\", \"status\": \"working\", \"current_task\": null, \"current_task_description\": \"Recherche: Suche technische Details für: erstelle eine umfass...\", \"model\": \"openrouter/meta-llama/llama-3.1-405b-instruct:free\", \"tasks_completed\": 0, \"last_activity\": null}], \"queue_size\": 0}, \"event\": \"task_assigned\"}",
+      "metadata": {}
+    },
+    {
+      "id": "entry_0005",
+      "timestamp": "2026-01-30T08:50:00.705162",
+      "iteration": 0,
+      "from_agent": "Researcher",
+      "to_agent": "System",
+      "type": "Warning",
+      "content": "Recherche-Modell nicht verfügbar: litellm.NotFoundError: NotFoundError: OpenrouterException - {\"error\":{\"message\":\"Provider returned e",
+      "metadata": {}
+    },
+    {
+      "id": "entry_0006",
+      "timestamp": "2026-01-30T08:50:00.707960",
+      "iteration": 0,
+      "from_agent": "Researcher",
+      "to_agent": "System",
+      "type": "WorkerStatus",
+      "content": "{\"office\": \"researcher\", \"pool_status\": {\"office\": \"researcher\", \"total_workers\": 1, \"active_workers\": 1, \"idle_workers\": 0, \"workers\": [{\"id\": \"researcher_1\", \"name\": \"Sage\", \"office\": \"researcher\", \"status\": \"working\", \"current_task\": null, \"current_task_description\": \"Recherche: Suche technische Details für: erstelle eine umfass...\", \"model\": \"openrouter/meta-llama/llama-3.1-405b-instruct:free\", \"tasks_completed\": 0, \"last_activity\": null}], \"queue_size\": 0}, \"event\": \"task_completed\"}",
+      "metadata": {}
+    },
+    {
+      "id": "entry_0007",
+      "timestamp": "2026-01-30T08:50:00.709568",
+      "iteration": 0,
+      "from_agent": "Researcher",
+      "to_agent": "System",
+      "type": "ResearchOutput",
+      "content": "{\"query\": \"Suche technische Details für: erstelle eine umfassende todoliste app für mich in welcher ich code bugs und neue ideen erfassen kann welche ich beim testen gefunden habe. ich brauche eine spalte NR, Name, Beschreibung, Status.die bugs und ideen müssen erfasst werden können und der status muss gewechselt werden können. die bugs sollen in einer lokalen sqlite datenbank gespeichert werden. ich brauche eine umwerfende GUI mit perfekter usability und schönen glassmorphismus elementen mit hover und schatten effekten und frost glas elementen. sauber und modern. trau dich etwas.\", \"result\": \"\", \"status\": \"error\", \"model\": \"openrouter/meta-llama/llama-3.1-405b-instruct:free\", \"error\": \"litellm.NotFoundError: NotFoundError: OpenrouterException - {\\\"error\\\":{\\\"message\\\":\\\"Provider returned error\\\",\\\"code\\\":404,\\\"metadata\\\":{\\\"raw\\\":\\\"No matching route found. It is likely because the model specified in your request is not configured in the Gateway.\\\",\\\"provider_name\\\":\\\"ModelRun\\\",\\\"is_byok\\\":false}},\\\"user_id\\\":\\\"user_2wZeGHQVFxb9G0hgVpIfdJPrjvI\\\"}\"}",
+      "metadata": {}
+    },
+    {
+      "id": "entry_0008",
+      "timestamp": "2026-01-30T08:50:00.711583",
+      "iteration": 0,
+      "from_agent": "Orchestrator",
+      "to_agent": "System",
+      "type": "Status",
+      "content": "Analysiere Intent...",
+      "metadata": {}
+    },
+    {
+      "id": "entry_0009",
+      "timestamp": "2026-01-30T08:50:00.713596",
+      "iteration": 0,
+      "from_agent": "Orchestrator",
+      "to_agent": "System",
+      "type": "Analysis",
+      "content": "{\"project_type\": [\"design\", \"database\"], \"needs_ui\": true, \"needs_data\": false, \"needs_research\": false, \"needs_database\": true}",
+      "metadata": {}
+    },
+    {
+      "id": "entry_0010",
+      "timestamp": "2026-01-30T08:50:00.717619",
+      "iteration": 0,
+      "from_agent": "TechArchitect",
+      "to_agent": "System",
+      "type": "Status",
+      "content": "Analysiere TechStack...",
+      "metadata": {}
+    },
+    {
+      "id": "entry_0011",
+      "timestamp": "2026-01-30T08:50:00.719634",
+      "iteration": 0,
+      "from_agent": "TechArchitect",
+      "to_agent": "System",
+      "type": "WorkerStatus",
+      "content": "{\"office\": \"techstack_architect\", \"pool_status\": {\"office\": \"techstack_architect\", \"total_workers\": 1, \"active_workers\": 1, \"idle_workers\": 0, \"workers\": [{\"id\": \"techstack_architect_1\", \"name\": \"Worker\", \"office\": \"techstack_architect\", \"status\": \"working\", \"current_task\": null, \"current_task_description\": \"Analysiere TechStack...\", \"model\": \"openrouter/deepseek/deepseek-r1-0528:free\", \"tasks_completed\": 0, \"last_activity\": null}], \"queue_size\": 0}, \"event\": \"task_assigned\"}",
+      "metadata": {}
+    },
+    {
+      "id": "entry_0012",
+      "timestamp": "2026-01-30T08:50:15.731828",
+      "iteration": 0,
+      "from_agent": "TechStack",
+      "to_agent": "System",
+      "type": "Heartbeat",
+      "content": "{\"status\": \"working\", \"task\": \"Tech-Stack Analyse\", \"elapsed_seconds\": 15, \"heartbeat_count\": 1}",
+      "metadata": {}
+    },
+    {
+      "id": "entry_0013",
+      "timestamp": "2026-01-30T08:50:30.737657",
+      "iteration": 0,
+      "from_agent": "TechStack",
+      "to_agent": "System",
+      "type": "Heartbeat",
+      "content": "{\"status\": \"working\", \"task\": \"Tech-Stack Analyse\", \"elapsed_seconds\": 30, \"heartbeat_count\": 2}",
+      "metadata": {}
+    },
+    {
+      "id": "entry_0014",
+      "timestamp": "2026-01-30T08:50:45.753403",
+      "iteration": 0,
+      "from_agent": "TechStack",
+      "to_agent": "System",
+      "type": "Heartbeat",
+      "content": "{\"status\": \"working\", \"task\": \"Tech-Stack Analyse\", \"elapsed_seconds\": 45, \"heartbeat_count\": 3}",
+      "metadata": {}
+    },
+    {
+      "id": "entry_0015",
+      "timestamp": "2026-01-30T08:51:00.768351",
+      "iteration": 0,
+      "from_agent": "TechStack",
+      "to_agent": "System",
+      "type": "Heartbeat",
+      "content": "{\"status\": \"working\", \"task\": \"Tech-Stack Analyse\", \"elapsed_seconds\": 60, \"heartbeat_count\": 4}",
+      "metadata": {}
+    },
+    {
+      "id": "entry_0016",
+      "timestamp": "2026-01-30T08:51:15.772637",
+      "iteration": 0,
+      "from_agent": "TechStack",
+      "to_agent": "System",
+      "type": "Heartbeat",
+      "content": "{\"status\": \"working\", \"task\": \"Tech-Stack Analyse\", \"elapsed_seconds\": 75, \"heartbeat_count\": 5}",
+      "metadata": {}
+    },
+    {
+      "id": "entry_0017",
+      "timestamp": "2026-01-30T08:51:30.777144",
+      "iteration": 0,
+      "from_agent": "TechStack",
+      "to_agent": "System",
+      "type": "Heartbeat",
+      "content": "{\"status\": \"working\", \"task\": \"Tech-Stack Analyse\", \"elapsed_seconds\": 90, \"heartbeat_count\": 6}",
+      "metadata": {}
+    },
+    {
+      "id": "entry_0018",
+      "timestamp": "2026-01-30T08:51:45.786402",
+      "iteration": 0,
+      "from_agent": "TechStack",
+      "to_agent": "System",
+      "type": "Heartbeat",
+      "content": "{\"status\": \"working\", \"task\": \"Tech-Stack Analyse\", \"elapsed_seconds\": 105, \"heartbeat_count\": 7}",
+      "metadata": {}
+    },
+    {
+      "id": "entry_0019",
+      "timestamp": "2026-01-30T08:52:00.793409",
+      "iteration": 0,
+      "from_agent": "TechStack",
+      "to_agent": "System",
+      "type": "Heartbeat",
+      "content": "{\"status\": \"working\", \"task\": \"Tech-Stack Analyse\", \"elapsed_seconds\": 120, \"heartbeat_count\": 8}",
+      "metadata": {}
+    },
+    {
+      "id": "entry_0020",
+      "timestamp": "2026-01-30T08:52:15.812165",
+      "iteration": 0,
+      "from_agent": "TechStack",
+      "to_agent": "System",
+      "type": "Heartbeat",
+      "content": "{\"status\": \"working\", \"task\": \"Tech-Stack Analyse\", \"elapsed_seconds\": 135, \"heartbeat_count\": 9}",
+      "metadata": {}
+    },
+    {
+      "id": "entry_0021",
+      "timestamp": "2026-01-30T08:52:30.814944",
+      "iteration": 0,
+      "from_agent": "TechStack",
+      "to_agent": "System",
+      "type": "Heartbeat",
+      "content": "{\"status\": \"working\", \"task\": \"Tech-Stack Analyse\", \"elapsed_seconds\": 150, \"heartbeat_count\": 10}",
+      "metadata": {}
+    },
+    {
+      "id": "entry_0022",
+      "timestamp": "2026-01-30T08:52:45.825253",
+      "iteration": 0,
+      "from_agent": "TechStack",
+      "to_agent": "System",
+      "type": "Heartbeat",
+      "content": "{\"status\": \"working\", \"task\": \"Tech-Stack Analyse\", \"elapsed_seconds\": 165, \"heartbeat_count\": 11}",
+      "metadata": {}
+    },
+    {
+      "id": "entry_0023",
+      "timestamp": "2026-01-30T08:53:00.742857",
+      "iteration": 0,
+      "from_agent": "System",
+      "to_agent": "System",
+      "type": "Error",
+      "content": "Fehler: Operation dauerte länger als 180s\nTraceback (most recent call last):\n  File \"C:\\Temp\\multi_agent_poc\\backend\\orchestration_manager.py\", line 630, in run_task\n    raise ts_error\n  File \"C:\\Temp\\multi_agent_poc\\backend\\orchestration_manager.py\", line 608, in run_task\n    techstack_result = run_with_heartbeat(\n                       ^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Temp\\multi_agent_poc\\backend\\heartbeat_utils.py\", line 87, in run_with_heartbeat\n    raise TimeoutError(f\"Operation dauerte länger als {timeout_seconds}s\")\nTimeoutError: Operation dauerte länger als 180s\n",
+      "metadata": {}
+    }
+  ]
+}

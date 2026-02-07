@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
 """
 Author: rahn
-Datum: 24.01.2026
-Version: 1.0
-Beschreibung: Zentrale Hilfsfunktionen für alle Agenten (Single Source of Truth).
+Datum: 02.02.2026
+Version: 1.1
+Beschreibung: Zentrale Hilfsfunktionen fuer alle Agenten (Single Source of Truth).
+
+              AENDERUNG 02.02.2026: get_model_for_agent() - Zentrale Wrapper-Funktion
+                                    die Router-Logik und Config-Fallback konsolidiert.
 """
 
 from typing import Any, Dict, List, Optional
@@ -98,3 +101,44 @@ def combine_project_rules(project_rules: Dict[str, List[str]], role: str) -> str
     role_rules = "\n".join(project_rules.get(role, []))
 
     return f"Globale Regeln:\n{global_rules}\n\n{role.capitalize()}-spezifische Regeln:\n{role_rules}"
+
+
+def get_model_for_agent(
+    config: Dict[str, Any],
+    router,
+    role: str,
+    fallback_role: Optional[str] = None
+) -> str:
+    """
+    Zentrale Wrapper-Funktion fuer Modellauswahl aller Agenten.
+
+    AENDERUNG 02.02.2026: Neue Funktion zur Konsolidierung der duplizierten
+    if/else Router-Logik in allen Agenten.
+
+    Diese Funktion ist die SINGLE SOURCE OF TRUTH fuer die Modell-Auswahl
+    und vereinheitlicht folgendes Muster das in allen Agenten vorkommt:
+
+        if router:
+            model = router.get_model(role)
+        else:
+            model = get_model_from_config(config, role, fallback_role)
+
+    Args:
+        config: Anwendungskonfiguration mit 'mode' und 'models' Keys
+        router: ModelRouter-Instanz (kann None sein wenn kein Router verfuegbar)
+        role: Name der Agent-Rolle (z.B. 'coder', 'reviewer', 'tester')
+        fallback_role: Optional - Alternative Rolle falls 'role' nicht konfiguriert
+
+    Returns:
+        Model-String fuer die Verwendung mit CrewAI/LiteLLM
+
+    Beispiel:
+        >>> # Mit Router (nutzt automatisches Fallback bei Rate-Limits)
+        >>> model = get_model_for_agent(config, router, "coder")
+
+        >>> # Ohne Router (nutzt Config-basiertes Fallback)
+        >>> model = get_model_for_agent(config, None, "tester", fallback_role="reviewer")
+    """
+    if router:
+        return router.get_model(role)
+    return get_model_from_config(config, role, fallback_role)

@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 """
 Author: rahn
-Datum: 31.01.2026
-Version: 2.5
+Datum: 01.02.2026
+Version: 2.6
 Beschreibung: Orchestration Manager - Backend-Koordination mit LiteLLM Callbacks und Agent-Steuerung.
+              AENDERUNG 01.02.2026: on_fallback Callback - WorkerStatus wird bei Modell-Fallback aktualisiert
               ÄNDERUNG 31.01.2026: Refaktoriert - Module ausgelagert für Regel 1 (Max 500 Zeilen)
               - orchestration_budget.py: Budget-Tracking, LiteLLM Callbacks
               - orchestration_utils.py: JSON-Reparatur, Requirements-Extraktion
@@ -128,8 +129,11 @@ class OrchestrationManager:
         self.force_security_fix = False
         self.discovery_briefing: Optional[Dict[str, Any]] = None
         self.model_router = get_model_router(self.config)
+        # AENDERUNG 01.02.2026: Fallback-Callback um WorkerStatus zu aktualisieren
+        self.model_router.on_fallback = self._handle_model_fallback
         self.project_rules = {}
 
+        # AENDERUNG 02.02.2026: Planner Office hinzugefuegt
         self.office_manager = OfficeManager(
             on_status_change=self._handle_worker_status_change,
             config={
@@ -137,6 +141,7 @@ class OrchestrationManager:
                 "designer": {"max_workers": 1}, "db_designer": {"max_workers": 1},
                 "security": {"max_workers": 1}, "researcher": {"max_workers": 1},
                 "reviewer": {"max_workers": 1}, "techstack_architect": {"max_workers": 1},
+                "planner": {"max_workers": 1},
             }
         )
         self.on_log: Optional[Callable[[str, str, str], None]] = None
@@ -148,7 +153,7 @@ class OrchestrationManager:
                 self.external_bureau = ExternalBureauManager(self.config)
                 augment_cfg = self.config.get("external_specialists", {}).get("augment_context", {})
                 if augment_cfg.get("auto_activate", False):
-                    self.external_bureau.activate_specialist("augment_context")
+                    self.external_bureau.activate_specialist("augment")
                     logger.info("Augment Context auto-aktiviert fuer DevLoop")
             except Exception as e:
                 logger.warning(f"External Bureau nicht verfuegbar: {e}")
@@ -234,6 +239,42 @@ class OrchestrationManager:
 
     async def _handle_worker_status_change(self, data: Dict[str, Any]):
         await handle_worker_status_change(data, self.on_log)
+
+    def _handle_model_fallback(self, agent_role: str, primary: str, fallback: str):
+        """
+        AENDERUNG 01.02.2026: Callback wenn ModelRouter zu Fallback wechselt.
+        Aktualisiert den aktiven Worker mit dem neuen Modell.
+        """
+        # Mapping von agent_role zu office
+        role_to_office = {
+            "coder": "coder", "tester": "tester", "designer": "designer",
+            "database_designer": "db_designer", "db_designer": "db_designer",
+            "security": "security", "researcher": "researcher",
+            "reviewer": "reviewer", "techstack_architect": "techstack_architect",
+            "meta_orchestrator": None, "orchestrator": None  # Keine Worker-Pools
+        }
+        office = role_to_office.get(agent_role)
+        if not office:
+            return
+
+        # Aktiven Worker finden und Modell aktualisieren
+        pool = self.office_manager.get_pool(office)
+        if pool:
+            active_workers = pool.get_active_workers()
+            for worker in active_workers:
+                worker.model = fallback
+                # WorkerStatus Event senden mit neuem Modell
+                if self.on_log:
+                    import json
+                    from .orchestration_worker_status import AGENT_NAMES_MAPPING
+                    agent_name = AGENT_NAMES_MAPPING.get(office, "System")
+                    self.on_log(agent_name, "ModelFallback", json.dumps({
+                        "office": office,
+                        "worker_id": worker.id,
+                        "old_model": primary,
+                        "new_model": fallback,
+                        "reason": "rate_limited"
+                    }, ensure_ascii=False))
 
     def _generate_simple_readme(self, context: str) -> str:
         return generate_simple_readme(self.project_path, self.tech_blueprint,
@@ -476,7 +517,8 @@ class OrchestrationManager:
                 agent_tester=agent_tester, agent_security=agent_security, project_id=project_id
             )
 
-            self.is_first_run = False
+            # ÄNDERUNG 03.02.2026: Entfernt - wird jetzt in dev_loop.py nach erster Iteration gesetzt (Fix 6)
+            # self.is_first_run = False
             if success:
                 self._ui_log("System", "Success", "Projekt erfolgreich erstellt/geändert.")
                 self._finalize_success(project_id)

@@ -8,11 +8,14 @@ Beschreibung: Dart-Task-Synchronisation fuer externes Task-Tracking.
 
 import os
 import json
+import logging
 import requests
 from typing import Any, Dict, List, Optional
 from datetime import datetime
 
 from backend.task_models import DerivedTask, TaskStatus, TaskPriority
+
+logger = logging.getLogger(__name__)
 
 
 class DartTaskSync:
@@ -59,7 +62,7 @@ class DartTaskSync:
         self._enabled = bool(self.token)
 
         if not self._enabled:
-            print("[DartTaskSync] WARNUNG: Kein DART_TOKEN gefunden - Sync deaktiviert")
+            logger.warning("[DartTaskSync] WARNUNG: Kein DART_TOKEN gefunden - Sync deaktiviert")
 
     @property
     def is_enabled(self) -> bool:
@@ -110,14 +113,14 @@ class DartTaskSync:
             if response.status_code in [200, 201]:
                 data = response.json()
                 dart_id = data.get("id") or data.get("duid")
-                print(f"[DartTaskSync] Task {task.id} -> Dart {dart_id}")
+                logger.info("[DartTaskSync] Task %s -> Dart %s", task.id, dart_id)
                 return dart_id
             else:
-                print(f"[DartTaskSync] Fehler: {response.status_code} - {response.text[:200]}")
+                logger.error("[DartTaskSync] Fehler: %s - %s", response.status_code, response.text[:200])
                 return None
 
         except requests.exceptions.RequestException as e:
-            print(f"[DartTaskSync] Netzwerk-Fehler: {e}")
+            logger.error("[DartTaskSync] Netzwerk-Fehler: %s", e)
             return None
 
     def update_task_status(self, dart_id: str, status: str, comment: str = None) -> bool:
@@ -161,11 +164,11 @@ class DartTaskSync:
                     self.add_comment(dart_id, comment)
                 return True
             else:
-                print(f"[DartTaskSync] Update-Fehler: {response.status_code}")
+                logger.error("[DartTaskSync] Update-Fehler: %s", response.status_code)
                 return False
 
         except requests.exceptions.RequestException as e:
-            print(f"[DartTaskSync] Netzwerk-Fehler: {e}")
+            logger.error("[DartTaskSync] Netzwerk-Fehler: %s", e)
             return False
 
     def add_comment(self, dart_id: str, text: str) -> bool:
@@ -198,7 +201,7 @@ class DartTaskSync:
             return response.status_code in [200, 201]
 
         except requests.exceptions.RequestException as e:
-            print(f"[DartTaskSync] Kommentar-Fehler: {e}")
+            logger.error("[DartTaskSync] Kommentar-Fehler: %s", e)
             return False
 
     def add_resolution_comment(self, dart_id: str, resolution: str, modified_files: List[str] = None) -> bool:

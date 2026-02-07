@@ -23,7 +23,9 @@ import {
   Cpu,
   Lock,
   RotateCcw,
-  FileText
+  FileText,
+  Layers,  // AENDERUNG 02.02.2026: Icon fuer Planner Agent
+  Wrench   // AENDERUNG 07.02.2026: Icon fuer Fix-Agent (Fix 14)
 } from 'lucide-react';
 import AgentCard from './AgentCard';
 
@@ -215,6 +217,26 @@ const MissionControl = ({
             logs={logs.filter(l => l.agent === 'DocumentationManager' || l.agent === 'QualityGate')}
             onOpenOffice={() => handleOpenOffice('agent-documentation')}
             workers={agentData?.documentationmanager?.workers || []}
+          />
+          {/* AENDERUNG 02.02.2026: Planner Agent (Indigo) */}
+          <AgentCard
+            name="Planner"
+            icon={<Layers size={24} />}
+            color="indigo"
+            status={activeAgents?.planner?.status || 'Idle'}
+            logs={logs.filter(l => l.agent === 'Planner')}
+            onOpenOffice={() => handleOpenOffice('agent-planner')}
+            workers={agentData?.planner?.workers || []}
+          />
+          {/* AENDERUNG 07.02.2026: Fix-Agent (Amber) - Fix 14 */}
+          <AgentCard
+            name="Fix Agent"
+            icon={<Wrench size={24} />}
+            color="amber"
+            status={activeAgents?.fix?.status || 'Idle'}
+            logs={logs.filter(l => l.agent === 'Fix')}
+            onOpenOffice={() => handleOpenOffice('agent-fix')}
+            workers={agentData?.fix?.workers || []}
           />
         </div>
       </div>

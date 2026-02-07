@@ -171,17 +171,40 @@ class DevLoopTaskDerivation:
 
     def _emit_event(self, event_type: str, data: Dict[str, Any]) -> None:
         """
-        Sendet strukturiertes WebSocket Event an Frontend.
-
-        Args:
-            event_type: Typ des Events (DerivationStart, TasksDerived, etc.)
-            data: Event-Daten
+        Sendet strukturiertes WebSocket Event an Frontend UND globalen Output-Loop.
+        AENDERUNG 05.02.2026: Events auch an server_output.log senden.
         """
+        event_data = json.dumps(data, ensure_ascii=False, default=str)
+        
+        # UI-Logging
+        self._log("UTDS", event_type, event_data)
+        
+        # Global Output Loop - Events broadcasten
         try:
-            event_data = json.dumps(data, ensure_ascii=False, default=str)
-            self._log("UTDS", event_type, event_data)
-        except Exception as e:
-            self._log("UTDS", event_type, str(data))
+            from backend.session_manager import get_session_manager
+            sm = get_session_manager()
+            if hasattr(sm, 'broadcast_event'):
+                sm.broadcast_event("utds", event_type, event_data)
+        except Exception:
+            pass
+        
+        # Server-Output-Log schreiben
+        try:
+            log_entry = json.dumps({
+                "timestamp": datetime.now().isoformat(),
+                "agent": "UTDS",
+                "action": event_type,
+                "content": event_data
+            }, ensure_ascii=False)
+            
+            # In server_output.log schreiben falls vorhanden
+            import os
+            log_path = os.path.join(os.path.dirname(__file__), '..', 'server_output.log')
+            if os.path.exists(log_path):
+                with open(log_path, 'a', encoding='utf-8') as f:
+                    f.write(log_entry + '\n')
+        except Exception:
+            pass
 
     def _record_to_memory(self, result: TaskDerivationResult, success: bool) -> None:
         """Speichert Task-Derivation im Memory-System."""
@@ -317,7 +340,9 @@ class DevLoopTaskDerivation:
         ]
 
         if all_modified:
-            summary_parts.append(f"- Geaenderte Dateien: {', '.join(set(all_modified)[:5])}")
+            # AENDERUNG 02.02.2026: set kann nicht gesliced werden, erst zu list konvertieren
+            unique_files = list(set(all_modified))[:5]
+            summary_parts.append(f"- Geaenderte Dateien: {', '.join(unique_files)}")
 
         if all_errors:
             summary_parts.append("\n### Fehler:")

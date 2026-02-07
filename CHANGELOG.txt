@@ -18,6 +18,55 @@ VERSIONSHISTORIE
 ========================================
 
 ----------------------------------------
+Version 0.10 - 03.02.2026
+----------------------------------------
+
+# ÄNDERUNG [03.02.2026]: ROOT-CAUSE-FIX - PatchMode-Fallback bei fehlenden Dateien
+# Symptom: Log zeigte "PatchMode-Fallback: keine betroffenen Dateien" obwohl Error-Kontext
+#          vorhanden war. Das führte zu unnötigen FullMode-Regenerierungen.
+# Ursache: _get_affected_files_from_feedback() nutzte nur Regex-Patterns für explizite
+#          Dateinamen. Wenn keine Dateinamen im Feedback waren, wurde FullMode aktiviert.
+# Lösung: Fallback auf alle Code-Dateien aus manager.current_code wenn keine expliziten
+#         Dateien gefunden werden. PatchMode bleibt aktiv, alle Dateien werden gepatcht.
+# Betroffene Dateien: backend/dev_loop_coder.py
+
+# ÄNDERUNG [03.02.2026]: ROOT-CAUSE-FIX - Modellwechsel wird jetzt tatsächlich ausgeführt
+# Symptom: ForceModelSwitch wurde geloggt, aber das Modell blieb gleich (z.B. kimi-k2.5).
+# Ursache: ForceModelSwitch setzte model_attempt nicht auf max_model_attempts. Die Funktion
+#          handle_model_switch() prüft "if model_attempt < max_model_attempts" und kehrt
+#          dann sofort zurück ohne Wechsel durchzuführen.
+# Lösung: Bei ForceModelSwitch wird model_attempt auf max_model_attempts gesetzt, sodass
+#         handle_model_switch() den Modellwechsel tatsächlich durchführt.
+# Betroffene Dateien: backend/dev_loop.py
+
+----------------------------------------
+Version 0.9 - 03.02.2026
+----------------------------------------
+
+# ÄNDERUNG [03.02.2026]: ROOT-CAUSE-FIX - Modellwechsel löst nicht mehr FullMode aus
+# Symptom: Nach automatischem Modellwechsel (z.B. in Iteration 9 mit 29 behobenen Fehlern)
+#          wurde der Modus auf FullMode zurückgesetzt und alle Dateien neu generiert.
+# Ursache: Das Modellwechsel-Feedback überschrieb das Original-Feedback. Da das neue
+#          Feedback keine Error-Indikatoren (TypeError, NameError, etc.) enthielt,
+#          gab _is_targeted_fix_context() False zurück → FullMode wurde aktiviert.
+# Lösung: Modellwechsel-Info wird jetzt PREPENDED statt appended. Das Original-Feedback
+#         mit den Error-Indikatoren bleibt erhalten, sodass PatchMode aktiv bleibt.
+# Betroffene Dateien: backend/dev_loop_feedback.py
+
+----------------------------------------
+Version 0.8 - 02.02.2026
+----------------------------------------
+
+# ÄNDERUNG [02.02.2026]: dependency_checker – try/except, packaging.version, Unit-Tests
+# check_dependency und detect_package_type mit Fehlerbehandlung und deutschem Log-Format;
+# compare_versions nutzt packaging.version (PEP 440); Tests in tests/dependency_checker_test.py.
+# Betroffene Dateien: agents/dependency_checker.py, requirements.txt, tests/dependency_checker_test.py
+
+# ÄNDERUNG [02.02.2026]: Archive-Pipeline – nur erfolgreiche Projekte standardmäßig
+# complete_project archiviert Projekte mit status=error nur bei allow_error_archives=True.
+# Betroffene Dateien: backend/library_manager.py
+
+----------------------------------------
 Version 0.7 - 29.01.2026
 ----------------------------------------
 

@@ -82,6 +82,14 @@ export const COLORS = {
     hex: '#4f46e5',
     glow: '0 0 30px rgba(79, 70, 229, 0.8), 0 0 15px rgba(79, 70, 229, 0.5), 0 0 5px rgba(255, 255, 255, 0.3)',
   },
+  // AENDERUNG 07.02.2026: Amber fuer Fix-Agent (Fix 14)
+  amber: {
+    border: 'border-amber-500/40',
+    text: 'text-amber-400',
+    bg: 'bg-amber-500/10',
+    hex: '#f59e0b',
+    glow: '0 0 30px rgba(245, 158, 11, 0.8), 0 0 15px rgba(245, 158, 11, 0.5), 0 0 5px rgba(255, 255, 255, 0.3)',
+  },
   // ÄNDERUNG 30.01.2026: Platinum/Weiß für Documentation Manager
   platinum: {
     border: 'border-white/30',
@@ -92,9 +100,11 @@ export const COLORS = {
   },
 };
 
-// Helper-Funktion für kombinierte Farb-Klassen
+// Fallback-Farbe wenn ungültiger color-Prop übergeben wird (z. B. in AgentCard)
+export const DEFAULT_COLOR = 'blue';
+
+// Helper-Funktion für kombinierte Farb-Klassen (nutzt DEFAULT_COLOR bei ungültigem color)
 export const getColorClasses = (color) => {
-  const c = COLORS[color];
-  if (!c) return '';
+  const c = COLORS[color] ?? COLORS[DEFAULT_COLOR];
   return `${c.border} ${c.text} ${c.bg}`;
 };

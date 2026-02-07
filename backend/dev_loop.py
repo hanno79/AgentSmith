@@ -31,6 +31,7 @@ from .dev_loop_steps import (
     build_coder_prompt,
     run_coder_task,
     save_coder_output,
+    rebuild_current_code_from_disk,
     run_sandbox_and_tests,
     run_review,
     run_security_rescan,
@@ -293,6 +294,14 @@ class DevLoop:
                 manager.current_code, manager.agent_coder = run_coder_task(manager, project_rules, c_prompt, manager.agent_coder)
                 # ÄNDERUNG 31.01.2026: Truncation-Status für Modellwechsel-Logik
                 created_files, truncated_files = save_coder_output(manager, manager.current_code, manager.output_path, iteration, max_retries)
+
+                # ROOT-CAUSE-FIX 07.02.2026: PatchMode Merge
+                # Symptom: PatchMode-Output (2 Dateien) ueberschrieb alle 13 Dateien in current_code
+                # Ursache: run_coder_task() gibt nur Patch-Dateien zurueck, Zeile oben setzt current_code
+                # Loesung: Nach Datei-Speicherung current_code von Festplatte rekonstruieren
+                # Damit enthaelt current_code IMMER alle Projekt-Dateien fuer Review/Sandbox/QG
+                if manager.project_path and os.path.exists(str(manager.project_path)):
+                    manager.current_code = rebuild_current_code_from_disk(manager)
             finally:
                 manager._update_worker_status("coder", "idle")
 

@@ -24,6 +24,48 @@ from agents.memory_encryption import decrypt_data
 from agents.memory_core import load_memory, save_memory
 
 
+# ÄNDERUNG 03.02.2026: Fix 9 - Spezifische Fixes für bekannte Fehler-Patterns
+# Diese Fixes werden automatisch zu Lessons hinzugefügt um actionable Hilfe zu geben
+KNOWN_ERROR_FIXES = {
+    # Truncation-bezogene Fehler (Token-Limit überschritten)
+    "invalid decimal literal": "Output-Truncation: Model-Output wurde abgeschnitten (Token-Limit). Weniger Dateien pro Response generieren oder kritische Dateien zuerst.",
+    "invalid syntax": "Mögliche Truncation: Prüfe ob alle Dateien vollständig sind. Bei Multi-File-Output: Weniger Dateien pro Response.",
+    "unexpected eof": "Datei abgeschnitten (Token-Limit erreicht). Weniger Dateien gleichzeitig generieren.",
+    "unterminated string": "String abgeschnitten (Truncation). Weniger Dateien pro Response oder String am Dateiende vermeiden.",
+    # Import-bezogene Fehler
+    "no module named": "Modul nicht verfügbar. Prüfe requirements.txt oder nutze Alternative.",
+    "cannot import name": "Import-Pfad prüfen. Modul evtl. umstrukturiert oder nicht installiert.",
+    # Flask-spezifische Fehler
+    "before_first_request": "Flask 2.3+ hat before_first_request entfernt. Nutze with app.app_context() stattdessen.",
+    "working outside of application context": "Code in app.app_context() Block ausführen.",
+    # Test-bezogene Fehler
+    "fixture 'client' not found": "Definiere client-Fixture in conftest.py mit app.test_client().",
+    "fixture 'app' not found": "Definiere app-Fixture in conftest.py die Flask-App erstellt.",
+}
+
+
+def _get_suggested_fix_for_pattern(error_text: str) -> Optional[str]:
+    """
+    Findet spezifischen Fix für bekannte Fehler-Patterns.
+
+    ÄNDERUNG 03.02.2026: Fix 9 - Actionable Fixes statt generischer Lessons.
+
+    Args:
+        error_text: Die Fehlermeldung
+
+    Returns:
+        Spezifischer Fix-Text oder None wenn kein bekanntes Pattern
+    """
+    if not error_text:
+        return None
+
+    error_lower = error_text.lower()
+    for pattern, fix in KNOWN_ERROR_FIXES.items():
+        if pattern in error_lower:
+            return fix
+    return None
+
+
 def extract_error_pattern(error_text: str) -> str:
     """
     Extrahiert ein aussagekräftiges Fehlermuster aus Raw-Error-Output.
@@ -278,6 +320,12 @@ def learn_from_error(
         # NEU: Optionale erweiterte Felder
         if affected_file:
             new_lesson["affected_file"] = affected_file
+
+        # ÄNDERUNG 03.02.2026: Fix 9 - Automatischer suggested_fix wenn keiner übergeben
+        # Prüfe bekannte Patterns und füge spezifischen Fix hinzu
+        if not suggested_fix:
+            suggested_fix = _get_suggested_fix_for_pattern(error_msg)
+
         if suggested_fix:
             new_lesson["suggested_fix"] = suggested_fix
         if tech_blueprint:

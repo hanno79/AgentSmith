@@ -1,7 +1,7 @@
 /**
  * Author: rahn
- * Datum: 01.02.2026
- * Version: 2.4
+ * Datum: 03.02.2026
+ * Version: 2.5
  * Beschreibung: Custom Hook fuer WebSocket-Verbindung zum Backend.
  *               Verarbeitet Echtzeit-Nachrichten von den Agenten.
  *               ÄNDERUNG 01.02.2026 v2.3: Refaktoriert in Module (Regel 1: Max 500 Zeilen)
@@ -9,6 +9,8 @@
  *               - webSocketEventHandlers.js: Agent-spezifische Handler
  *               - useWebSocketHelp.js: Help-Request Management
  *               AENDERUNG 01.02.2026 v2.4: UTDS Event Routing hinzugefuegt
+ *               AENDERUNG 03.02.2026 v2.5: ROOT-CAUSE-FIX - Worker-Status Reset bei COMPLETION_EVENT
+ *                                          und System Reset. Bug Fix: Glow-Effekt stoppte nicht.
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react';
@@ -19,6 +21,7 @@ import {
   HEARTBEAT_INTERVAL,
   WORKING_EVENTS,
   COMPLETION_EVENTS,
+  AGENT_TO_DATA_KEY,
   getReconnectDelay
 } from './webSocketConstants';
 
@@ -34,7 +37,9 @@ import {
   handleDesignerEvent,
   handleWorkerStatus,
   // AENDERUNG 01.02.2026: UTDS Event Handler
-  handleUTDSEvent
+  handleUTDSEvent,
+  // AENDERUNG 07.02.2026: Fix-Agent Event Handler (Fix 14)
+  handleFixEvent
 } from './webSocketEventHandlers';
 
 import { useWebSocketHelp } from './useWebSocketHelp';
@@ -105,6 +110,24 @@ const useWebSocket = (setLogs, activeAgents, setActiveAgents, setAgentData, setS
               lastUpdate: data.message
             }
           }));
+
+          // AENDERUNG 03.02.2026: Worker-Status bei COMPLETION_EVENT zuruecksetzen
+          // Bug Fix: Glow-Effekt stoppt nicht wenn Agent fertig ist
+          // Root Cause: Worker-Status blieb auf 'working' obwohl Agent idle war
+          const agentDataKey = AGENT_TO_DATA_KEY[agentKey] || agentKey;
+          setAgentData(prev => {
+            if (!prev[agentDataKey]?.workers) return prev;
+            return {
+              ...prev,
+              [agentDataKey]: {
+                ...prev[agentDataKey],
+                workers: prev[agentDataKey].workers.map(w => ({
+                  ...w,
+                  status: 'idle'
+                }))
+              }
+            };
+          });
         }
       }
 
@@ -160,6 +183,11 @@ const useWebSocket = (setLogs, activeAgents, setActiveAgents, setAgentData, setS
         handleUTDSEvent(data, setAgentData);
       }
 
+      // AENDERUNG 07.02.2026: Fix-Agent Events (Fix 14)
+      if ((data.event === 'FixStart' || data.event === 'FixOutput') && data.agent === 'Fix') {
+        handleFixEvent(data, setAgentData);
+      }
+
       if (data.event === 'HELP_NEEDED') {
         handleHelpNeeded(data, setActiveAgents, setAgentData);
       }
@@ -176,6 +204,21 @@ const useWebSocket = (setLogs, activeAgents, setActiveAgents, setAgentData, setS
             reset[key] = { status: 'Idle', lastUpdate: '' };
           });
           return reset;
+        });
+
+        // AENDERUNG 03.02.2026: Alle Worker-Status bei System Reset zuruecksetzen
+        // Bug Fix: Glow-Effekt stoppt nicht nach Projekt-Completion
+        setAgentData(prev => {
+          const resetData = { ...prev };
+          Object.keys(resetData).forEach(key => {
+            if (resetData[key]?.workers) {
+              resetData[key] = {
+                ...resetData[key],
+                workers: resetData[key].workers.map(w => ({ ...w, status: 'idle' }))
+              };
+            }
+          });
+          return resetData;
         });
       }
 

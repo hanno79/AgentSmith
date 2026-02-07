@@ -172,6 +172,34 @@ def _get_affected_files_from_feedback(feedback: str) -> List[str]:
     return found_files[:5]  # Max 5 Dateien
 
 
+# AENDERUNG 07.02.2026: Dynamische Code-Extensions aus qg_constants
+# Single Source of Truth: LANGUAGE_TEST_CONFIG definiert code_extensions pro Sprache
+# Vorher: 27 hardcodierte Extensions, fehlten Kotlin (.kt), Swift (.swift), C++ (.cpp) etc.
+def _get_all_code_extensions() -> set:
+    """Sammelt alle Code-Extensions dynamisch aus qg_constants + Extras."""
+    try:
+        from .qg_constants import LANGUAGE_TEST_CONFIG
+        dynamic = set()
+        for lang_cfg in LANGUAGE_TEST_CONFIG.values():
+            dynamic.update(lang_cfg.get("code_extensions", []))
+    except ImportError:
+        dynamic = set()
+
+    # Zusaetzliche Config/Build/Template Extensions (nicht in LANGUAGE_TEST_CONFIG)
+    extras = {
+        '.env', '.dockerfile', '.xml', '.gradle', '.properties',
+        '.proto', '.graphql', '.dart', '.scala', '.ex', '.exs',
+        '.elm', '.zig', '.lua', '.jl', '.r', '.pl',
+    }
+    # Basis-Extensions die immer dabei sein muessen
+    basis = {
+        '.html', '.css', '.json', '.bat', '.sh', '.yaml', '.yml',
+        '.toml', '.cfg', '.ini', '.md', '.txt', '.sql',
+        '.vue', '.svelte',
+    }
+    return dynamic | extras | basis
+
+
 # AENDERUNG 06.02.2026: ROOT-CAUSE-FIX PatchModeFallback
 # Symptom: PatchModeFallback "Keine spezifischen Dateien gefunden" in jeder Iteration
 # Ursache: manager.current_code ist immer ein String (LLM-Output), nie ein Dict
@@ -197,12 +225,10 @@ def _get_current_code_dict(manager) -> Dict[str, str]:
         '.git', 'node_modules', '__pycache__', '.next',
         'venv', '.venv', 'dist', 'build', '.cache'
     }
-    code_extensions = {
-        '.py', '.js', '.jsx', '.ts', '.tsx', '.html', '.css', '.json',
-        '.cs', '.java', '.go', '.rs', '.php', '.rb', '.vue', '.svelte',
-        '.bat', '.sh', '.yaml', '.yml', '.toml', '.cfg', '.ini',
-        '.md', '.txt', '.sql'
-    }
+    # AENDERUNG 07.02.2026: Dynamische Extensions aus qg_constants (Single Source of Truth)
+    # Vorher: 27 hardcodierte Extensions, fehlten Kotlin, Swift, C/C++, Dart etc.
+    # Jetzt: Automatisch alle Sprachen aus LANGUAGE_TEST_CONFIG + Extras
+    code_extensions = _get_all_code_extensions()
 
     project_path_str = str(project_path)
     for root, dirs, files in os.walk(project_path_str):
@@ -215,10 +241,37 @@ def _get_current_code_dict(manager) -> Dict[str, str]:
                 try:
                     with open(filepath, "r", encoding="utf-8") as f:
                         code_dict[rel_path] = f.read()
-                except Exception:
-                    pass
+                except UnicodeDecodeError:
+                    logger.debug(f"Encoding-Fehler (non-UTF8): {rel_path}")
+                except Exception as e:
+                    logger.debug(f"Datei nicht lesbar: {rel_path}: {e}")
 
     return code_dict
+
+
+# ROOT-CAUSE-FIX 07.02.2026: PatchMode Merge
+# Symptom: manager.current_code enthielt nach PatchMode nur 2 Dateien statt aller 13
+# Ursache: run_coder_task() gibt nur Patch-Output zurueck, Zeile 293 ueberschreibt komplett
+# Loesung: Nach Datei-Speicherung current_code von Festplatte rekonstruieren (alle Dateien)
+def rebuild_current_code_from_disk(manager) -> str:
+    """
+    Baut manager.current_code aus allen Dateien auf der Festplatte neu auf.
+
+    Nutzt _get_current_code_dict() um alle Projekt-Dateien zu lesen und
+    formatiert sie im ### FILENAME: Format das der Rest der Pipeline erwartet.
+
+    Returns:
+        Vollstaendiger Code-String mit allen Projekt-Dateien im ### FILENAME: Format
+    """
+    code_dict = _get_current_code_dict(manager)
+    if not code_dict:
+        return getattr(manager, 'current_code', '') or ''
+
+    parts = []
+    for filepath in sorted(code_dict.keys()):
+        parts.append(f"### FILENAME: {filepath}\n{code_dict[filepath]}")
+
+    return "\n\n".join(parts)
 
 
 def _build_patch_prompt(current_code, affected_files: List[str], feedback: str) -> str:
@@ -553,6 +606,28 @@ def build_coder_prompt(
             c_prompt += "- NICHT unter src/pages/ oder src/components/ (Next.js ignoriert src/!)\n"
             c_prompt += "- API-Routen: pages/api/...\n"
             c_prompt += "- Erstelle jsconfig.json mit: { \"compilerOptions\": { \"baseUrl\": \".\" } }\n"
+
+            # AENDERUNG 07.02.2026: Next.js Pflichtdateien + Import-Pfade + API-Konsistenz
+            c_prompt += "\n🔧 NEXT.JS PFLICHTDATEIEN:\n"
+            c_prompt += "- pages/_app.js MUSS existieren mit: import '../styles/globals.css'\n"
+            c_prompt += "- styles/globals.css MUSS existieren mit: @tailwind base; @tailwind components; @tailwind utilities;\n"
+            c_prompt += "- OHNE _app.js und globals.css funktioniert Tailwind CSS NICHT!\n"
+
+            c_prompt += "\n📦 REACT/NEXT.JS DEPENDENCIES (PFLICHT):\n"
+            c_prompt += "- package.json MUSS 'react-dom' enthalten wenn 'react' vorhanden ist!\n"
+            c_prompt += "- Next.js Minimum: next, react, react-dom\n"
+            c_prompt += "- Tailwind: tailwindcss, postcss, autoprefixer\n"
+
+            c_prompt += "\n🔗 IMPORT-PFADE KORREKT BERECHNEN:\n"
+            c_prompt += "- Von pages/index.js zu components/: '../components/...'\n"
+            c_prompt += "- Von pages/api/xyz.js zu lib/: '../../lib/...'\n"
+            c_prompt += "- ZAEHLE die Verzeichnisebenen! Jedes ../ geht EINE Ebene hoch.\n"
+            c_prompt += "- pages/api/ = 2 Ebenen tief -> ../../ fuer Root-Level Ordner\n"
+
+            c_prompt += "\n🔄 API-ROUTEN KONSISTENZ:\n"
+            c_prompt += "- Wenn Frontend fetch('/api/todos/${id}') aufruft, MUSS pages/api/todos/[id].js existieren\n"
+            c_prompt += "- ODER: Frontend sendet ID im Body/Query und nutzt nur /api/todos\n"
+            c_prompt += "- Frontend-Calls und API-Dateien MUESSEN zusammenpassen!\n"
 
     c_prompt += "\nFormat: ### FILENAME: path/to/file.ext"
     return c_prompt

@@ -2,7 +2,7 @@
 
 **Author:** rahn
 **Datum:** 24.01.2026
-**Version:** 1.4
+**Version:** 1.5
 
 ---
 
@@ -455,6 +455,79 @@ Model Context Protocol (MCP) Server sollen aktiv genutzt werden:
 
 ---
 
+## REGEL 20: MULTI-AGENTEN-WORKFLOW
+
+**Obligatorischer Workflow für alle Entwicklungsaufgaben:**
+
+Bei jeder neuen Aufgabe MUSS folgender Ablauf eingehalten werden:
+
+1. **PLANUNG** - Mehrere Planungsagenten parallel
+2. **VALIDIERUNG** - Prüfagent für Task-Klarheit
+3. **ORCHESTRIERUNG** - Abhängigkeitsanalyse und Reihenfolge
+4. **IMPLEMENTIERUNG** - Parallele Coder-Agenten
+5. **REVIEW** - Mehrere Reviewer parallel
+6. **ITERATION** - Bis fehlerfrei
+
+**Details:** Siehe `AGENTS.md`
+
+**Zweck:** Maximale Parallelisierung und Qualitätssicherung
+
+---
+
+## REGEL 21: ROOT-CAUSE-ANALYSE UND NACHHALTIGE FIXES
+
+**Grundprinzip: Ursachen bekämpfen, nicht Symptome.**
+
+Bei jeder Fehlerbehebung und Codeänderung MUSS die eigentliche Ursache identifiziert und behoben werden.
+
+**STRIKT VERBOTEN:**
+- Workarounds die nur Symptome kaschieren
+- Hardcodierte Werte um Fehler zu umgehen
+- Try-Catch-Blöcke die Fehler verschlucken ohne Ursachenbehandlung
+- Timeout-Erhöhungen ohne Analyse warum Timeouts auftreten
+- Retry-Logik ohne Verständnis des zugrundeliegenden Problems
+- "Quick Fixes" die das Problem verschieben statt lösen
+
+**Obligatorischer Analyse-Prozess:**
+1. **Symptom identifizieren:** Was genau tritt auf?
+2. **Ursache ermitteln:** Warum tritt es auf? (5-Why-Methode anwenden)
+3. **Root Cause finden:** Was ist die tiefste Ursache?
+4. **Nachhaltigen Fix entwickeln:** Lösung die Root Cause behebt
+5. **Verifizieren:** Sicherstellen dass Ursache beseitigt ist
+
+**Dokumentation bei Fixes:**
+```python
+# ROOT-CAUSE-FIX [TT.MM.YYYY]:
+# Symptom: [Beschreibung des beobachteten Problems]
+# Ursache: [Analyse warum das Problem auftrat]
+# Lösung: [Beschreibung des nachhaltigen Fixes]
+```
+
+**Ausnahmen nur bei:**
+- Kritischen Produktionsfehlern (temporärer Hotfix mit Ticket für permanenten Fix)
+- Externe Abhängigkeiten die nicht beeinflusst werden können
+- Bei Ausnahmen: Explizite Dokumentation und Nachverfolgung erforderlich
+
+**Beispiele:**
+
+❌ FALSCH (Symptombehandlung):
+```python
+# Fehler: API-Timeout
+timeout = 60  # Erhöht von 10 auf 60 Sekunden
+```
+
+✅ RICHTIG (Root-Cause-Fix):
+```python
+# ROOT-CAUSE-FIX: API-Timeout durch ineffiziente Datenbankabfrage
+# Ursache: N+1 Query Problem bei Benutzerabfrage
+# Lösung: Eager Loading implementiert, Abfragezeit von 12s auf 0.3s reduziert
+users = db.query(User).options(joinedload(User.roles)).all()
+```
+
+**Zweck:** Nachhaltige, wartbare und stabile Software durch echte Problemlösung statt Symptomverschleierung
+
+---
+
 ## COMPLIANCE-HINWEIS
 
 Diese Regeln sind **VERBINDLICH** für alle Projektbeteiligten.
@@ -465,5 +538,5 @@ Bei Regelverstößen ist sofortige Korrektur erforderlich.
 - Andere Programmierumgebungen
 - Allgemeine Softwareentwicklungsprojekte
 
-**Letzte Aktualisierung:** 24.01.2026
+**Letzte Aktualisierung:** 03.02.2026
 **Nächste Review:** Nach Projektabschluss Phase 1

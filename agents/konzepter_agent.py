@@ -3,10 +3,13 @@
 Author: rahn
 Datum: 31.01.2026
 Version: 1.0
-Beschreibung: Konzepter Agent - Extrahiert Features aus dem Anforderungskatalog.
+Beschreibung: Konzepter Agent - Extrahiert Features und User Stories aus dem Anforderungskatalog.
               Teil des Dart AI Feature-Ableitung Konzepts.
 
-              Workflow: Anforderungskatalog (Analyst) -> Konzepter -> Feature-Katalog mit Traceability
+              Workflow: Anforderungskatalog (Analyst) -> Konzepter -> Feature-Katalog + User Stories mit Traceability
+
+              AENDERUNG 07.02.2026: User Story Ableitung (GEGEBEN-WENN-DANN) hinzugefuegt
+              (Dart Task zE40HTp29XJn, Feature-Ableitung Konzept v1.0 Phase 3)
 """
 
 import json
@@ -15,6 +18,7 @@ from typing import Any, Dict, List, Optional
 from crewai import Agent, Task
 
 from agents.agent_utils import get_model_from_config, combine_project_rules
+from backend.user_story_helpers import create_default_user_stories, assign_user_story_ids
 
 
 def create_konzepter(config: Dict[str, Any], project_rules: Dict[str, List[str]], router=None) -> Agent:
@@ -52,7 +56,8 @@ def create_konzepter(config: Dict[str, Any], project_rules: Dict[str, List[str]]
             "2. Eine Anforderung kann 1-N Features ergeben\n"
             "3. Jedes Feature muss mindestens einer Anforderung zugeordnet sein\n"
             "4. Features sollten unabhaengig implementierbar sein\n"
-            "5. Schaetze die Anzahl der benoetigten Dateien pro Feature\n\n"
+            "5. Schaetze die Anzahl der benoetigten Dateien pro Feature\n"
+            "6. Leite pro Feature mindestens 1 User Story im GEGEBEN-WENN-DANN Format ab\n\n"
             "AUSGABE-FORMAT (strikt JSON):\n"
             "```json\n"
             "{\n"
@@ -68,6 +73,18 @@ def create_konzepter(config: Dict[str, Any], project_rules: Dict[str, List[str]]
             '      "abhaengigkeiten": []\n'
             "    }\n"
             "  ],\n"
+            '  "user_stories": [\n'
+            "    {\n"
+            '      "id": "US-001",\n'
+            '      "feature_id": "FEAT-001",\n'
+            '      "titel": "Benutzer meldet sich an",\n'
+            '      "gegeben": "Der Benutzer befindet sich auf der Login-Seite",\n'
+            '      "wenn": "Er Email und Passwort eingibt und auf Login klickt",\n'
+            '      "dann": "Wird er zum Dashboard weitergeleitet",\n'
+            '      "akzeptanzkriterien": ["Login funktioniert mit gueltigem Passwort", "Fehlermeldung bei falschem Passwort"],\n'
+            '      "prioritaet": "hoch"\n'
+            "    }\n"
+            "  ],\n"
             '  "traceability": {\n'
             '    "REQ-001": ["FEAT-001", "FEAT-002"],\n'
             '    "REQ-002": ["FEAT-003"]\n'
@@ -77,6 +94,10 @@ def create_konzepter(config: Dict[str, Any], project_rules: Dict[str, List[str]]
             "```\n\n"
             "REGELN:\n"
             "- Jedes Feature braucht eine eindeutige ID (FEAT-001, FEAT-002, ...)\n"
+            "- Jede User Story braucht eine eindeutige ID (US-001, US-002, ...)\n"
+            "- GEGEBEN/WENN/DANN Felder sind Pflicht fuer jede User Story\n"
+            "- Jede User Story braucht mindestens 1 Akzeptanzkriterium\n"
+            "- Jedes Feature muss mindestens 1 User Story haben\n"
             "- Die Traceability-Matrix muss vollstaendig sein\n"
             "- Features muessen klein genug sein (max. 3 Dateien pro Feature)\n"
             "- Abhaengigkeiten zwischen Features explizit angeben\n"
@@ -114,7 +135,8 @@ TECHNISCHER KONTEXT:
 - Frameworks: {', '.join(blueprint.get('frameworks', []))}
 """
 
-    description = f"""Analysiere den folgenden Anforderungskatalog und extrahiere konkrete Features.
+    # AENDERUNG 07.02.2026: User Story Ableitung hinzugefuegt (Phase 3)
+    description = f"""Analysiere den folgenden Anforderungskatalog und extrahiere konkrete Features und User Stories.
 
 ANFORDERUNGSKATALOG:
 {anforderungen_text}
@@ -125,11 +147,14 @@ DEINE AUFGABE:
 2. Erstelle die Traceability-Matrix (REQ -> FEAT)
 3. Definiere Abhaengigkeiten zwischen Features
 4. Schaetze die Anzahl der Dateien pro Feature
+5. Leite pro Feature mindestens 1 User Story ab (GEGEBEN-WENN-DANN Format)
 
 WICHTIG:
 - Jedes Feature sollte klein und fokussiert sein (max. 3 Dateien)
 - Features muessen unabhaengig testbar sein
 - Die Traceability muss vollstaendig sein (jede REQ mindestens ein FEAT)
+- Jede User Story MUSS die Felder gegeben/wenn/dann und akzeptanzkriterien enthalten
+- User Stories muessen testbar und messbar formuliert sein
 
 Gib NUR den JSON-Block aus, keine zusaetzlichen Erklaerungen.
 """
@@ -199,9 +224,10 @@ def parse_konzepter_output(output: str) -> Optional[Dict[str, Any]]:
             try:
                 result = json.loads(json_str)
                 if "features" in result and isinstance(result["features"], list):
-                    # Validiere Traceability
                     if "traceability" not in result:
                         result["traceability"] = _build_traceability(result["features"])
+                    # AENDERUNG 07.02.2026: User Stories sicherstellen
+                    result = _ensure_user_stories(result)
                     return result
             except json.JSONDecodeError:
                 continue
@@ -212,11 +238,33 @@ def parse_konzepter_output(output: str) -> Optional[Dict[str, Any]]:
         if "features" in result:
             if "traceability" not in result:
                 result["traceability"] = _build_traceability(result["features"])
+            result = _ensure_user_stories(result)
             return result
     except json.JSONDecodeError:
         pass
 
     return None
+
+
+def _ensure_user_stories(result: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Stellt sicher dass user_stories im Konzepter-Output vorhanden sind.
+    Generiert Standard-Stories als Fallback falls der LLM keine geliefert hat.
+
+    Args:
+        result: Geparstes Konzepter-Output Dict
+
+    Returns:
+        Result mit garantiertem user_stories Key
+    """
+    stories = result.get("user_stories", [])
+    if not stories or not isinstance(stories, list):
+        features = result.get("features", [])
+        if features:
+            result["user_stories"] = create_default_user_stories(features)
+    else:
+        result["user_stories"] = assign_user_story_ids(stories)
+    return result
 
 
 def _build_traceability(features: List[Dict[str, Any]]) -> Dict[str, List[str]]:
@@ -270,8 +318,12 @@ def create_default_features(anforderungen: Dict[str, Any]) -> Dict[str, Any]:
 
         traceability[req_id] = [feat_id]
 
+    # AENDERUNG 07.02.2026: Standard-User-Stories generieren
+    stories = create_default_user_stories(features)
+
     return {
         "features": features,
+        "user_stories": stories,
         "traceability": traceability,
         "zusammenfassung": "Automatisch generierte Features (1:1 Mapping)",
         "source": "default_fallback"
@@ -306,6 +358,11 @@ def validate_traceability(anforderungen: Dict[str, Any], features: Dict[str, Any
 
     coverage = len(covered_reqs) / len(req_ids) if req_ids else 0.0
 
+    # AENDERUNG 07.02.2026: User Story Coverage pruefen
+    user_stories = features.get("user_stories", [])
+    us_feat_refs = {us.get("feature_id") for us in user_stories if us.get("feature_id")}
+    feats_ohne_stories = feat_ids - us_feat_refs
+
     return {
         "valid": len(uncovered_reqs) == 0 and len(orphan_feats) == 0,
         "coverage": coverage,
@@ -313,5 +370,8 @@ def validate_traceability(anforderungen: Dict[str, Any], features: Dict[str, Any
         "uncovered_requirements": list(uncovered_reqs),
         "orphan_features": list(orphan_feats),
         "total_requirements": len(req_ids),
-        "total_features": len(feat_ids)
+        "total_features": len(feat_ids),
+        "total_user_stories": len(user_stories),
+        "features_ohne_user_stories": list(feats_ohne_stories),
+        "user_story_coverage": len(us_feat_refs & feat_ids) / len(feat_ids) if feat_ids else 0.0
     }

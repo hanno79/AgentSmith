@@ -32,7 +32,8 @@ def init_agents(
     config: Dict[str, Any],
     project_rules: Dict[str, Any],
     router=None,
-    include: List[str] = None
+    include: List[str] = None,
+    tech_blueprint: Dict[str, Any] = None
 ) -> Dict[str, Any]:
     """
     Erstellt alle benoetigten Agenten fuer den Orchestration-Flow.
@@ -41,10 +42,30 @@ def init_agents(
         config: Globale Konfiguration
         project_rules: Projekt-spezifische Regeln/Templates
         router: Optionaler ModelRouter fuer konsistente Modell-Auswahl
+        include: Optional - Nur bestimmte Agenten instanziieren
+        tech_blueprint: Optional - Tech-Stack-Informationen (language, framework, project_type)
 
     Returns:
         Dict mit Agent-Instanzen (coder, reviewer, tester, security, db_designer, techstack_architect, designer)
+
+    AENDERUNG 06.02.2026: ROOT-CAUSE-FIX Tech-Kontext fuer alle Agents
+    Symptom: Agents generieren Code in falscher Sprache nach Modellwechsel
+    Ursache: init_agents() hatte keinen tech_blueprint Parameter
+    Loesung: tech_blueprint in project_rules injizieren → alle Agents erhalten Tech-Stack
     """
+    # AENDERUNG 06.02.2026: Tech-Blueprint in project_rules injizieren
+    if tech_blueprint:
+        project_rules = dict(project_rules) if project_rules else {}
+        language = tech_blueprint.get('language', 'unbekannt')
+        framework = tech_blueprint.get('framework', 'keins')
+        project_type = tech_blueprint.get('project_type', 'unbekannt')
+        project_rules['tech_stack_context'] = (
+            f"TECH-STACK DES PROJEKTS (WICHTIG!): "
+            f"Sprache={language}, Framework={framework}, Typ={project_type}. "
+            f"ALLE Code-Aenderungen MUESSEN in '{language}' sein! "
+            f"NIEMALS Code in einer anderen Sprache erzeugen!"
+        )
+
     # ÄNDERUNG 29.01.2026: Optional nur ausgewaehlte Agenten instanziieren
     available = {
         "coder": lambda: create_coder(config, project_rules, router=router),
@@ -61,7 +82,8 @@ def init_agents(
         "analyst": lambda: create_analyst(config, project_rules, router=router),
         "konzepter": lambda: create_konzepter(config, project_rules, router=router),
         # AENDERUNG 31.01.2026: Fix-Agent fuer gezielte Code-Korrekturen
-        "fix": lambda: create_fix_agent(config, project_rules, router=router)
+        # AENDERUNG 07.02.2026: tech_blueprint hinzugefuegt (Fix 14 - Root Cause 3)
+        "fix": lambda: create_fix_agent(config, project_rules, router=router, tech_blueprint=tech_blueprint)
     }
 
     selected = include or list(available.keys())

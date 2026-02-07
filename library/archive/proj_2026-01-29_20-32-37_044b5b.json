@@ -1,0 +1,143 @@
+{
+  "project_id": "proj_2026-01-29_20-32-37_044b5b",
+  "name": "erstelle eine umfassende todoliste app für mich in",
+  "goal": "erstelle eine umfassende todoliste app für mich in welcher ich code bugs und neue ideen erfassen kann welche ich beim testen gefunden habe. ich brauche eine spalte NR, Name, Beschreibung, Status.die bugs und ideen müssen erfasst werden können und der status muss gewechselt werden können. die bugs sollen in einer lokalen sqlite datenbank gespeichert werden. ich brauche eine umwerfende GUI mit perfekter usability und schönen glassmorphismus elementen mit hover und schatten effekten und frost glas elementen. sauber und modern. trau dich etwas.",
+  "briefing": null,
+  "briefing_preview": "",
+  "started_at": "2026-01-29T20:32:37.189677",
+  "completed_at": "2026-01-29T20:32:40.274348",
+  "status": "error",
+  "iterations": 0,
+  "total_tokens": 0,
+  "total_cost": 0.0,
+  "agents_involved": [
+    "Library",
+    "Researcher",
+    "Orchestrator",
+    "TechArchitect",
+    "System"
+  ],
+  "files_created": [],
+  "entries": [
+    {
+      "id": "entry_0001",
+      "timestamp": "2026-01-29T20:32:37.192746",
+      "iteration": 0,
+      "from_agent": "Library",
+      "to_agent": "System",
+      "type": "ProjectStart",
+      "content": "Protokollierung gestartet: proj_2026-01-29_20-32-37_044b5b",
+      "metadata": {}
+    },
+    {
+      "id": "entry_0002",
+      "timestamp": "2026-01-29T20:32:37.196401",
+      "iteration": 0,
+      "from_agent": "Researcher",
+      "to_agent": "System",
+      "type": "ResearchOutput",
+      "content": "{\"query\": \"Suche technische Details für: erstelle eine umfassende todoliste app für mich in welcher ich code bugs und neue ideen erfassen kann welche ich beim testen gefunden habe. ich brauche eine spalte NR, Name, Beschreibung, Status.die bugs und ideen müssen erfasst werden können und der status muss gewechselt werden können. die bugs sollen in einer lokalen sqlite datenbank gespeichert werden. ich brauche eine umwerfende GUI mit perfekter usability und schönen glassmorphismus elementen mit hover und schatten effekten und frost glas elementen. sauber und modern. trau dich etwas.\", \"result\": \"\", \"status\": \"searching\", \"model\": \"openrouter/meta-llama/llama-3.3-70b-instruct:free\", \"timeout_seconds\": 300}",
+      "metadata": {}
+    },
+    {
+      "id": "entry_0003",
+      "timestamp": "2026-01-29T20:32:37.197085",
+      "iteration": 0,
+      "from_agent": "Researcher",
+      "to_agent": "System",
+      "type": "Status",
+      "content": "Sucht Kontext... (max. 300s)",
+      "metadata": {}
+    },
+    {
+      "id": "entry_0004",
+      "timestamp": "2026-01-29T20:32:37.199096",
+      "iteration": 0,
+      "from_agent": "Researcher",
+      "to_agent": "System",
+      "type": "WorkerStatus",
+      "content": "{\"office\": \"researcher\", \"pool_status\": {\"office\": \"researcher\", \"total_workers\": 1, \"active_workers\": 1, \"idle_workers\": 0, \"workers\": [{\"id\": \"researcher_1\", \"name\": \"Sage\", \"office\": \"researcher\", \"status\": \"working\", \"current_task\": null, \"current_task_description\": \"Recherche: Suche technische Details für: erstelle eine umfass...\", \"model\": \"openrouter/meta-llama/llama-3.3-70b-instruct:free\", \"tasks_completed\": 0, \"last_activity\": null}], \"queue_size\": 0}, \"event\": \"task_assigned\"}",
+      "metadata": {}
+    },
+    {
+      "id": "entry_0005",
+      "timestamp": "2026-01-29T20:32:38.900574",
+      "iteration": 0,
+      "from_agent": "Researcher",
+      "to_agent": "System",
+      "type": "Error",
+      "content": "Recherche fehlgeschlagen: litellm.NotFoundError: NotFoundError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":404,\"metadata\":{\"raw\":\"404 page not found\\n\",\"provider_name\":\"ModelRun\",\"is_byok\":false}},\"user_id\":\"user_2wZeGHQVFxb9G0hgVpIfdJPrjvI\"}",
+      "metadata": {}
+    },
+    {
+      "id": "entry_0006",
+      "timestamp": "2026-01-29T20:32:38.905528",
+      "iteration": 0,
+      "from_agent": "Researcher",
+      "to_agent": "System",
+      "type": "WorkerStatus",
+      "content": "{\"office\": \"researcher\", \"pool_status\": {\"office\": \"researcher\", \"total_workers\": 1, \"active_workers\": 1, \"idle_workers\": 0, \"workers\": [{\"id\": \"researcher_1\", \"name\": \"Sage\", \"office\": \"researcher\", \"status\": \"working\", \"current_task\": null, \"current_task_description\": \"Recherche: Suche technische Details für: erstelle eine umfass...\", \"model\": \"openrouter/meta-llama/llama-3.3-70b-instruct:free\", \"tasks_completed\": 0, \"last_activity\": null}], \"queue_size\": 0}, \"event\": \"task_completed\"}",
+      "metadata": {}
+    },
+    {
+      "id": "entry_0007",
+      "timestamp": "2026-01-29T20:32:38.907034",
+      "iteration": 0,
+      "from_agent": "Researcher",
+      "to_agent": "System",
+      "type": "ResearchOutput",
+      "content": "{\"query\": \"Suche technische Details für: erstelle eine umfassende todoliste app für mich in welcher ich code bugs und neue ideen erfassen kann welche ich beim testen gefunden habe. ich brauche eine spalte NR, Name, Beschreibung, Status.die bugs und ideen müssen erfasst werden können und der status muss gewechselt werden können. die bugs sollen in einer lokalen sqlite datenbank gespeichert werden. ich brauche eine umwerfende GUI mit perfekter usability und schönen glassmorphismus elementen mit hover und schatten effekten und frost glas elementen. sauber und modern. trau dich etwas.\", \"result\": \"\", \"status\": \"error\", \"model\": \"openrouter/meta-llama/llama-3.3-70b-instruct:free\", \"error\": \"litellm.NotFoundError: NotFoundError: OpenrouterException - {\\\"error\\\":{\\\"message\\\":\\\"Provider returned error\\\",\\\"code\\\":404,\\\"metadata\\\":{\\\"raw\\\":\\\"404 page not found\\\\n\\\",\\\"provider_name\\\":\\\"ModelRun\\\",\\\"is_byok\\\":false}},\\\"user_id\\\":\\\"user_2wZeGHQVFxb9G0hgVpIfdJPrjvI\\\"}\"}",
+      "metadata": {}
+    },
+    {
+      "id": "entry_0008",
+      "timestamp": "2026-01-29T20:32:38.908592",
+      "iteration": 0,
+      "from_agent": "Orchestrator",
+      "to_agent": "System",
+      "type": "Status",
+      "content": "Analysiere Intent...",
+      "metadata": {}
+    },
+    {
+      "id": "entry_0009",
+      "timestamp": "2026-01-29T20:32:38.911306",
+      "iteration": 0,
+      "from_agent": "Orchestrator",
+      "to_agent": "System",
+      "type": "Analysis",
+      "content": "{\"project_type\": [\"design\", \"database\"], \"needs_ui\": true, \"needs_data\": false, \"needs_research\": false, \"needs_database\": true}",
+      "metadata": {}
+    },
+    {
+      "id": "entry_0010",
+      "timestamp": "2026-01-29T20:32:38.912895",
+      "iteration": 0,
+      "from_agent": "TechArchitect",
+      "to_agent": "System",
+      "type": "Status",
+      "content": "Analysiere TechStack...",
+      "metadata": {}
+    },
+    {
+      "id": "entry_0011",
+      "timestamp": "2026-01-29T20:32:38.913899",
+      "iteration": 0,
+      "from_agent": "TechArchitect",
+      "to_agent": "System",
+      "type": "WorkerStatus",
+      "content": "{\"office\": \"techstack_architect\", \"pool_status\": {\"office\": \"techstack_architect\", \"total_workers\": 1, \"active_workers\": 1, \"idle_workers\": 0, \"workers\": [{\"id\": \"techstack_architect_1\", \"name\": \"Worker\", \"office\": \"techstack_architect\", \"status\": \"working\", \"current_task\": null, \"current_task_description\": \"Analysiere TechStack...\", \"model\": \"openrouter/meta-llama/llama-3.3-70b-instruct:free\", \"tasks_completed\": 0, \"last_activity\": null}], \"queue_size\": 0}, \"event\": \"task_assigned\"}",
+      "metadata": {}
+    },
+    {
+      "id": "entry_0012",
+      "timestamp": "2026-01-29T20:32:40.271759",
+      "iteration": 0,
+      "from_agent": "System",
+      "to_agent": "System",
+      "type": "Error",
+      "content": "Fehler: litellm.NotFoundError: NotFoundError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":404,\"metadata\":{\"raw\":\"404 page not found\\n\",\"provider_name\":\"ModelRun\",\"is_byok\":false}},\"user_id\":\"user_2wZeGHQVFxb9G0hgVpIfdJPrjvI\"}\nTraceback (most recent call last):\n  File \"C:\\Temp\\multi_agent_poc\\venv\\Lib\\site-packages\\litellm\\llms\\custom_httpx\\llm_http_handler.py\", line 174, in _make_common_sync_call\n    response = sync_httpx_client.post(\n               ^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Temp\\multi_agent_poc\\venv\\Lib\\site-packages\\litellm\\llms\\custom_httpx\\http_handler.py\", line 780, in post\n    raise e\n  File \"C:\\Temp\\multi_agent_poc\\venv\\Lib\\site-packages\\litellm\\llms\\custom_httpx\\http_handler.py\", line 762, in post\n    response.raise_for_status()\n  File \"C:\\Temp\\multi_agent_poc\\venv\\Lib\\site-packages\\httpx\\_models.py\", line 829, in raise_for_status\n    raise HTTPStatusError(message, request=request, response=self)\nhttpx.HTTPStatusError: Client error '404 Not Found' for url 'https://openrouter.ai/api/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"C:\\Temp\\multi_agent_poc\\venv\\Lib\\site-packages\\litellm\\main.py\", line 2546, in completion\n    response = base_llm_http_handler.completion(\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Temp\\multi_agent_poc\\venv\\Lib\\site-packages\\litellm\\llms\\custom_httpx\\llm_http_handler.py\", line 470, in completion\n    response = self._make_common_sync_call(\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Temp\\multi_agent_poc\\venv\\Lib\\site-packages\\litellm\\llms\\custom_httpx\\llm_http_handler.py\", line 199, in _make_common_sync_call\n    raise self._handle_error(e=e, provider_config=provider_config)\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Temp\\multi_agent_poc\\venv\\Lib\\site-packages\\litellm\\llms\\custom_httpx\\llm_http_handler.py\", line 2409, in _handle_error\n    raise provider_config.get_error_class(\nlitellm.llms.openrouter.common_utils.OpenRouterException: {\"error\":{\"message\":\"Provider returned error\",\"code\":404,\"metadata\":{\"raw\":\"404 page not found\\n\",\"provider_name\":\"ModelRun\",\"is_byok\":false}},\"user_id\":\"user_2wZeGHQVFxb9G0hgVpIfdJPrjvI\"}\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"C:\\Temp\\multi_agent_poc\\backend\\orchestration_manager.py\", line 593, in run_task\n    techstack_result = run_with_heartbeat(\n                       ^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Temp\\multi_agent_poc\\backend\\heartbeat_utils.py\", line 90, in run_with_heartbeat\n    raise exception[0]\n  File \"C:\\Temp\\multi_agent_poc\\backend\\heartbeat_utils.py\", line 49, in target\n    result[0] = func()\n                ^^^^^^\n  File \"C:\\Temp\\multi_agent_poc\\backend\\orchestration_manager.py\", line 594, in <lambda>\n    func=lambda: str(techstack_task.execute_sync()),\n                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Temp\\multi_agent_poc\\venv\\Lib\\site-packages\\crewai\\task.py\", line 499, in execute_sync\n    return self._execute_core(agent, context, tools)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Temp\\multi_agent_poc\\venv\\Lib\\site-packages\\crewai\\task.py\", line 740, in _execute_core\n    raise e  # Re-raise the exception after emitting the event\n    ^^^^^^^\n  File \"C:\\Temp\\multi_agent_poc\\venv\\Lib\\site-packages\\crewai\\task.py\", line 671, in _execute_core\n    result = agent.execute_task(\n             ^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Temp\\multi_agent_poc\\venv\\Lib\\site-packages\\crewai\\agent\\core.py\", line 475, in execute_task\n    raise e\n  File \"C:\\Temp\\multi_agent_poc\\venv\\Lib\\site-packages\\crewai\\agent\\core.py\", line 453, in execute_task\n    result = self._execute_without_timeout(task_prompt, task)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Temp\\multi_agent_poc\\venv\\Lib\\site-packages\\crewai\\agent\\core.py\", line 549, in _execute_without_timeout\n    return self.agent_executor.invoke(\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Temp\\multi_agent_poc\\venv\\Lib\\site-packages\\crewai\\agents\\crew_agent_executor.py\", line 207, in invoke\n    formatted_answer = self._invoke_loop()\n                       ^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Temp\\multi_agent_poc\\venv\\Lib\\site-packages\\crewai\\agents\\crew_agent_executor.py\", line 308, in _invoke_loop\n    return self._invoke_loop_react()\n           ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Temp\\multi_agent_poc\\venv\\Lib\\site-packages\\crewai\\agents\\crew_agent_executor.py\", line 429, in _invoke_loop_react\n    raise e\n  File \"C:\\Temp\\multi_agent_poc\\venv\\Lib\\site-packages\\crewai\\agents\\crew_agent_executor.py\", line 337, in _invoke_loop_react\n    answer = get_llm_response(\n             ^^^^^^^^^^^^^^^^^\n  File \"C:\\Temp\\multi_agent_poc\\venv\\Lib\\site-packages\\crewai\\utilities\\agent_utils.py\", line 371, in get_llm_response\n    raise e\n  File \"C:\\Temp\\multi_agent_poc\\venv\\Lib\\site-packages\\crewai\\utilities\\agent_utils.py\", line 361, in get_llm_response\n    answer = llm.call(\n             ^^^^^^^^^\n  File \"C:\\Temp\\multi_agent_poc\\venv\\Lib\\site-packages\\crewai\\llm.py\", line 1719, in call\n    result = self._handle_non_streaming_response(\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Temp\\multi_agent_poc\\venv\\Lib\\site-packages\\crewai\\llm.py\", line 1169, in _handle_non_streaming_response\n    response = litellm.completion(**params)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Temp\\multi_agent_poc\\venv\\Lib\\site-packages\\litellm\\utils.py\", line 1332, in wrapper\n    raise e\n  File \"C:\\Temp\\multi_agent_poc\\venv\\Lib\\site-packages\\litellm\\utils.py\", line 1207, in wrapper\n    result = original_function(*args, **kwargs)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Temp\\multi_agent_poc\\venv\\Lib\\site-packages\\litellm\\main.py\", line 3430, in completion\n    raise exception_type(\n          ^^^^^^^^^^^^^^^\n  File \"C:\\Temp\\multi_agent_poc\\venv\\Lib\\site-packages\\litellm\\litellm_core_utils\\exception_mapping_utils.py\", line 2301, in exception_type\n    raise e\n  File \"C:\\Temp\\multi_agent_poc\\venv\\Lib\\site-packages\\litellm\\litellm_core_utils\\exception_mapping_utils.py\", line 2181, in exception_type\n    raise NotFoundError(\nlitellm.exceptions.NotFoundError: litellm.NotFoundError: NotFoundError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":404,\"metadata\":{\"raw\":\"404 page not found\\n\",\"provider_name\":\"ModelRun\",\"is_byok\":false}},\"user_id\":\"user_2wZeGHQVFxb9G0hgVpIfdJPrjvI\"}\n",
+      "metadata": {}
+    }
+  ]
+}

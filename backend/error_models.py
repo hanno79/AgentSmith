@@ -114,9 +114,11 @@ PIP_ERROR_PATTERNS = [
 
 # AENDERUNG 03.02.2026: pytest.ini und Config-Fehler Patterns
 # Format: "ERROR: C:\...\pytest.ini:1: unexpected line: 'ini'"
+# AENDERUNG 03.02.2026 v1.1: Pattern fuer Windows-Pfade mit C:\ korrigiert
 CONFIG_ERROR_PATTERNS = [
     # pytest.ini / setup.cfg Fehler: "ERROR: path:line: message"
-    (re.compile(r"ERROR:\s*([^\s:]+(?:\.ini|\.cfg|\.toml|\.yaml)):(\d+):\s*(.+)", re.IGNORECASE), "config_error"),
+    # AENDERUNG 03.02.2026: .+? (non-greedy) statt [^\s:]+ um Windows-Pfade (C:\...) zu erlauben
+    (re.compile(r"ERROR:\s*(.+?\.(?:ini|cfg|toml|yaml)):(\d+):\s*(.+)", re.IGNORECASE), "config_error"),
     # pytest unexpected line Format
     (re.compile(r"unexpected line:\s*['\"]?([^'\"]+)['\"]?", re.IGNORECASE), "config_syntax"),
     # INI-Parser Fehler

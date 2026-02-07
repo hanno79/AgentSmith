@@ -7,8 +7,11 @@ Beschreibung: Traceability Manager - Verwaltet die Rueckverfolgbarkeit von
               Anforderungen ueber Features zu Tasks und Code-Dateien.
               Teil des Dart AI Feature-Ableitung Konzepts.
 
-              Workflow: Anforderung -> Feature -> Task -> Datei
+              Workflow: Anforderung -> Feature -> User Story -> Task -> Datei
               Jede Ebene ist mit der vorherigen verknuepft.
+
+              AENDERUNG 07.02.2026: User Stories (GEGEBEN-WENN-DANN) hinzugefuegt
+              (Dart Task zE40HTp29XJn, Feature-Ableitung Konzept v1.0 Phase 3)
 """
 
 import json
@@ -42,12 +45,15 @@ class TraceabilityManager:
             "created_at": datetime.now().isoformat(),
             "updated_at": datetime.now().isoformat(),
             "anforderungen": {},  # id -> {titel, kategorie, features: []}
-            "features": {},       # id -> {titel, anforderungen: [], tasks: []}
+            "features": {},       # id -> {titel, anforderungen: [], user_stories: [], tasks: []}
+            # AENDERUNG 07.02.2026: User Stories Ebene (Phase 3)
+            "user_stories": {},   # id -> {titel, feature_id, gegeben, wenn, dann, akzeptanzkriterien}
             "tasks": {},          # id -> {titel, features: [], dateien: [], status}
             "dateien": {},        # pfad -> {tasks: [], status, lines}
             "summary": {
                 "total_anforderungen": 0,
                 "total_features": 0,
+                "total_user_stories": 0,
                 "total_tasks": 0,
                 "total_dateien": 0,
                 "coverage": 0.0
@@ -86,6 +92,8 @@ class TraceabilityManager:
         self.matrix["summary"] = {
             "total_anforderungen": len(self.matrix["anforderungen"]),
             "total_features": len(self.matrix["features"]),
+            # AENDERUNG 07.02.2026: User Stories zaehlen
+            "total_user_stories": len(self.matrix.get("user_stories", {})),
             "total_tasks": len(self.matrix["tasks"]),
             "total_dateien": len(self.matrix["dateien"]),
             "coverage": self._calculate_coverage()
@@ -199,6 +207,8 @@ class TraceabilityManager:
             "anforderungen": anforderungen,
             "technologie": technologie,
             "prioritaet": prioritaet,
+            # AENDERUNG 07.02.2026: User Stories pro Feature
+            "user_stories": [],
             "tasks": [],
             "created_at": datetime.now().isoformat()
         }
@@ -232,6 +242,82 @@ class TraceabilityManager:
             )
             count += 1
         logger.info(f"{count} Features aus Konzepter-Output hinzugefuegt")
+        return count
+
+    # =========================================================================
+    # AENDERUNG 07.02.2026: USER STORIES (Phase 3)
+    # =========================================================================
+
+    def add_user_story(
+        self,
+        id: str,
+        titel: str,
+        feature_id: str,
+        gegeben: str = "",
+        wenn: str = "",
+        dann: str = "",
+        akzeptanzkriterien: List[str] = None,
+        prioritaet: str = "mittel"
+    ) -> None:
+        """
+        Fuegt eine User Story zur Matrix hinzu.
+
+        Args:
+            id: Eindeutige ID (z.B. US-001)
+            titel: Titel der User Story
+            feature_id: Verknuepftes Feature (z.B. FEAT-001)
+            gegeben: GEGEBEN-Klausel (Vorbedingung)
+            wenn: WENN-Klausel (Aktion)
+            dann: DANN-Klausel (Erwartetes Ergebnis)
+            akzeptanzkriterien: Liste der Akzeptanzkriterien
+            prioritaet: Prioritaet (hoch, mittel, niedrig)
+        """
+        if "user_stories" not in self.matrix:
+            self.matrix["user_stories"] = {}
+
+        self.matrix["user_stories"][id] = {
+            "titel": titel,
+            "feature_id": feature_id,
+            "gegeben": gegeben,
+            "wenn": wenn,
+            "dann": dann,
+            "akzeptanzkriterien": akzeptanzkriterien or [],
+            "prioritaet": prioritaet,
+            "created_at": datetime.now().isoformat()
+        }
+
+        # Verknuepfe rueckwaerts zu Feature
+        if feature_id in self.matrix["features"]:
+            us_list = self.matrix["features"][feature_id].setdefault("user_stories", [])
+            if id not in us_list:
+                us_list.append(id)
+
+        logger.debug(f"User Story hinzugefuegt: {id} - {titel}")
+
+    def add_user_stories_from_konzepter(self, konzepter_output: Dict[str, Any]) -> int:
+        """
+        Fuegt alle User Stories aus dem Konzepter-Output hinzu.
+
+        Args:
+            konzepter_output: Output des Konzepter-Agenten
+
+        Returns:
+            Anzahl der hinzugefuegten User Stories
+        """
+        count = 0
+        for story in konzepter_output.get("user_stories", []):
+            self.add_user_story(
+                id=story.get("id", f"US-{count + 1:03d}"),
+                titel=story.get("titel", "Unbenannt"),
+                feature_id=story.get("feature_id", ""),
+                gegeben=story.get("gegeben", ""),
+                wenn=story.get("wenn", ""),
+                dann=story.get("dann", ""),
+                akzeptanzkriterien=story.get("akzeptanzkriterien", []),
+                prioritaet=story.get("prioritaet", "mittel")
+            )
+            count += 1
+        logger.info(f"{count} User Stories aus Konzepter-Output hinzugefuegt")
         return count
 
     # =========================================================================
@@ -470,6 +556,8 @@ class TraceabilityManager:
         """Findet Luecken in der Traceability."""
         gaps = {
             "anforderungen_ohne_features": [],
+            # AENDERUNG 07.02.2026: User Story Luecken erkennen
+            "features_ohne_user_stories": [],
             "features_ohne_tasks": [],
             "tasks_ohne_dateien": [],
             "orphan_dateien": []
@@ -479,6 +567,11 @@ class TraceabilityManager:
         for req_id, req in self.matrix["anforderungen"].items():
             if not req.get("features"):
                 gaps["anforderungen_ohne_features"].append(req_id)
+
+        # Features ohne User Stories
+        for feat_id, feat in self.matrix["features"].items():
+            if not feat.get("user_stories"):
+                gaps["features_ohne_user_stories"].append(feat_id)
 
         # Features ohne Tasks
         for feat_id, feat in self.matrix["features"].items():
@@ -523,11 +616,14 @@ class TraceabilityManager:
             "updated_at": datetime.now().isoformat(),
             "anforderungen": {},
             "features": {},
+            # AENDERUNG 07.02.2026: User Stories in Reset
+            "user_stories": {},
             "tasks": {},
             "dateien": {},
             "summary": {
                 "total_anforderungen": 0,
                 "total_features": 0,
+                "total_user_stories": 0,
                 "total_tasks": 0,
                 "total_dateien": 0,
                 "coverage": 0.0

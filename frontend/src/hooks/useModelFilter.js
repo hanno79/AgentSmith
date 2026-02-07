@@ -38,9 +38,14 @@ export const useModelFilter = (models, searchFilter, providerFilter) => {
   return useMemo(() => {
     if (!models || !Array.isArray(models)) return [];
 
+    // ÄNDERUNG 31.01.2026: Defensives Handling fehlender Modell-Eigenschaften
+    // m/name/id optional; Null-Coalescing verhindert Fehler bei fehlendem name/id
     return models.filter(m => {
-      const matchesSearch = m.name.toLowerCase().includes(searchFilter.toLowerCase());
-      const matchesProvider = providerFilter === 'all' || m.id.toLowerCase().includes(providerFilter);
+      if (m == null) return false;
+      const name = (m.name ?? '').toLowerCase();
+      const id = (m.id ?? '').toLowerCase();
+      const matchesSearch = name.includes((searchFilter ?? '').toLowerCase());
+      const matchesProvider = providerFilter === 'all' || id.includes((providerFilter ?? '').toLowerCase());
       return matchesSearch && matchesProvider;
     });
   }, [models, searchFilter, providerFilter]);

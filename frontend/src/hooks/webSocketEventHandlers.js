@@ -10,6 +10,10 @@ import { OFFICE_KEY_MAP } from './webSocketConstants';
 
 /**
  * Handler fuer Heartbeat Events.
+ * AENDERUNG 02.02.2026: Status wird NICHT mehr auf 'Working' gesetzt.
+ * Heartbeats sind nur fuer Fortschritts-Informationen, nicht fuer Status-Aenderungen.
+ * Der Status wird ausschliesslich durch WORKING_EVENTS/COMPLETION_EVENTS gesteuert.
+ * Bug Fix: AgentCard Pulsier-Effekt stoppte nicht weil Heartbeats den Idle-Status ueberschrieben.
  */
 export const handleHeartbeat = (data, setActiveAgents, setAgentData) => {
   try {
@@ -17,14 +21,8 @@ export const handleHeartbeat = (data, setActiveAgents, setAgentData) => {
     const agentKey = data.agent?.toLowerCase();
 
     if (agentKey) {
-      setActiveAgents(prev => ({
-        ...prev,
-        [agentKey]: {
-          status: 'Working',
-          lastUpdate: `${payload.task} (${payload.elapsed_seconds}s)`
-        }
-      }));
-
+      // Nur agentData aktualisieren (Heartbeat-Informationen)
+      // Status wird NICHT geaendert - das machen nur WORKING_EVENTS/COMPLETION_EVENTS
       setAgentData(prev => ({
         ...prev,
         [agentKey]: {
@@ -404,5 +402,42 @@ export const handleUTDSEvent = (data, setAgentData) => {
     }
   } catch (e) {
     console.warn('UTDS Event parsen fehlgeschlagen:', e);
+  }
+};
+
+/**
+ * AENDERUNG 07.02.2026: Handler fuer Fix-Agent Events (Fix 14).
+ * Verarbeitet FixStart und FixOutput Events vom TaskDispatcher.
+ */
+export const handleFixEvent = (data, setAgentData) => {
+  try {
+    const payload = JSON.parse(data.message);
+    if (data.event === 'FixStart') {
+      setAgentData(prev => ({
+        ...prev,
+        fix: {
+          ...prev.fix,
+          status: 'fixing',
+          currentFile: (payload.affected_files || [])[0] || '',
+          currentTask: payload.title || '',
+          errorType: payload.error_type || ''
+        }
+      }));
+    } else if (data.event === 'FixOutput') {
+      setAgentData(prev => ({
+        ...prev,
+        fix: {
+          ...prev.fix,
+          status: 'completed',
+          lastResult: payload,
+          modifiedFiles: [...(prev.fix?.modifiedFiles || []), ...(payload.modified_files || [])],
+          model: payload.model || '',
+          fixCount: (prev.fix?.fixCount || 0) + 1,
+          totalDuration: (prev.fix?.totalDuration || 0) + (payload.duration || 0)
+        }
+      }));
+    }
+  } catch (e) {
+    console.warn('Fix Event parsen fehlgeschlagen:', e);
   }
 };

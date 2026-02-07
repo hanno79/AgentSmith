@@ -49,6 +49,11 @@ from backend.error_utils import (
     extract_error_message_from_traceback,
 )
 
+import logging
+import re as regex_re
+
+logger = logging.getLogger(__name__)
+
 
 def extract_python_syntax_errors(
     output: str,
@@ -563,3 +568,105 @@ def extract_config_errors(
                         break
 
     return errors
+
+
+# =============================================================================
+# AENDERUNG 03.02.2026: Fix 7 - Automatische Environment Constraint Erkennung
+# =============================================================================
+
+# Bekannte Modul-Alternativen fuer die Sandbox
+KNOWN_MODULE_ALTERNATIVES = {
+    "bleach": "Verwende re.sub(r'<[^>]+>', '', text) fuer HTML-Sanitisierung",
+    "lxml": "Verwende html.parser oder xml.etree.ElementTree",
+    "numpy": "Verwende Standard-Python-Math oder statistics-Modul",
+    "pandas": "Verwende csv-Modul und Standard-Datenstrukturen",
+    "scipy": "Verwende Standard-Python-Math",
+    "matplotlib": "Nur Text-Output moeglich, keine Grafiken",
+    "pillow": "Keine Bildverarbeitung verfuegbar",
+    "pil": "Keine Bildverarbeitung verfuegbar",
+}
+
+
+def detect_environment_constraints(error_output: str) -> List[dict]:
+    """
+    Erkennt Umgebungs-Constraints aus Fehler-Output.
+
+    AENDERUNG 03.02.2026: Fix 7 - Automatische Erkennung von Sandbox-Limitierungen
+
+    Args:
+        error_output: Der Fehler-Output (z.B. aus Docker/Sandbox)
+
+    Returns:
+        Liste von Constraint-Dicts mit:
+        - constraint: Eindeutiger Identifier (z.B. "bleach_not_available")
+        - description: Menschenlesbare Beschreibung
+        - alternative: Optional - Alternativer Ansatz
+        - priority: "high", "medium", "low"
+    """
+    constraints = []
+    seen_modules = set()
+
+    # Pattern fuer ModuleNotFoundError / ImportError
+    module_patterns = [
+        r"ModuleNotFoundError:\s*No module named ['\"]?([^'\"]+)['\"]?",
+        r"ImportError:\s*No module named ['\"]?([^'\"]+)['\"]?",
+        r"No module named ['\"]?(\w+)['\"]?",
+    ]
+
+    for pattern in module_patterns:
+        matches = regex_re.findall(pattern, error_output, regex_re.IGNORECASE)
+        for module_name in matches:
+            # Bereinige Modulname (nur Basis-Modul, nicht Sub-Module)
+            base_module = module_name.split(".")[0].strip()
+
+            if base_module in seen_modules:
+                continue
+            seen_modules.add(base_module)
+
+            # Erstelle Constraint
+            constraint = {
+                "constraint": f"{base_module}_not_available",
+                "description": f"Modul '{base_module}' ist in der Sandbox nicht verfuegbar",
+                "priority": "high"
+            }
+
+            # Fuege bekannte Alternative hinzu wenn vorhanden
+            alternative = KNOWN_MODULE_ALTERNATIVES.get(base_module.lower())
+            if alternative:
+                constraint["alternative"] = alternative
+
+            constraints.append(constraint)
+            logger.info(f"[EnvConstraint] Erkannt: {base_module} nicht verfuegbar")
+
+    return constraints
+
+
+def save_detected_constraints(error_output: str, memory_path: str) -> int:
+    """
+    Erkennt und speichert Environment Constraints automatisch.
+
+    AENDERUNG 03.02.2026: Fix 7 - Wrapper fuer automatische Speicherung
+
+    Args:
+        error_output: Der Fehler-Output
+        memory_path: Pfad zur Memory-Datei
+
+    Returns:
+        Anzahl der neu gespeicherten Constraints
+    """
+    # Lazy import um zirkulaere Abhaengigkeiten zu vermeiden
+    from agents.memory_core import save_environment_constraint
+
+    constraints = detect_environment_constraints(error_output)
+    saved_count = 0
+
+    for constraint in constraints:
+        try:
+            result = save_environment_constraint(memory_path, constraint)
+            if "hinzugefuegt" in result.lower():
+                saved_count += 1
+                logger.info(f"[EnvConstraint] Gespeichert: {constraint['constraint']}")
+        except Exception as e:
+            logger.warning(f"[EnvConstraint] Speichern fehlgeschlagen: {e}")
+
+    return saved_count

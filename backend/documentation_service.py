@@ -12,10 +12,13 @@ Beschreibung: Documentation Service - Aggregiert und speichert Projekt-Dokumenta
 
 import os
 import json
+import logging
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 
 from backend.traceability_service import TraceabilityService
+
+logger = logging.getLogger(__name__)
 
 
 class DocumentationService:
@@ -52,6 +55,8 @@ class DocumentationService:
             "file_by_file_plan": {},
             "file_generations": [],
             "traceability": {},
+            # AENDERUNG 07.02.2026: User Stories (GEGEBEN-WENN-DANN)
+            "user_stories": [],
             # AENDERUNG 01.02.2026: Orchestrator-Entscheidungen
             "orchestrator_decisions": []
         }
@@ -203,9 +208,9 @@ class DocumentationService:
         iteration: int,
         action: str,
         target_agent: str,
-        root_cause: str = None,
-        model_switch: bool = False,
-        error_hash: str = None
+        root_cause: Optional[str] = None,
+        model_switch: Optional[bool] = False,
+        error_hash: Optional[str] = None
     ) -> None:
         """
         Sammelt Orchestrator-Validierungsentscheidungen.
@@ -236,18 +241,26 @@ class DocumentationService:
         Args:
             derivation_result: TaskDerivationResult als Dict
         """
-        if "task_derivations" not in self.data:
-            self.data["task_derivations"] = []
+        try:
+            if "task_derivations" not in self.data:
+                self.data["task_derivations"] = []
 
-        self.data["task_derivations"].append({
-            "timestamp": datetime.now().isoformat(),
-            "source": derivation_result.get("source", "unknown"),
-            "total_tasks": derivation_result.get("total_tasks", 0),
-            "by_category": derivation_result.get("tasks_by_category", {}),
-            "by_priority": derivation_result.get("tasks_by_priority", {}),
-            "by_agent": derivation_result.get("tasks_by_agent", {}),
-            "derivation_time": derivation_result.get("derivation_time_seconds", 0)
-        })
+            self.data["task_derivations"].append({
+                "timestamp": datetime.now().isoformat(),
+                "source": derivation_result.get("source", "unknown"),
+                "total_tasks": derivation_result.get("total_tasks", 0),
+                "by_category": derivation_result.get("tasks_by_category", {}),
+                "by_priority": derivation_result.get("tasks_by_priority", {}),
+                "by_agent": derivation_result.get("tasks_by_agent", {}),
+                "derivation_time": derivation_result.get("derivation_time_seconds", 0)
+            })
+        except Exception as e:
+            logger.error(
+                "collect_task_derivation: Fehler beim Sammeln der Task-Derivation (ungültige Eingabe oder Zustand): %s",
+                e,
+                exc_info=True
+            )
+            return None
 
     def collect_task_execution_results(self, batch_results: List[Dict[str, Any]]) -> None:
         """
@@ -256,19 +269,29 @@ class DocumentationService:
         Args:
             batch_results: Liste von BatchResult Dicts
         """
-        if "task_executions" not in self.data:
-            self.data["task_executions"] = []
+        try:
+            if "task_executions" not in self.data:
+                self.data["task_executions"] = []
 
-        for result in batch_results:
-            self.data["task_executions"].append({
-                "batch_id": result.get("batch_id", ""),
-                "success": result.get("success", False),
-                "completed_tasks": len(result.get("completed_tasks", [])),
-                "failed_tasks": len(result.get("failed_tasks", [])),
-                "execution_time": result.get("execution_time_seconds", 0),
-                "modified_files": result.get("modified_files", [])[:10],
-                "timestamp": datetime.now().isoformat()
-            })
+            new_entries = []
+            for result in batch_results:
+                new_entries.append({
+                    "batch_id": result.get("batch_id", ""),
+                    "success": result.get("success", False),
+                    "completed_tasks": len(result.get("completed_tasks", [])),
+                    "failed_tasks": len(result.get("failed_tasks", [])),
+                    "execution_time": result.get("execution_time_seconds", 0),
+                    "modified_files": result.get("modified_files", [])[:10],
+                    "timestamp": datetime.now().isoformat()
+                })
+            self.data["task_executions"].extend(new_entries)
+        except Exception as e:
+            logger.error(
+                "collect_task_execution_results: Fehler beim Sammeln der Batch-Execution-Ergebnisse (ungültige Eingabe oder Zustand): %s",
+                e,
+                exc_info=True
+            )
+            return None
 
     def get_task_derivation_summary(self) -> Dict[str, Any]:
         """
@@ -514,6 +537,16 @@ class DocumentationService:
             features: Liste der Features mit id, titel, anforderungen, etc.
         """
         self.data["features"] = features
+
+    # AENDERUNG 07.02.2026: User Stories sammeln (Phase 3)
+    def collect_user_stories(self, user_stories: List[Dict[str, Any]]) -> None:
+        """
+        Sammelt User Stories vom Konzepter-Agenten.
+
+        Args:
+            user_stories: Liste der User Stories mit id, feature_id, gegeben, wenn, dann, etc.
+        """
+        self.data["user_stories"] = user_stories
 
     def collect_tasks(self, tasks: List[Dict[str, Any]]) -> None:
         """

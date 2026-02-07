@@ -1,17 +1,31 @@
 # -*- coding: utf-8 -*-
 """
 Author: rahn
-Datum: 31.01.2026
-Version: 1.2
+Datum: 03.02.2026
+Version: 1.5
 Beschreibung: Coder Agent - Generiert Production-Ready Code basierend auf Projektanforderungen.
               AENDERUNG 31.01.2026: Single-File Modus fuer File-by-File Generierung (Anti-Truncation).
+              AENDERUNG 01.02.2026: Dependency-Versionen fuer requirements.txt.
+              AENDERUNG 02.02.2026: Anti-Pattern Constraints hinzugefuegt (zirkulaere Imports etc.)
+              AENDERUNG 03.02.2026: Fix 11 - max_tokens aus Config an LLM uebergeben (Root Cause fuer Truncation!)
 """
 
+import logging
 from typing import Any, Dict, List, Optional
-from crewai import Agent
+from crewai import Agent, LLM
+
+logger = logging.getLogger(__name__)
 
 # ÄNDERUNG 24.01.2026: Zentrale Hilfsfunktion verwenden (Single Source of Truth)
 from agents.agent_utils import get_model_from_config, combine_project_rules
+
+# AENDERUNG 01.02.2026: Dependency-Versionen fuer requirements.txt
+try:
+    from backend.dev_loop_helpers import get_python_dependency_versions
+except ImportError:
+    # Fallback wenn Import fehlschlaegt (z.B. bei direktem Agent-Test)
+    def get_python_dependency_versions():
+        return ""
 
 
 def create_coder(config: Dict[str, Any], project_rules: Dict[str, List[str]], router=None) -> Agent:
@@ -27,10 +41,22 @@ def create_coder(config: Dict[str, Any], project_rules: Dict[str, List[str]], ro
     Returns:
         Konfigurierte CrewAI Agent-Instanz
     """
+    # AENDERUNG 03.02.2026: Fix 11 - max_tokens aus Config/Router holen
     if router:
-        model = router.get_model("coder")
+        model_name = router.get_model("coder")
+        max_tokens = router.get_token_limit("coder", default=8192)
     else:
-        model = get_model_from_config(config, "coder")
+        model_name = get_model_from_config(config, "coder")
+        max_tokens = config.get("token_limits", {}).get("coder", 8192)
+
+    # AENDERUNG 03.02.2026: Fix 11 - LLM-Objekt mit max_tokens erstellen
+    # Das ist die ROOT CAUSE fuer Truncation: Ohne explizites max_tokens
+    # verwendet das Modell sein Default (oft nur 2K-4K bei Free-Modellen)
+    llm = LLM(
+        model=model_name,
+        max_tokens=max_tokens
+    )
+    logger.info(f"[Coder] LLM erstellt: {model_name} mit max_tokens={max_tokens}")
 
     combined_rules = combine_project_rules(project_rules, "coder")
 
@@ -57,9 +83,29 @@ def create_coder(config: Dict[str, Any], project_rules: Dict[str, List[str]], ro
             "- docs/    -> Dokumentation (ausser README.md im Root)\n"
             "- src/     -> Quellcode bei groesseren Projekten\n"
             "- assets/  -> Statische Ressourcen (Bilder, CSS, etc.)\n\n"
+            "## ANTI-PATTERN REGELN (KRITISCH!)\n"
+            "Diese Fehler fuehren zu Docker-Fehlern und muessen VERMIEDEN werden:\n\n"
+            "1. ZIRKULAERE IMPORTS VERMEIDEN:\n"
+            "   - NIEMALS: from src.routes import X in src/__init__.py UND from src import Y in routes.py\n"
+            "   - STATTDESSEN: Importiere Module, nicht Objekte (import src.routes statt from src.routes import)\n"
+            "   - ODER: Lazy Imports innerhalb von Funktionen wenn noetig\n"
+            "   - __init__.py sollte MINIMAL sein - nur __all__ definieren, keine App-Logik\n\n"
+            "2. IMPORT-REIHENFOLGE:\n"
+            "   - Definiere Objekte BEVOR du sie importierst\n"
+            "   - In Flask: db = SQLAlchemy() VOR route-Imports\n"
+            "   - In src/__init__.py: Erst db/app erstellen, DANN routes importieren\n\n"
+            "3. VOLLSTAENDIGER CODE:\n"
+            "   - NIEMALS Code abschneiden oder mit '...' abkuerzen\n"
+            "   - Jede Funktion MUSS vollstaendig sein (inkl. return)\n"
+            "   - Jede Klasse MUSS alle Methoden enthalten\n"
+            "   - Jeder Block MUSS geschlossen werden (if/for/def/class)\n\n"
+            "4. REQUIREMENTS.TXT:\n"
+            "   - NUR existierende PyPI-Pakete verwenden\n"
+            "   - KEINE erfundenen Pakete (z.B. 'bootstrap' existiert nicht als Python-Paket)\n"
+            "   - Bei Unsicherheit: >= statt == verwenden\n\n"
             f"{combined_rules}"
         ),
-        llm=model,
+        llm=llm,  # AENDERUNG 03.02.2026: LLM-Objekt statt String
         verbose=True
     )
 
@@ -82,6 +128,21 @@ KONTEXT-NUTZUNG:
 - Nutze die bereits erstellten Dateien als Referenz
 - Importiere aus bestehenden Modulen korrekt
 - Halte die API-Kompatibilitaet zu existierenden Dateien
+
+ANTI-PATTERN (KRITISCH - Diese Fehler vermeiden!):
+1. ZIRKULAERE IMPORTS:
+   - In __init__.py: KEINE Importe aus Submodulen die wiederum aus __init__ importieren
+   - Fuer Flask: db = SQLAlchemy() in __init__.py BEVOR routes importiert werden
+   - Lazy Import Pattern: Importiere innerhalb von Funktionen wenn noetig
+
+2. VOLLSTAENDIGKEIT:
+   - Code NIEMALS abschneiden oder mit ... abkuerzen
+   - Jede Funktion mit return/pass beenden
+   - Alle Bloecke (if/for/def/class) schliessen
+
+3. REQUIREMENTS.TXT:
+   - NUR echte PyPI-Pakete (keine erfundenen Namen)
+   - pytest wenn tests/ existiert
 """
 
 
@@ -108,10 +169,20 @@ def create_single_file_coder(
     Returns:
         Konfigurierte CrewAI Agent-Instanz fuer Single-File Generierung
     """
+    # AENDERUNG 03.02.2026: Fix 11 - max_tokens aus Config/Router holen
     if router:
-        model = router.get_model("coder")
+        model_name = router.get_model("coder")
+        max_tokens = router.get_token_limit("coder", default=8192)
     else:
-        model = get_model_from_config(config, "coder")
+        model_name = get_model_from_config(config, "coder")
+        max_tokens = config.get("token_limits", {}).get("coder", 8192)
+
+    # AENDERUNG 03.02.2026: Fix 11 - LLM-Objekt mit max_tokens erstellen
+    llm = LLM(
+        model=model_name,
+        max_tokens=max_tokens
+    )
+    logger.info(f"[SingleFileCoder] LLM erstellt: {model_name} mit max_tokens={max_tokens}")
 
     combined_rules = combine_project_rules(project_rules, "coder")
 
@@ -126,7 +197,7 @@ def create_single_file_coder(
         role="Single-File Developer",
         goal=goal,
         backstory=backstory,
-        llm=model,
+        llm=llm,  # AENDERUNG 03.02.2026: LLM-Objekt statt String
         verbose=True
     )
 
@@ -174,6 +245,15 @@ TECHNISCHER KONTEXT:
             if len(content.split('\n')) > 50:
                 truncated += "\n... (gekuerzt)"
             prompt += f"\n--- {filepath} ---\n{truncated}\n"
+
+    # AENDERUNG 01.02.2026: Spezialbehandlung fuer requirements.txt
+    # Verhindert dass LLM veraltete/falsche Versionen generiert (z.B. greenlet==2.0.7)
+    if target_file.endswith("requirements.txt"):
+        dep_versions = get_python_dependency_versions()
+        if dep_versions:
+            prompt += f"\n\nPACKAGES: {dep_versions}\n"
+            prompt += "WICHTIG: Verwende NUR diese Versionen! Erfinde KEINE eigenen Versionsnummern!\n"
+            prompt += "Falls ein Paket nicht in der Liste ist, nutze >= statt == (z.B. requests>=2.0)\n"
 
     prompt += f"""
 

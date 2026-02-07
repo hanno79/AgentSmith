@@ -1,13 +1,22 @@
 """
 Author: rahn
-Datum: 31.01.2026
-Version: 1.0
+Datum: 03.02.2026
+Version: 1.2
 Beschreibung: Spezialisierter Agent fuer gezielte Code-Korrekturen.
               Repariert nur die gemeldeten Fehler, ohne funktionierenden Code zu aendern.
+              AENDERUNG 02.02.2026: Signatur-Fix fuer UTDS BatchExecution Kompatibilitaet.
+              AENDERUNG 03.02.2026: Fix 11 - max_tokens aus Config an LLM uebergeben.
 """
 
-from crewai import Agent
+import logging
+from crewai import Agent, LLM
 from typing import Dict, List, Optional, Any
+
+# AENDERUNG 02.02.2026: Import fuer konsistente project_rules Verarbeitung
+# AENDERUNG 02.02.2026: get_model_from_config fuer Single Source of Truth Modellwahl
+from agents.agent_utils import combine_project_rules, get_model_from_config
+
+logger = logging.getLogger(__name__)
 
 # =============================================================================
 # Fix-Agent Backstory und Prompts
@@ -61,29 +70,50 @@ WENN DU UNSICHER BIST:
 
 def create_fix_agent(
     config: Dict[str, Any],
-    project_rules: str = "",
+    project_rules: Dict[str, Any] = None,
     router=None,
     target_file: str = "",
-    error_info: Optional[Dict[str, Any]] = None
+    error_info: Optional[Dict[str, Any]] = None,
+    tech_blueprint: Dict[str, Any] = None
 ) -> Agent:
     """
     Erstellt einen spezialisierten Fix-Agent fuer eine Datei.
 
     Args:
         config: Konfiguration mit Modell-Einstellungen
-        project_rules: Projektspezifische Regeln
+        project_rules: Projektspezifische Regeln (Dict wie bei anderen Agenten)
         router: Optional - Model Router fuer dynamische Modellwahl
         target_file: Der Pfad der zu korrigierenden Datei
         error_info: Optional - Informationen ueber den Fehler
+        tech_blueprint: Optional - Tech-Stack-Informationen (language, framework, project_type)
 
     Returns:
         CrewAI Agent konfiguriert fuer Code-Korrekturen
+
+    AENDERUNG 02.02.2026: Signatur von project_rules: str auf Dict[str, Any] geaendert
+                          fuer Konsistenz mit anderen Agenten (coder, tester, reviewer).
+                          Dies behebt den UTDS BatchExecution Bug.
+    AENDERUNG 03.02.2026: Fix 11 - max_tokens aus Config an LLM uebergeben.
+    AENDERUNG 06.02.2026: ROOT-CAUSE-FIX tech_blueprint Parameter hinzugefuegt.
+                          Symptom: Fix-Agent erzeugt Python-Code (BeispielDatei.py) fuer JS-Projekte
+                          Ursache: Agent hatte keine Information ueber den Tech-Stack des Projekts
+                          Loesung: tech_blueprint wird an Goal und Backstory angehaengt
     """
-    # Modell bestimmen
+    # AENDERUNG 02.02.2026: Modellwahl korrigiert (Single Source of Truth)
+    # AENDERUNG 03.02.2026: Fix 11 - max_tokens aus Config/Router holen
     if router:
-        llm = router.get_llm_for_agent("fix")
+        model_name = router.get_model("fix")
+        max_tokens = router.get_token_limit("fix", default=8192)
     else:
-        llm = config.get("default_model", "gpt-4o-mini")
+        model_name = get_model_from_config(config, "fix", fallback_role="reviewer")
+        max_tokens = config.get("token_limits", {}).get("fix", 8192)
+
+    # AENDERUNG 03.02.2026: Fix 11 - LLM-Objekt mit max_tokens erstellen
+    llm = LLM(
+        model=model_name,
+        max_tokens=max_tokens
+    )
+    logger.info(f"[FixAgent] LLM erstellt: {model_name} mit max_tokens={max_tokens}")
 
     # Fehlerkontext fuer Backstory aufbereiten
     error_context = ""
@@ -100,12 +130,41 @@ AKTUELLER FEHLER:
 
     backstory = FIX_AGENT_BACKSTORY + error_context
 
+    # AENDERUNG 06.02.2026: Tech-Stack-Kontext in Backstory einfuegen
+    tech_context = ""
+    language = "unbekannt"
+    if tech_blueprint:
+        language = tech_blueprint.get('language', 'unbekannt')
+        framework = tech_blueprint.get('framework', 'keins')
+        project_type = tech_blueprint.get('project_type', 'unbekannt')
+        tech_context = f"""
+
+TECH-STACK DES PROJEKTS (WICHTIG!):
+- Programmiersprache: {language}
+- Framework: {framework}
+- Projekt-Typ: {project_type}
+- Du MUSST Code in der Sprache '{language}' generieren!
+- NIEMALS Code in einer anderen Sprache erzeugen (z.B. kein Python fuer ein JavaScript-Projekt)!
+"""
+        backstory += tech_context
+
+    # AENDERUNG 02.02.2026: project_rules Dict korrekt verarbeiten (Fix fuer UTDS BatchExecution)
     if project_rules:
-        backstory += f"\n\nPROJEKTREGELN:\n{project_rules}"
+        if isinstance(project_rules, dict):
+            # Nutze combine_project_rules fuer konsistente Verarbeitung wie andere Agenten
+            rules_text = combine_project_rules(project_rules, "fix")
+        else:
+            # Fallback fuer String-Eingabe (Rueckwaertskompatibilitaet)
+            rules_text = str(project_rules)
+        backstory += f"\n\nPROJEKTREGELN:\n{rules_text}"
+
+    # AENDERUNG 06.02.2026: Goal mit Sprache anreichern
+    goal_target = target_file if target_file else "den betroffenen Dateien"
+    goal_lang = f" (Sprache: {language})" if language != "unbekannt" else ""
 
     return Agent(
         role="Code-Korrektur-Spezialist",
-        goal=f"Korrigiere den Fehler in {target_file} mit minimalen Aenderungen",
+        goal=f"Korrigiere den Fehler in {goal_target} mit minimalen Aenderungen{goal_lang}",
         backstory=backstory,
         verbose=True,
         allow_delegation=False,
@@ -275,6 +334,22 @@ def create_import_fix_agent(config: Dict, router=None) -> Agent:
 
 def create_truncation_fix_agent(config: Dict, router=None) -> Agent:
     """Erstellt einen Agent spezialisiert auf Truncation-Probleme."""
+    # AENDERUNG 02.02.2026: Konsistente Modellwahl wie andere Agenten
+    # AENDERUNG 03.02.2026: Fix 11 - max_tokens aus Config/Router holen
+    if router:
+        model_name = router.get_model("fix")
+        max_tokens = router.get_token_limit("fix", default=8192)
+    else:
+        model_name = get_model_from_config(config, "fix", fallback_role="reviewer")
+        max_tokens = config.get("token_limits", {}).get("fix", 8192)
+
+    # AENDERUNG 03.02.2026: Fix 11 - LLM-Objekt mit max_tokens erstellen
+    llm = LLM(
+        model=model_name,
+        max_tokens=max_tokens
+    )
+    logger.info(f"[TruncationFixAgent] LLM erstellt: {model_name} mit max_tokens={max_tokens}")
+
     backstory = FIX_AGENT_BACKSTORY + """
 
 TRUNCATION-SPEZIALISIERUNG:
@@ -295,7 +370,7 @@ ACHTE AUF:
         backstory=backstory,
         verbose=True,
         allow_delegation=False,
-        llm=config.get("default_model", "gpt-4o-mini"),
+        llm=llm,
         max_iter=3,
     )
 

@@ -336,6 +336,8 @@ class OfficeManager:
         "researcher": {"max_workers": 1},
         "reviewer": {"max_workers": 1},
         "techstack_architect": {"max_workers": 1},
+        # AENDERUNG 07.02.2026: Fix-Agent Office (Fix 14)
+        "fix": {"max_workers": 2},
     }
 
     def __init__(self, on_status_change: Callable = None, config: Dict = None):

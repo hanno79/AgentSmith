@@ -22,6 +22,10 @@ import ExternalBureauOffice from '../ExternalBureauOffice';
 import DependencyOffice from '../DependencyOffice';
 import DiscoveryOffice from '../DiscoveryOffice';
 import DocumentationOffice from '../DocumentationOffice';
+// AENDERUNG 02.02.2026: PlannerOffice hinzugefuegt
+import PlannerOffice from '../PlannerOffice';
+// AENDERUNG 07.02.2026: FixOffice hinzugefuegt (Fix 14)
+import FixOffice from '../FixOffice';
 
 const ROUTES = new Set([
   'agent-coder',
@@ -33,6 +37,8 @@ const ROUTES = new Set([
   'agent-techstack',
   'agent-dbdesigner',
   'agent-documentation',
+  'agent-planner',  // AENDERUNG 02.02.2026: Planner Office
+  'agent-fix',      // AENDERUNG 07.02.2026: Fix Office (Fix 14)
   'library',
   'external-bureau',
   'dependency',
@@ -275,6 +281,30 @@ const AgentRouter = ({
         )}
         workerData={agentData?.documentationmanager || {}}
         status={activeAgents?.documentationmanager?.status || 'Idle'}
+        onBack={onBackToMission}
+      />
+    );
+  }
+
+  // AENDERUNG 02.02.2026: Planner Office
+  if (currentRoom === 'agent-planner') {
+    return (
+      <PlannerOffice
+        logs={logs.filter(l => l.agent === 'Planner')}
+        status={activeAgents?.planner?.status || 'Idle'}
+        planData={agentData?.planner || {}}
+        onBack={onBackToMission}
+      />
+    );
+  }
+
+  // AENDERUNG 07.02.2026: Fix Office (Fix 14)
+  if (currentRoom === 'agent-fix') {
+    return (
+      <FixOffice
+        logs={logs.filter(l => l.agent === 'Fix')}
+        status={activeAgents?.fix?.status || 'Idle'}
+        fixData={agentData?.fix || {}}
         onBack={onBackToMission}
       />
     );

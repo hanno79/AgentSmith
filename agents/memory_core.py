@@ -22,6 +22,10 @@ from agents.memory_encryption import encrypt_data, decrypt_data
 
 logger = logging.getLogger(__name__)
 
+# ÄNDERUNG 03.02.2026: Fix 7 - Environment Constraints
+# Persistente Umgebungs-Limitierungen (z.B. "bleach nicht verfügbar in Sandbox")
+ENVIRONMENT_CONSTRAINTS_FILE = "environment_constraints.json"
+
 # Sichere Standard-Struktur mit erweitertem MemoryData (history, lessons, known_data_sources, domain_vocabulary)
 _DEFAULT_MEMORY_DATA: MemoryData = {
     "history": [],
@@ -365,3 +369,127 @@ def search_vocabulary(memory_path: str, search_term: str) -> List[DomainTerm]:
         elif any(search_lower in alias.lower() for alias in v.get("aliases", [])):
             results.append(v)
     return results
+
+
+# =============================================================================
+# Environment Constraints Funktionen (NEU 03.02.2026 - Fix 7)
+# Verhindert wiederholte Fehler durch Umgebungs-Limitierungen
+# =============================================================================
+
+def load_environment_constraints(memory_path: str) -> List[dict]:
+    """
+    Lädt persistente Umgebungs-Constraints.
+    Diese werden bei JEDEM Projekt geladen (nicht projekt-spezifisch).
+
+    ÄNDERUNG 03.02.2026: Fix 7 - Verhindert wiederholte Fehler wie bleach-Oszillation.
+
+    Args:
+        memory_path: Pfad zur Memory-Datei (wird für Verzeichnis-Ermittlung genutzt)
+
+    Returns:
+        Liste der Constraints als Dicts
+    """
+    # Constraints liegen im Memory-Verzeichnis (global, nicht projekt-spezifisch)
+    memory_dir = os.path.dirname(memory_path) if memory_path else "memory"
+    constraints_path = os.path.join(memory_dir, ENVIRONMENT_CONSTRAINTS_FILE)
+
+    if not os.path.exists(constraints_path):
+        return []
+
+    try:
+        with open(constraints_path, "r", encoding="utf-8") as f:
+            constraints = json.load(f)
+        logger.info(f"[EnvConstraints] {len(constraints)} Constraints geladen von {constraints_path}")
+        return constraints
+    except (OSError, json.JSONDecodeError) as e:
+        logger.warning(f"[EnvConstraints] Fehler beim Laden: {e}")
+        return []
+
+
+def save_environment_constraint(memory_path: str, constraint: dict) -> str:
+    """
+    Speichert einen neuen Umgebungs-Constraint oder erhöht den Count bei bestehendem.
+
+    Args:
+        memory_path: Pfad zur Memory-Datei
+        constraint: Dict mit constraint, description, alternative (optional), priority (optional)
+
+    Returns:
+        Statusmeldung ob hinzugefügt oder aktualisiert
+    """
+    memory_dir = os.path.dirname(memory_path) if memory_path else "memory"
+    if memory_dir:
+        os.makedirs(memory_dir, exist_ok=True)
+    constraints_path = os.path.join(memory_dir, ENVIRONMENT_CONSTRAINTS_FILE)
+
+    # Bestehende Constraints laden
+    constraints = load_environment_constraints(memory_path)
+
+    # Prüfe ob Constraint bereits existiert (nach constraint-Key)
+    constraint_key = constraint.get("constraint", "")
+    for c in constraints:
+        if c.get("constraint") == constraint_key:
+            # Existiert bereits - Count erhöhen
+            c["count"] = c.get("count", 1) + 1
+            c["last_seen"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            # Alternative aktualisieren falls neu angegeben
+            if constraint.get("alternative") and not c.get("alternative"):
+                c["alternative"] = constraint["alternative"]
+
+            # Speichern
+            with open(constraints_path, "w", encoding="utf-8") as f:
+                json.dump(constraints, f, indent=2, ensure_ascii=False)
+
+            logger.info(f"[EnvConstraints] Aktualisiert: {constraint_key} (Count: {c['count']})")
+            return f"Constraint aktualisiert: {constraint_key} (Count: {c['count']})"
+
+    # Neuer Constraint
+    constraint["count"] = 1
+    constraint["first_seen"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    constraint["last_seen"] = constraint["first_seen"]
+    constraints.append(constraint)
+
+    # Speichern
+    with open(constraints_path, "w", encoding="utf-8") as f:
+        json.dump(constraints, f, indent=2, ensure_ascii=False)
+
+    logger.info(f"[EnvConstraints] Neu hinzugefügt: {constraint_key}")
+    return f"Constraint hinzugefügt: {constraint_key}"
+
+
+def get_constraints_for_prompt(memory_path: str) -> str:
+    """
+    Formatiert Environment Constraints für den Coder-Prompt.
+
+    Args:
+        memory_path: Pfad zur Memory-Datei
+
+    Returns:
+        Formatierter String für den Prompt
+    """
+    constraints = load_environment_constraints(memory_path)
+
+    if not constraints:
+        return ""
+
+    result = []
+    for c in constraints:
+        desc = c.get("description", c.get("constraint", "Unbekannt"))
+        alternative = c.get("alternative")
+        count = c.get("count", 1)
+
+        # Prioritäts-Emoji basierend auf Häufigkeit
+        if count >= 3:
+            emoji = "🔴"  # Kritisch
+        elif count >= 2:
+            emoji = "🟡"  # Mittel
+        else:
+            emoji = "⚪"  # Niedrig
+
+        line = f"{emoji} [{count}x] {desc}"
+        result.append(line)
+
+        if alternative:
+            result.append(f"   → Alternative: {alternative}")
+
+    return "\n".join(result)

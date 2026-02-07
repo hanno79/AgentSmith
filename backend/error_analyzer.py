@@ -60,6 +60,8 @@ from backend.error_extractors import (
     analyze_docker_error,  # AENDERUNG 02.02.2026: Issue #10
     extract_circular_import_errors,  # AENDERUNG 02.02.2026: Zirkulaere Imports
     extract_config_errors,  # AENDERUNG 03.02.2026: pytest.ini/Config-Fehler
+    detect_environment_constraints,  # AENDERUNG 03.02.2026: Fix 7 - EnvConstraints
+    save_detected_constraints,  # AENDERUNG 03.02.2026: Fix 7 - EnvConstraints
 )
 
 # Re-Exports fuer Rückwärtskompatibilität
@@ -69,6 +71,8 @@ __all__ = [
     "analyze_errors",
     "get_files_to_fix",
     "analyze_docker_error",  # AENDERUNG 02.02.2026: Issue #10
+    "detect_environment_constraints",  # AENDERUNG 03.02.2026: Fix 7
+    "save_detected_constraints",  # AENDERUNG 03.02.2026: Fix 7
 ]
 
 

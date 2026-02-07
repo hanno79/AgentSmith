@@ -41,13 +41,24 @@ const EMPTY_BUDGET_STATS = {
   data_source: "no_data"
 };
 
+// ÄNDERUNG 03.02.2026: Konsistente Währungsformatierung mit Punkt als Dezimaltrenner
+const formatCurrency = (value, decimals = 0) => {
+  return value.toLocaleString('en-US', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals
+  });
+};
+
 const BudgetDashboard = () => {
   const [budgetStats, setBudgetStats] = useState(EMPTY_BUDGET_STATS);
   const [agentCosts, setAgentCosts] = useState([]);
   const [agentCostsDataSource, setAgentCostsDataSource] = useState("no_data");
   const [heatmapData, setHeatmapData] = useState({ agents: [], hours: [], data: [], data_source: "no_data" });
   const [recommendations, setRecommendations] = useState([]);
-  const [budgetCaps, setBudgetCaps] = useState({ monthly: 10000, daily: 500 });
+  // ÄNDERUNG 03.02.2026: Neue Default-Werte für kleinere Budget-Bereiche
+  const [budgetCaps, setBudgetCaps] = useState({ monthly: 100, daily: 20 });
+  // ÄNDERUNG 03.02.2026: Project Budget State für Gesamtbudget-Einstellung
+  const [projectBudget, setProjectBudget] = useState(1000);
   const [autoPause, setAutoPause] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -74,6 +85,8 @@ const BudgetDashboard = () => {
       setAgentCostsDataSource(costsRes.data.data_source || "no_data");
       setHeatmapData(heatmapRes.data);
       setBudgetCaps({ monthly: capsRes.data.monthly, daily: capsRes.data.daily });
+      // ÄNDERUNG 03.02.2026: Project Budget aus API laden (total_budget = monthly_cap)
+      setProjectBudget(capsRes.data.monthly);
       setAutoPause(capsRes.data.auto_pause);
       setRecommendations(recsRes.data.recommendations || []);
     } catch (err) {
@@ -107,6 +120,25 @@ const BudgetDashboard = () => {
       console.error('Failed to update auto-pause:', err);
       // Rollback bei Fehler
       setAutoPause(prevAutoPause);
+    }
+  };
+
+  // ÄNDERUNG 03.02.2026: Handler für Project Budget Änderungen
+  const handleProjectBudgetChange = async (value) => {
+    const prevBudget = projectBudget;
+    setProjectBudget(value);
+    try {
+      await axios.put(`${API_BASE}/budget/caps`, {
+        monthly: value,  // total_budget = monthly_cap
+        daily: budgetCaps.daily,
+        auto_pause: autoPause
+      });
+      // Stats neu laden um "Remaining Budget" zu aktualisieren
+      fetchBudgetData();
+    } catch (err) {
+      console.error('Fehler beim Setzen des Project Budgets:', err);
+      // Rollback bei Fehler
+      setProjectBudget(prevBudget);
     }
   };
 
@@ -209,7 +241,7 @@ const BudgetDashboard = () => {
             </div>
             <h3 className="text-[#9cbaa6] text-xs font-bold uppercase tracking-widest mb-2">Total Burn Rate</h3>
             <div className="flex items-baseline gap-2 mb-2">
-              <span className="text-4xl text-white font-mono font-bold">${budgetStats.burn_rate_daily.toFixed(2)}</span>
+              <span className="text-4xl text-white font-mono font-bold">${formatCurrency(budgetStats.burn_rate_daily, 2)}</span>
               <span className="text-sm text-[#9cbaa6] font-mono">/ day</span>
             </div>
             <div className="flex items-center gap-2 text-xs">
@@ -231,8 +263,8 @@ const BudgetDashboard = () => {
             </div>
             <h3 className="text-[#9cbaa6] text-xs font-bold uppercase tracking-widest mb-2">Remaining Budget</h3>
             <div className="flex items-baseline gap-2 mb-4">
-              <span className="text-4xl text-white font-mono font-bold">${budgetStats.remaining.toLocaleString()}</span>
-              <span className="text-sm text-[#5c856b] font-mono">/ ${budgetStats.total_budget.toLocaleString()}</span>
+              <span className="text-4xl text-white font-mono font-bold">${formatCurrency(budgetStats.remaining, 2)}</span>
+              <span className="text-sm text-[#5c856b] font-mono">/ ${formatCurrency(budgetStats.total_budget)}</span>
             </div>
             <div className="w-full bg-[#0a0a0a] rounded-full h-2 border border-[#28392e]">
               <div
@@ -307,7 +339,7 @@ const BudgetDashboard = () => {
                             className="absolute top-0 left-0 bottom-0 bg-[#0df259]/80 group-hover:bg-[#0df259] transition-all duration-500 rounded-r flex items-center justify-end px-2"
                           >
                             <span className="text-[#0a0a0a] font-bold text-xs opacity-0 group-hover:opacity-100 transition-opacity">
-                              ${agent.cost.toLocaleString()}
+                              ${formatCurrency(agent.cost, 2)}
                             </span>
                           </motion.div>
                         </div>
@@ -451,18 +483,50 @@ const BudgetDashboard = () => {
                 </h3>
               </div>
               <div className="p-6 flex flex-col gap-6">
-                {/* Monthly Cap */}
-                <div className="flex flex-col gap-2">
+                {/* Project Budget - ÄNDERUNG 03.02.2026: Neuer Slider für Gesamtbudget */}
+                <div className="flex flex-col gap-2 pb-4 border-b border-[#28392e]">
                   <div className="flex justify-between text-xs font-mono uppercase text-[#9cbaa6] mb-1">
-                    <span>Global Monthly Cap</span>
-                    <span className="text-white font-bold">${budgetCaps.monthly.toLocaleString()}</span>
+                    <span>Project Budget</span>
+                    <span className="text-white font-bold">${formatCurrency(projectBudget)}</span>
                   </div>
                   <div className="relative w-full h-8 flex items-center">
                     <input
                       type="range"
-                      min="1000"
-                      max="20000"
-                      step="500"
+                      min="10"
+                      max="10000"
+                      step="10"
+                      value={projectBudget}
+                      onChange={(e) => handleProjectBudgetChange(parseInt(e.target.value))}
+                      className="w-full z-10 relative cursor-pointer"
+                      style={{
+                        WebkitAppearance: 'none',
+                        background: 'transparent'
+                      }}
+                    />
+                    <div className="absolute top-1/2 left-0 w-full h-1 bg-[#28392e] -translate-y-1/2 rounded pointer-events-none"></div>
+                    <div
+                      className="absolute top-1/2 left-0 h-1 bg-[#0df259]/50 -translate-y-1/2 rounded pointer-events-none transition-all"
+                      style={{ width: `${((projectBudget - 10) / 9990) * 100}%` }}
+                    ></div>
+                  </div>
+                  <div className="flex justify-between text-[10px] text-[#5c856b]">
+                    <span>$10</span>
+                    <span>$10k</span>
+                  </div>
+                </div>
+
+                {/* Monthly Cap - ÄNDERUNG 03.02.2026: Angepasst für kleinere Budgets */}
+                <div className="flex flex-col gap-2">
+                  <div className="flex justify-between text-xs font-mono uppercase text-[#9cbaa6] mb-1">
+                    <span>Global Monthly Cap</span>
+                    <span className="text-white font-bold">${formatCurrency(budgetCaps.monthly)}</span>
+                  </div>
+                  <div className="relative w-full h-8 flex items-center">
+                    <input
+                      type="range"
+                      min="10"
+                      max="1000"
+                      step="10"
                       value={budgetCaps.monthly}
                       onChange={(e) => handleCapChange('monthly', parseInt(e.target.value))}
                       className="w-full z-10 relative cursor-pointer"
@@ -474,27 +538,27 @@ const BudgetDashboard = () => {
                     <div className="absolute top-1/2 left-0 w-full h-1 bg-[#28392e] -translate-y-1/2 rounded pointer-events-none"></div>
                     <div
                       className="absolute top-1/2 left-0 h-1 bg-[#0df259]/50 -translate-y-1/2 rounded pointer-events-none transition-all"
-                      style={{ width: `${((budgetCaps.monthly - 1000) / 19000) * 100}%` }}
+                      style={{ width: `${((budgetCaps.monthly - 10) / 990) * 100}%` }}
                     ></div>
                   </div>
                   <div className="flex justify-between text-[10px] text-[#5c856b]">
+                    <span>$10</span>
                     <span>$1k</span>
-                    <span>$20k</span>
                   </div>
                 </div>
 
-                {/* Daily Cap */}
+                {/* Daily Cap - ÄNDERUNG 03.02.2026: Angepasst für kleinere Budgets */}
                 <div className="flex flex-col gap-2">
                   <div className="flex justify-between text-xs font-mono uppercase text-[#9cbaa6] mb-1">
                     <span>Daily Burst Cap</span>
-                    <span className="text-white font-bold">${budgetCaps.daily.toLocaleString()}</span>
+                    <span className="text-white font-bold">${formatCurrency(budgetCaps.daily)}</span>
                   </div>
                   <div className="relative w-full h-8 flex items-center">
                     <input
                       type="range"
-                      min="100"
-                      max="1000"
-                      step="50"
+                      min="5"
+                      max="500"
+                      step="5"
                       value={budgetCaps.daily}
                       onChange={(e) => handleCapChange('daily', parseInt(e.target.value))}
                       className="w-full z-10 relative cursor-pointer"
@@ -506,12 +570,12 @@ const BudgetDashboard = () => {
                     <div className="absolute top-1/2 left-0 w-full h-1 bg-[#28392e] -translate-y-1/2 rounded pointer-events-none"></div>
                     <div
                       className="absolute top-1/2 left-0 h-1 bg-[#0df259]/50 -translate-y-1/2 rounded pointer-events-none transition-all"
-                      style={{ width: `${((budgetCaps.daily - 100) / 900) * 100}%` }}
+                      style={{ width: `${((budgetCaps.daily - 5) / 495) * 100}%` }}
                     ></div>
                   </div>
                   <div className="flex justify-between text-[10px] text-[#5c856b]">
-                    <span>$100</span>
-                    <span>$1k</span>
+                    <span>$5</span>
+                    <span>$500</span>
                   </div>
                 </div>
 
@@ -549,7 +613,7 @@ const BudgetDashboard = () => {
               <CreditCard size={14} />
               <span>
                 Est. Month End: {hasData
-                  ? `$${(budgetStats.burn_rate_daily * 30).toLocaleString(undefined, {maximumFractionDigits: 0})}`
+                  ? `$${formatCurrency(budgetStats.burn_rate_daily * 30)}`
                   : 'N/A'}
               </span>
             </div>

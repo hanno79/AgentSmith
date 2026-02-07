@@ -15,6 +15,7 @@ from .base_specialist import (
 )
 from .coderabbit_specialist import CodeRabbitSpecialist
 from .exa_specialist import EXASpecialist
+from .augment_specialist import AugmentSpecialist
 
 __all__ = [
     # Base Classes
@@ -26,4 +27,5 @@ __all__ = [
     # Specialists
     "CodeRabbitSpecialist",
     "EXASpecialist",
+    "AugmentSpecialist",
 ]

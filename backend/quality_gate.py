@@ -1,29 +1,60 @@
 # -*- coding: utf-8 -*-
 """
 Author: rahn
-Datum: 31.01.2026
-Version: 1.2
+Datum: 01.02.2026
+Version: 1.4
 Beschreibung: Quality Gate - Inhaltliche Qualitätskontrolle zwischen Agent-Steps.
               Prüft ob Agent-Outputs den Benutzer-Anforderungen entsprechen.
+
+              AENDERUNG 01.02.2026 v1.4: validate_waisen() für Traceability-Check
+              - Prüft ANF → FEAT → TASK → FILE Kette
+              - Identifiziert Waisen-Elemente
+              - Berechnet Coverage-Score
+
+              AENDERUNG 01.02.2026 v1.3: Refaktoriert in Module (Regel 1: Max 500 Zeilen)
+              - qg_constants.py: Keyword-Mappings, Severity-Konstanten
+              - qg_requirements.py: Anforderungs-Extraktion
+              - qg_techstack_validators.py: TechStack/Schema/Code/Design Validierung
+              - qg_output_validators.py: Review/Security/Final/AgentMessage Validierung
+
               AENDERUNG 31.01.2026: Dart AI Feature-Ableitung Validierungen
               (validate_anforderungen, validate_features, validate_file_by_file_output).
               AENDERUNG 31.01.2026 v1.2: Fix UI-Typ Erkennung - "webapp" hat Prioritaet
-              ueber generisches "gui" Keyword. Verhindert false positives bei Desktop-Erkennung.
+              ueber generisches "gui" Keyword.
 """
 
 from typing import Dict, Any, List, Optional
-from dataclasses import dataclass, field
-import re
 
+# Interne Module
+from backend.validation_result import ValidationResult
+from backend.qg_constants import (
+    DB_KEYWORDS,
+    LANG_KEYWORDS,
+    FRAMEWORK_KEYWORDS,
+    UI_TYPE_KEYWORDS,
+)
+from backend.qg_requirements import extract_requirements, get_requirements_summary
+from backend.qg_techstack_validators import (
+    validate_techstack as _validate_techstack,
+    validate_schema as _validate_schema,
+    validate_code as _validate_code,
+    validate_design as _validate_design,
+)
+from backend.qg_output_validators import (
+    validate_review as _validate_review,
+    validate_security as _validate_security,
+    validate_final as _validate_final,
+    validate_agent_message as _validate_agent_message,
+)
+from backend.dart_ai_validators import (
+    validate_anforderungen as _dart_validate_anforderungen,
+    validate_features as _dart_validate_features,
+    validate_file_by_file_plan as _dart_validate_file_by_file_plan,
+    validate_file_by_file_output as _dart_validate_file_by_file_output,
+)
 
-@dataclass
-class ValidationResult:
-    """Ergebnis einer Qualitätsprüfung."""
-    passed: bool
-    issues: List[str] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
-    score: float = 1.0  # 0.0 bis 1.0
-    details: Dict[str, Any] = field(default_factory=dict)
+# Re-Export fuer Aufrufer die "from backend.quality_gate import ValidationResult" nutzen
+__all__ = ["QualityGate", "ValidationResult"]
 
 
 class QualityGate:
@@ -34,33 +65,11 @@ class QualityGate:
     den ursprünglichen Benutzer-Anforderungen entsprechen.
     """
 
-    # Keyword-Mappings für Anforderungs-Extraktion
-    DB_KEYWORDS = {
-        "sqlite": "sqlite", "postgres": "postgres", "postgresql": "postgres",
-        "mysql": "mysql", "mariadb": "mysql", "mongodb": "mongodb", "mongo": "mongodb",
-        "redis": "redis", "elasticsearch": "elasticsearch", "neo4j": "neo4j",
-        "datenbank": "generic_db", "database": "generic_db"
-    }
-
-    LANG_KEYWORDS = {
-        "python": "python", "javascript": "javascript", "typescript": "javascript",
-        "node": "javascript", "java": "java", "kotlin": "kotlin",
-        "go": "go", "golang": "go", "rust": "rust", "c++": "cpp", "c#": "csharp"
-    }
-
-    FRAMEWORK_KEYWORDS = {
-        "flask": "flask", "fastapi": "fastapi", "django": "django",
-        "express": "express", "react": "react", "vue": "vue", "angular": "angular",
-        "tkinter": "tkinter", "pyqt": "pyqt", "electron": "electron",
-        "streamlit": "streamlit", "gradio": "gradio"
-    }
-
-    UI_TYPE_KEYWORDS = {
-        "desktop": ["desktop", "fenster", "gui", "window"],
-        "webapp": ["webapp", "website", "webseite", "browser", "web app"],
-        "api": ["api", "rest", "endpoint", "backend", "service"],
-        "cli": ["cli", "kommandozeile", "terminal", "console", "command line"]
-    }
+    # Keyword-Mappings als Klassen-Attribute für Rückwärtskompatibilität
+    DB_KEYWORDS = DB_KEYWORDS
+    LANG_KEYWORDS = LANG_KEYWORDS
+    FRAMEWORK_KEYWORDS = FRAMEWORK_KEYWORDS
+    UI_TYPE_KEYWORDS = UI_TYPE_KEYWORDS
 
     def __init__(self, user_goal: str, briefing: Optional[Dict[str, Any]] = None):
         """
@@ -72,332 +81,38 @@ class QualityGate:
         """
         self.user_goal = user_goal
         self.briefing = briefing or {}
-        self.requirements = self._extract_requirements()
+        self.requirements = extract_requirements(user_goal)
 
     def _extract_requirements(self) -> Dict[str, Any]:
         """
         Extrahiert prüfbare Anforderungen aus user_goal.
-
-        NUR Benutzer-Vorgaben zählen als verbindlich!
-        Researcher-Vorschläge werden hier NICHT berücksichtigt.
-
-        Returns:
-            Dictionary mit erkannten Anforderungen
+        Delegiert an qg_requirements.extract_requirements().
         """
-        goal_lower = self.user_goal.lower()
-        requirements = {}
-
-        # Datenbank-Vorgaben
-        for keyword, db_type in self.DB_KEYWORDS.items():
-            if keyword in goal_lower:
-                requirements["database"] = db_type
-                break
-
-        # Sprach-Vorgaben
-        for keyword, lang in self.LANG_KEYWORDS.items():
-            if keyword in goal_lower:
-                requirements["language"] = lang
-                break
-
-        # Framework-Vorgaben
-        for keyword, fw in self.FRAMEWORK_KEYWORDS.items():
-            if keyword in goal_lower:
-                requirements["framework"] = fw
-                break
-
-        # UI-Typ - AENDERUNG 31.01.2026: Intelligentere Erkennung
-        # Problem: "gui" ist zu generisch und kann webapp/desktop bedeuten
-        # Loesung: Explizite Keywords (webapp, desktop) haben Prioritaet
-        ui_matches = {}
-        for ui_type, keywords in self.UI_TYPE_KEYWORDS.items():
-            matching_keywords = [kw for kw in keywords if kw in goal_lower]
-            if matching_keywords:
-                ui_matches[ui_type] = matching_keywords
-
-        if ui_matches:
-            # Priorisiere explizite Matches ueber generische wie "gui"
-            # webapp/website explizit genannt = webapp
-            if "webapp" in ui_matches and any(kw in ["webapp", "website", "webseite", "web app", "browser"] for kw in ui_matches["webapp"]):
-                requirements["ui_type"] = "webapp"
-            # desktop/fenster/window explizit genannt = desktop
-            elif "desktop" in ui_matches and any(kw in ["desktop", "fenster", "window"] for kw in ui_matches["desktop"]):
-                # Aber NICHT wenn webapp auch explizit genannt wurde
-                if "webapp" not in ui_matches:
-                    requirements["ui_type"] = "desktop"
-                else:
-                    requirements["ui_type"] = "webapp"  # webapp hat Vorrang
-            # api explizit genannt
-            elif "api" in ui_matches:
-                requirements["ui_type"] = "api"
-            # cli explizit genannt
-            elif "cli" in ui_matches:
-                requirements["ui_type"] = "cli"
-            # Fallback: Erstes Match (alte Logik)
-            else:
-                requirements["ui_type"] = list(ui_matches.keys())[0]
-
-        return requirements
+        return extract_requirements(self.user_goal)
 
     def validate_techstack(self, blueprint: Dict[str, Any]) -> ValidationResult:
         """
         Validiert TechStack-Blueprint gegen Benutzer-Anforderungen.
-
-        Args:
-            blueprint: Das TechStack-Blueprint Dictionary
-
-        Returns:
-            ValidationResult mit passed/failed Status und Details
         """
-        issues = []
-        warnings = []
-        details = {"checked": [], "blueprint": blueprint}
-
-        # Prüfung 1: Datenbank-Vorgabe respektiert?
-        if self.requirements.get("database"):
-            details["checked"].append("database")
-            required_db = self.requirements["database"]
-            blueprint_db = blueprint.get("database")
-
-            if required_db != "generic_db":  # generic_db = irgendeine DB, nicht spezifisch
-                if not blueprint_db:
-                    issues.append(
-                        f"Benutzer forderte Datenbank '{required_db}', "
-                        f"aber Blueprint enthält keine Datenbank-Angabe"
-                    )
-                elif blueprint_db != required_db:
-                    issues.append(
-                        f"Benutzer forderte '{required_db}', "
-                        f"aber Blueprint hat '{blueprint_db}'"
-                    )
-
-        # Prüfung 2: Sprach-Vorgabe respektiert?
-        if self.requirements.get("language"):
-            details["checked"].append("language")
-            required_lang = self.requirements["language"]
-            blueprint_lang = blueprint.get("language")
-
-            if blueprint_lang and blueprint_lang != required_lang:
-                issues.append(
-                    f"Benutzer forderte Sprache '{required_lang}', "
-                    f"aber Blueprint hat '{blueprint_lang}'"
-                )
-
-        # Prüfung 3: Framework-Vorgabe respektiert?
-        if self.requirements.get("framework"):
-            details["checked"].append("framework")
-            required_fw = self.requirements["framework"]
-            blueprint_type = blueprint.get("project_type", "")
-
-            # Prüfe ob Framework im project_type enthalten ist
-            if required_fw.lower() not in blueprint_type.lower():
-                warnings.append(
-                    f"Benutzer erwähnte Framework '{required_fw}', "
-                    f"aber project_type ist '{blueprint_type}'"
-                )
-
-        # Prüfung 4: UI-Typ passend?
-        if self.requirements.get("ui_type"):
-            details["checked"].append("ui_type")
-            required_ui = self.requirements["ui_type"]
-            blueprint_app_type = blueprint.get("app_type")
-
-            if required_ui == "desktop" and blueprint_app_type != "desktop":
-                issues.append(
-                    f"Benutzer forderte Desktop-App, "
-                    f"aber Blueprint hat app_type '{blueprint_app_type}'"
-                )
-            elif required_ui == "api" and blueprint_app_type not in ["api", "webapp"]:
-                warnings.append(
-                    f"Benutzer forderte API, "
-                    f"aber Blueprint hat app_type '{blueprint_app_type}'"
-                )
-
-        # Prüfung 5: Konsistenz-Check
-        if blueprint.get("requires_server") and not blueprint.get("server_port"):
-            warnings.append("requires_server=true aber kein server_port definiert")
-
-        # Score berechnen
-        # Jeder Issue reduziert Score um 0.3, jede Warning um 0.1
-        score = 1.0 - (len(issues) * 0.3) - (len(warnings) * 0.1)
-        score = max(0.0, min(1.0, score))  # Clamp zwischen 0 und 1
-
-        passed = len(issues) == 0
-        details["requirements"] = self.requirements
-
-        return ValidationResult(
-            passed=passed,
-            issues=issues,
-            warnings=warnings,
-            score=score,
-            details=details
-        )
+        return _validate_techstack(self.requirements, blueprint)
 
     def validate_schema(self, schema: str, blueprint: Dict[str, Any]) -> ValidationResult:
         """
         Validiert DB-Schema gegen Blueprint und Anforderungen.
-
-        Args:
-            schema: Das generierte Datenbank-Schema (SQL oder andere)
-            blueprint: Das TechStack-Blueprint
-
-        Returns:
-            ValidationResult
         """
-        issues = []
-        warnings = []
-        details = {"checked": []}
-
-        # Prüfung 1: Schema sollte existieren wenn Datenbank gefordert
-        if self.requirements.get("database") and not schema:
-            issues.append("Datenbank wurde gefordert, aber kein Schema generiert")
-
-        # Prüfung 2: Schema-Typ passt zu Blueprint
-        if schema and blueprint.get("database"):
-            db_type = blueprint["database"]
-            details["checked"].append("schema_type")
-
-            # Einfache Heuristik für Schema-Typ-Erkennung
-            schema_lower = schema.lower()
-            if db_type == "sqlite" and "sqlite" not in schema_lower:
-                if "create table" not in schema_lower:
-                    warnings.append("Schema enthält keine SQL CREATE TABLE Statements")
-            elif db_type == "mongodb":
-                if "collection" not in schema_lower and "schema" not in schema_lower:
-                    warnings.append("MongoDB-Schema sollte Collections definieren")
-
-        # Prüfung 3: Schema nicht leer
-        if schema and len(schema.strip()) < 50:
-            warnings.append("Schema erscheint sehr kurz/unvollständig")
-
-        score = 1.0 - (len(issues) * 0.3) - (len(warnings) * 0.1)
-        score = max(0.0, min(1.0, score))
-
-        return ValidationResult(
-            passed=len(issues) == 0,
-            issues=issues,
-            warnings=warnings,
-            score=score,
-            details=details
-        )
+        return _validate_schema(self.requirements, schema, blueprint)
 
     def validate_code(self, code: str, blueprint: Dict[str, Any]) -> ValidationResult:
         """
         Validiert generierten Code gegen Blueprint.
-
-        Args:
-            code: Der generierte Code
-            blueprint: Das TechStack-Blueprint
-
-        Returns:
-            ValidationResult
         """
-        issues = []
-        warnings = []
-        details = {"checked": []}
-
-        if not code or len(code.strip()) < 10:
-            issues.append("Kein oder leerer Code generiert")
-            return ValidationResult(passed=False, issues=issues, score=0.0)
-
-        code_lower = code.lower()
-        language = blueprint.get("language", "")
-
-        # Prüfung 1: Sprache passt
-        details["checked"].append("language_indicators")
-        if language == "python":
-            if "def " not in code and "class " not in code and "import " not in code:
-                warnings.append("Python-Code enthält keine typischen Python-Keywords")
-        elif language == "javascript":
-            if "function " not in code and "const " not in code and "let " not in code:
-                warnings.append("JavaScript-Code enthält keine typischen JS-Keywords")
-
-        # Prüfung 2: Datenbank-Integration wenn gefordert
-        if self.requirements.get("database"):
-            details["checked"].append("database_usage")
-            db = self.requirements["database"]
-
-            db_indicators = {
-                "sqlite": ["sqlite", "sqlite3", "database", ".db"],
-                "postgres": ["postgres", "psycopg", "asyncpg", "pg_"],
-                "mysql": ["mysql", "pymysql", "mariadb"],
-                "mongodb": ["mongo", "pymongo", "collection"]
-            }
-
-            if db in db_indicators:
-                if not any(ind in code_lower for ind in db_indicators[db]):
-                    warnings.append(
-                        f"Datenbank '{db}' wurde gefordert, "
-                        f"aber keine entsprechenden Imports/Verwendung im Code gefunden"
-                    )
-
-        # Prüfung 3: Framework-Verwendung wenn im Blueprint
-        project_type = blueprint.get("project_type", "")
-        details["checked"].append("framework_usage")
-
-        framework_indicators = {
-            "flask": ["from flask", "import flask", "Flask("],
-            "fastapi": ["from fastapi", "import fastapi", "FastAPI("],
-            "tkinter": ["import tkinter", "from tkinter", "Tk("],
-            "pyqt": ["PyQt", "from PyQt", "QApplication"]
-        }
-
-        for fw, indicators in framework_indicators.items():
-            if fw in project_type.lower():
-                if not any(ind in code for ind in indicators):
-                    warnings.append(
-                        f"project_type enthält '{fw}', "
-                        f"aber keine entsprechenden Imports im Code"
-                    )
-                break
-
-        score = 1.0 - (len(issues) * 0.3) - (len(warnings) * 0.1)
-        score = max(0.0, min(1.0, score))
-
-        return ValidationResult(
-            passed=len(issues) == 0,
-            issues=issues,
-            warnings=warnings,
-            score=score,
-            details=details
-        )
+        return _validate_code(self.requirements, code, blueprint)
 
     def validate_design(self, design_concept: str, blueprint: Dict[str, Any]) -> ValidationResult:
         """
         Validiert Design-Konzept gegen Blueprint und Anforderungen.
-
-        Args:
-            design_concept: Das generierte Design-Konzept
-            blueprint: Das TechStack-Blueprint
-
-        Returns:
-            ValidationResult
         """
-        issues = []
-        warnings = []
-
-        if not design_concept or len(design_concept.strip()) < 50:
-            warnings.append("Design-Konzept erscheint sehr kurz")
-
-        # Design sollte zum app_type passen
-        app_type = blueprint.get("app_type", "")
-        design_lower = design_concept.lower() if design_concept else ""
-
-        if app_type == "desktop":
-            if "fenster" not in design_lower and "window" not in design_lower and "gui" not in design_lower:
-                warnings.append("Desktop-App Design sollte Fenster/GUI-Elemente beschreiben")
-        elif app_type == "webapp":
-            if "seite" not in design_lower and "page" not in design_lower and "layout" not in design_lower:
-                warnings.append("Webapp Design sollte Seiten/Layout beschreiben")
-
-        score = 1.0 - (len(issues) * 0.3) - (len(warnings) * 0.1)
-        score = max(0.0, min(1.0, score))
-
-        return ValidationResult(
-            passed=len(issues) == 0,
-            issues=issues,
-            warnings=warnings,
-            score=score
-        )
+        return _validate_design(design_concept, blueprint)
 
     def validate_review(
         self,
@@ -407,54 +122,8 @@ class QualityGate:
     ) -> ValidationResult:
         """
         Validiert Review-Output gegen Code und Blueprint.
-
-        Args:
-            review_output: Das Review-Ergebnis des Reviewer-Agents
-            code: Der zu reviewende Code
-            blueprint: Das TechStack-Blueprint
-
-        Returns:
-            ValidationResult
         """
-        issues = []
-        warnings = []
-        details = {"checked": []}
-
-        if not review_output or len(review_output.strip()) < 20:
-            issues.append("Review-Output ist leer oder zu kurz")
-            return ValidationResult(passed=False, issues=issues, score=0.0)
-
-        review_lower = review_output.lower()
-
-        # Prüfung 1: Review sollte Stellung zum Code nehmen
-        details["checked"].append("review_completeness")
-        code_related_keywords = ["code", "implementierung", "funktion", "klasse", "methode", "variable"]
-        if not any(kw in review_lower for kw in code_related_keywords):
-            warnings.append("Review scheint keinen Bezug zum Code zu haben")
-
-        # Prüfung 2: Review sollte ein Verdict enthalten
-        details["checked"].append("verdict_present")
-        verdict_keywords = ["approved", "rejected", "genehmigt", "abgelehnt", "ok", "nicht ok", "bestanden", "fehlgeschlagen"]
-        if not any(kw in review_lower for kw in verdict_keywords):
-            warnings.append("Review enthält kein eindeutiges Verdict (approved/rejected)")
-
-        # Prüfung 3: Bei Ablehnung sollten Gründe genannt werden
-        details["checked"].append("rejection_reasons")
-        if any(kw in review_lower for kw in ["rejected", "abgelehnt", "nicht ok", "fehlgeschlagen"]):
-            reason_keywords = ["weil", "grund", "problem", "fehler", "issue", "mangel"]
-            if not any(kw in review_lower for kw in reason_keywords):
-                warnings.append("Review lehnt ab, aber nennt keine konkreten Gründe")
-
-        score = 1.0 - (len(issues) * 0.3) - (len(warnings) * 0.1)
-        score = max(0.0, min(1.0, score))
-
-        return ValidationResult(
-            passed=len(issues) == 0,
-            issues=issues,
-            warnings=warnings,
-            score=score,
-            details=details
-        )
+        return _validate_review(review_output, code, blueprint)
 
     def validate_security(
         self,
@@ -463,55 +132,8 @@ class QualityGate:
     ) -> ValidationResult:
         """
         Validiert Security-Findings gegen Schwellenwert.
-
-        Args:
-            vulnerabilities: Liste von Security-Findings mit severity
-            severity_threshold: Minimal blockierende Severity ("critical", "high", "medium", "low")
-
-        Returns:
-            ValidationResult
         """
-        issues = []
-        warnings = []
-        details = {"checked": [], "vulnerabilities_by_severity": {}}
-
-        severity_order = ["critical", "high", "medium", "low", "info"]
-        threshold_index = severity_order.index(severity_threshold) if severity_threshold in severity_order else 1
-
-        # Gruppiere Vulnerabilities nach Severity
-        by_severity = {"critical": [], "high": [], "medium": [], "low": [], "info": []}
-        for vuln in vulnerabilities:
-            sev = vuln.get("severity", "info").lower()
-            if sev in by_severity:
-                by_severity[sev].append(vuln)
-
-        details["vulnerabilities_by_severity"] = {k: len(v) for k, v in by_severity.items()}
-        details["checked"].append("severity_check")
-
-        # Prüfe ob blockierende Severities vorhanden
-        for i, sev in enumerate(severity_order[:threshold_index + 1]):
-            if by_severity[sev]:
-                if sev in ["critical", "high"]:
-                    issues.append(
-                        f"{len(by_severity[sev])} {sev.upper()}-Severity Vulnerabilities gefunden"
-                    )
-                else:
-                    warnings.append(
-                        f"{len(by_severity[sev])} {sev.upper()}-Severity Vulnerabilities gefunden"
-                    )
-
-        # Score berechnen basierend auf Severity-Gewichtung
-        severity_weights = {"critical": 0.4, "high": 0.25, "medium": 0.1, "low": 0.05, "info": 0.01}
-        penalty = sum(len(by_severity[sev]) * severity_weights.get(sev, 0) for sev in by_severity)
-        score = max(0.0, 1.0 - penalty)
-
-        return ValidationResult(
-            passed=len(issues) == 0,
-            issues=issues,
-            warnings=warnings,
-            score=score,
-            details=details
-        )
+        return _validate_security(vulnerabilities, severity_threshold)
 
     def validate_final(
         self,
@@ -523,60 +145,14 @@ class QualityGate:
     ) -> ValidationResult:
         """
         Finale Validierung des gesamten Projekts.
-
-        Args:
-            code: Der finale Code
-            tests_passed: Ob alle Tests bestanden haben
-            review_passed: Ob das Review bestanden hat
-            security_passed: Ob der Security-Check bestanden hat
-            blueprint: Das TechStack-Blueprint
-
-        Returns:
-            ValidationResult
         """
-        issues = []
-        warnings = []
-        details = {"checked": [], "component_status": {}}
+        # Code-Validator-Funktion für finale Validierung
+        def code_validator(c: str, bp: Dict[str, Any]) -> ValidationResult:
+            return _validate_code(self.requirements, c, bp)
 
-        # Prüfung 1: Code vorhanden
-        details["checked"].append("code_exists")
-        if not code or len(code.strip()) < 50:
-            issues.append("Kein oder unvollständiger Code vorhanden")
-
-        # Prüfung 2: Tests
-        details["checked"].append("tests")
-        details["component_status"]["tests"] = tests_passed
-        if not tests_passed:
-            issues.append("Tests sind fehlgeschlagen")
-
-        # Prüfung 3: Review
-        details["checked"].append("review")
-        details["component_status"]["review"] = review_passed
-        if not review_passed:
-            warnings.append("Review wurde nicht bestanden (manuell prüfen)")
-
-        # Prüfung 4: Security
-        details["checked"].append("security")
-        details["component_status"]["security"] = security_passed
-        if not security_passed:
-            issues.append("Security-Check nicht bestanden")
-
-        # Prüfung 5: Blueprint-Konformität (nochmal prüfen)
-        code_validation = self.validate_code(code, blueprint)
-        details["code_validation_score"] = code_validation.score
-        if not code_validation.passed:
-            issues.extend(code_validation.issues)
-        warnings.extend(code_validation.warnings)
-
-        score = 1.0 - (len(issues) * 0.25) - (len(warnings) * 0.05)
-        score = max(0.0, min(1.0, score))
-
-        return ValidationResult(
-            passed=len(issues) == 0,
-            issues=issues,
-            warnings=warnings,
-            score=score,
-            details=details
+        return _validate_final(
+            code, tests_passed, review_passed, security_passed,
+            blueprint, code_validator
         )
 
     def validate_agent_message(
@@ -586,103 +162,17 @@ class QualityGate:
     ) -> ValidationResult:
         """
         Validiert Agent-Nachrichten gemäß Kommunikationsprotokoll.
-
-        Erwartete Message-Typen: TASK, RESULT, QUESTION, STATUS, ERROR
-
-        Args:
-            message: Die Agent-Nachricht als Dictionary
-            expected_type: Erwarteter Nachrichtentyp
-
-        Returns:
-            ValidationResult
         """
-        issues = []
-        warnings = []
-        details = {"checked": [], "message_type": expected_type}
-
-        # Basis-Struktur prüfen
-        details["checked"].append("structure")
-        required_fields = ["type", "agent", "timestamp"]
-        for field in required_fields:
-            if field not in message:
-                issues.append(f"Pflichtfeld '{field}' fehlt in der Nachricht")
-
-        # Typ-Validierung
-        details["checked"].append("type_match")
-        actual_type = message.get("type", "").upper()
-        if actual_type != expected_type.upper():
-            issues.append(f"Erwarteter Typ '{expected_type}', erhalten '{actual_type}'")
-
-        # Typ-spezifische Validierung
-        if expected_type.upper() == "TASK":
-            details["checked"].append("task_content")
-            if "content" not in message or not message.get("content"):
-                issues.append("TASK-Nachricht muss 'content' enthalten")
-
-        elif expected_type.upper() == "RESULT":
-            details["checked"].append("result_content")
-            if "result" not in message:
-                issues.append("RESULT-Nachricht muss 'result' enthalten")
-            if "status" not in message:
-                warnings.append("RESULT-Nachricht sollte 'status' enthalten")
-
-        elif expected_type.upper() == "QUESTION":
-            details["checked"].append("question_content")
-            if "question" not in message or not message.get("question"):
-                issues.append("QUESTION-Nachricht muss 'question' enthalten")
-            if "target" not in message:
-                warnings.append("QUESTION-Nachricht sollte 'target' (Ziel-Agent) enthalten")
-
-        elif expected_type.upper() == "STATUS":
-            details["checked"].append("status_content")
-            if "status" not in message:
-                issues.append("STATUS-Nachricht muss 'status' enthalten")
-            valid_statuses = ["working", "waiting", "completed", "failed", "blocked"]
-            if message.get("status") not in valid_statuses:
-                warnings.append(f"Unbekannter Status '{message.get('status')}'")
-
-        elif expected_type.upper() == "ERROR":
-            details["checked"].append("error_content")
-            if "error" not in message or not message.get("error"):
-                issues.append("ERROR-Nachricht muss 'error' enthalten")
-            if "severity" not in message:
-                warnings.append("ERROR-Nachricht sollte 'severity' enthalten")
-
-        score = 1.0 - (len(issues) * 0.3) - (len(warnings) * 0.1)
-        score = max(0.0, min(1.0, score))
-
-        return ValidationResult(
-            passed=len(issues) == 0,
-            issues=issues,
-            warnings=warnings,
-            score=score,
-            details=details
-        )
+        return _validate_agent_message(message, expected_type)
 
     def get_requirements_summary(self) -> str:
         """
         Gibt eine lesbare Zusammenfassung der erkannten Anforderungen zurück.
-
-        Returns:
-            Formatierter String mit Anforderungen
         """
-        if not self.requirements:
-            return "Keine spezifischen Anforderungen erkannt."
-
-        parts = []
-        if self.requirements.get("database"):
-            parts.append(f"Datenbank: {self.requirements['database']}")
-        if self.requirements.get("language"):
-            parts.append(f"Sprache: {self.requirements['language']}")
-        if self.requirements.get("framework"):
-            parts.append(f"Framework: {self.requirements['framework']}")
-        if self.requirements.get("ui_type"):
-            parts.append(f"UI-Typ: {self.requirements['ui_type']}")
-
-        return ", ".join(parts) if parts else "Keine spezifischen Anforderungen erkannt."
+        return get_requirements_summary(self.requirements)
 
     # =========================================================================
-    # AENDERUNG 31.01.2026: Dart AI Feature-Ableitung Validierungen
+    # Dart AI Validierungen (delegiert an dart_ai_validators)
     # =========================================================================
 
     def validate_anforderungen(
@@ -690,255 +180,24 @@ class QualityGate:
         analyst_output: Dict[str, Any],
         briefing: Dict[str, Any]
     ) -> ValidationResult:
-        """
-        Validiert die Anforderungsanalyse des Analyst-Agenten.
-
-        Args:
-            analyst_output: Output des Analyst-Agenten
-            briefing: Das Discovery-Briefing
-
-        Returns:
-            ValidationResult
-        """
-        issues = []
-        warnings = []
-        details = {"checked": []}
-
-        anforderungen = analyst_output.get("anforderungen", [])
-
-        # Pruefung 1: Mindestens eine Anforderung
-        details["checked"].append("minimum_requirements")
-        if not anforderungen:
-            issues.append("Keine Anforderungen extrahiert")
-            return ValidationResult(passed=False, issues=issues, score=0.0)
-
-        # Pruefung 2: Jede Anforderung hat erforderliche Felder
-        details["checked"].append("required_fields")
-        required_fields = ["id", "titel", "beschreibung", "kategorie", "prioritaet"]
-        for req in anforderungen:
-            missing = [f for f in required_fields if not req.get(f)]
-            if missing:
-                warnings.append(
-                    f"Anforderung {req.get('id', '?')} fehlt: {', '.join(missing)}"
-                )
-
-        # Pruefung 3: IDs sind eindeutig
-        details["checked"].append("unique_ids")
-        ids = [req.get("id") for req in anforderungen if req.get("id")]
-        if len(ids) != len(set(ids)):
-            issues.append("Doppelte Anforderungs-IDs gefunden")
-
-        # Pruefung 4: Kategorien sind konsistent
-        details["checked"].append("consistent_categories")
-        kategorien = analyst_output.get("kategorien", [])
-        for req in anforderungen:
-            if req.get("kategorie") and req["kategorie"] not in kategorien:
-                warnings.append(
-                    f"Anforderung {req.get('id', '?')} hat unbekannte Kategorie: {req['kategorie']}"
-                )
-
-        # Pruefung 5: Abdeckung des Briefings (mindestens 50% der Antworten)
-        details["checked"].append("briefing_coverage")
-        answers = briefing.get("answers", [])
-        non_skipped = [a for a in answers if not a.get("skipped", False)]
-        if non_skipped and len(anforderungen) < len(non_skipped) * 0.5:
-            warnings.append(
-                f"Nur {len(anforderungen)} Anforderungen fuer {len(non_skipped)} Discovery-Antworten"
-            )
-
-        score = 1.0 - (len(issues) * 0.3) - (len(warnings) * 0.1)
-        score = max(0.0, min(1.0, score))
-
-        details["total_anforderungen"] = len(anforderungen)
-        details["kategorien"] = kategorien
-
-        return ValidationResult(
-            passed=len(issues) == 0,
-            issues=issues,
-            warnings=warnings,
-            score=score,
-            details=details
-        )
+        """Delegiert an dart_ai_validators.validate_anforderungen."""
+        return _dart_validate_anforderungen(analyst_output, briefing)
 
     def validate_features(
         self,
         konzepter_output: Dict[str, Any],
         anforderungen: List[Dict[str, Any]]
     ) -> ValidationResult:
-        """
-        Validiert die Feature-Extraktion des Konzepter-Agenten.
-
-        Args:
-            konzepter_output: Output des Konzepter-Agenten
-            anforderungen: Die Anforderungen vom Analyst
-
-        Returns:
-            ValidationResult
-        """
-        issues = []
-        warnings = []
-        details = {"checked": []}
-
-        features = konzepter_output.get("features", [])
-        traceability = konzepter_output.get("traceability", {})
-
-        # Pruefung 1: Mindestens ein Feature
-        details["checked"].append("minimum_features")
-        if not features:
-            issues.append("Keine Features extrahiert")
-            return ValidationResult(passed=False, issues=issues, score=0.0)
-
-        # Pruefung 2: Jedes Feature hat erforderliche Felder
-        details["checked"].append("required_fields")
-        required_fields = ["id", "titel", "anforderungen"]
-        for feat in features:
-            missing = [f for f in required_fields if not feat.get(f)]
-            if missing:
-                warnings.append(
-                    f"Feature {feat.get('id', '?')} fehlt: {', '.join(missing)}"
-                )
-
-        # Pruefung 3: IDs sind eindeutig
-        details["checked"].append("unique_ids")
-        ids = [feat.get("id") for feat in features if feat.get("id")]
-        if len(ids) != len(set(ids)):
-            issues.append("Doppelte Feature-IDs gefunden")
-
-        # Pruefung 4: Traceability vollstaendig
-        details["checked"].append("traceability_complete")
-        req_ids = {req.get("id") for req in anforderungen if req.get("id")}
-        covered_reqs = set(traceability.keys())
-        uncovered = req_ids - covered_reqs
-        if uncovered:
-            warnings.append(
-                f"{len(uncovered)} Anforderungen ohne Features: {', '.join(list(uncovered)[:3])}"
-            )
-
-        # Pruefung 5: Features referenzieren gueltige Anforderungen
-        details["checked"].append("valid_references")
-        for feat in features:
-            for ref in feat.get("anforderungen", []):
-                if ref not in req_ids:
-                    warnings.append(
-                        f"Feature {feat.get('id', '?')} referenziert unbekannte Anforderung: {ref}"
-                    )
-
-        # Pruefung 6: Geschaetzte Dateien pro Feature (max. 3)
-        details["checked"].append("file_estimates")
-        for feat in features:
-            est_files = feat.get("geschaetzte_dateien", 0)
-            if est_files > 3:
-                warnings.append(
-                    f"Feature {feat.get('id', '?')} hat {est_files} geschaetzte Dateien (max. 3 empfohlen)"
-                )
-
-        score = 1.0 - (len(issues) * 0.3) - (len(warnings) * 0.1)
-        score = max(0.0, min(1.0, score))
-
-        # Coverage berechnen
-        coverage = len(covered_reqs) / len(req_ids) if req_ids else 0.0
-        details["total_features"] = len(features)
-        details["traceability_coverage"] = coverage
-
-        return ValidationResult(
-            passed=len(issues) == 0,
-            issues=issues,
-            warnings=warnings,
-            score=score,
-            details=details
-        )
+        """Delegiert an dart_ai_validators.validate_features."""
+        return _dart_validate_features(konzepter_output, anforderungen)
 
     def validate_file_by_file_plan(
         self,
         plan: Dict[str, Any],
         blueprint: Dict[str, Any]
     ) -> ValidationResult:
-        """
-        Validiert den File-by-File Generierungsplan.
-
-        Args:
-            plan: Der Plan vom Planner-Agenten
-            blueprint: Das TechStack-Blueprint
-
-        Returns:
-            ValidationResult
-        """
-        issues = []
-        warnings = []
-        details = {"checked": []}
-
-        files = plan.get("files", [])
-
-        # Pruefung 1: Mindestens eine Datei
-        details["checked"].append("minimum_files")
-        if not files:
-            issues.append("Keine Dateien im Plan")
-            return ValidationResult(passed=False, issues=issues, score=0.0)
-
-        # Pruefung 2: Jede Datei hat erforderliche Felder
-        details["checked"].append("required_fields")
-        for file_info in files:
-            if not file_info.get("path"):
-                issues.append("Datei ohne Pfad im Plan")
-            if not file_info.get("description"):
-                warnings.append(f"Datei {file_info.get('path', '?')} ohne Beschreibung")
-
-        # Pruefung 3: Pfade sind eindeutig
-        details["checked"].append("unique_paths")
-        paths = [f.get("path") for f in files if f.get("path")]
-        if len(paths) != len(set(paths)):
-            issues.append("Doppelte Datei-Pfade im Plan")
-
-        # Pruefung 4: Abhaengigkeiten sind gueltig
-        details["checked"].append("valid_dependencies")
-        path_set = set(paths)
-        for file_info in files:
-            for dep in file_info.get("depends_on", []):
-                if dep not in path_set:
-                    warnings.append(
-                        f"Datei {file_info.get('path', '?')} hat unbekannte Abhaengigkeit: {dep}"
-                    )
-
-        # Pruefung 5: Keine zirkulaeren Abhaengigkeiten (einfache Pruefung)
-        details["checked"].append("no_circular_deps")
-        # Einfacher Check: Eine Datei darf nicht von sich selbst abhaengen
-        for file_info in files:
-            path = file_info.get("path", "")
-            if path in file_info.get("depends_on", []):
-                issues.append(f"Datei {path} haengt von sich selbst ab")
-
-        # Pruefung 6: Passende Datei-Endungen fuer Sprache
-        details["checked"].append("language_match")
-        language = blueprint.get("language", "python").lower()
-        expected_extensions = {
-            "python": [".py"],
-            "javascript": [".js", ".jsx", ".ts", ".tsx"],
-            "java": [".java"],
-            "go": [".go"]
-        }
-
-        if language in expected_extensions:
-            exts = expected_extensions[language]
-            code_files = [f for f in files if not f.get("path", "").endswith((".txt", ".md", ".json", ".bat", ".sh"))]
-            for file_info in code_files:
-                path = file_info.get("path", "")
-                if not any(path.endswith(ext) for ext in exts):
-                    warnings.append(
-                        f"Datei {path} hat unerwartete Endung fuer {language}"
-                    )
-
-        score = 1.0 - (len(issues) * 0.3) - (len(warnings) * 0.1)
-        score = max(0.0, min(1.0, score))
-
-        details["total_files"] = len(files)
-
-        return ValidationResult(
-            passed=len(issues) == 0,
-            issues=issues,
-            warnings=warnings,
-            score=score,
-            details=details
-        )
+        """Delegiert an dart_ai_validators.validate_file_by_file_plan."""
+        return _dart_validate_file_by_file_plan(plan, blueprint)
 
     def validate_file_by_file_output(
         self,
@@ -946,60 +205,90 @@ class QualityGate:
         plan: Dict[str, Any],
         max_lines_per_file: int = 200
     ) -> ValidationResult:
+        """Delegiert an dart_ai_validators.validate_file_by_file_output."""
+        return _dart_validate_file_by_file_output(created_files, plan, max_lines_per_file)
+
+    # =========================================================================
+    # Waisen-Check (NEU 01.02.2026)
+    # =========================================================================
+
+    def validate_waisen(
+        self,
+        anforderungen: List[Dict[str, Any]],
+        features: List[Dict[str, Any]],
+        tasks: List[Dict[str, Any]],
+        file_generations: List[Dict[str, Any]]
+    ) -> ValidationResult:
         """
-        Validiert den File-by-File Output gegen den Plan.
+        Prüft auf Waisen-Elemente in der Traceability-Kette.
+
+        ANF → FEAT → TASK → FILE
+
+        Identifiziert:
+        - Anforderungen ohne zugehörige Features
+        - Features ohne zugehörige Tasks
+        - Tasks ohne generierte Dateien
 
         Args:
-            created_files: Liste der erfolgreich erstellten Dateien
-            plan: Der urspruengliche Plan
-            max_lines_per_file: Maximale erlaubte Zeilen pro Datei
+            anforderungen: Liste der Anforderungen (mit 'id')
+            features: Liste der Features (mit 'id', 'anforderungen')
+            tasks: Liste der Tasks (mit 'id', 'feature_id')
+            file_generations: Liste der Dateien (mit 'task_id')
 
         Returns:
-            ValidationResult
+            ValidationResult mit Waisen-Details und Coverage-Score
         """
         issues = []
         warnings = []
-        details = {"checked": []}
 
-        planned_files = plan.get("files", [])
-        planned_paths = {f.get("path") for f in planned_files if f.get("path")}
+        # 1. Anforderungen ohne Features
+        anf_ids = {a.get("id") for a in anforderungen if a.get("id")}
+        feat_ref_anf = set()
+        for f in features:
+            feat_ref_anf.update(f.get("anforderungen", []))
 
-        # Pruefung 1: Alle geplanten Dateien erstellt
-        details["checked"].append("completeness")
-        created_set = set(created_files)
-        missing = planned_paths - created_set
-        if missing:
-            if len(missing) > len(planned_paths) * 0.3:
-                issues.append(f"{len(missing)} von {len(planned_paths)} Dateien fehlen")
-            else:
-                warnings.append(f"{len(missing)} Dateien nicht erstellt: {', '.join(list(missing)[:3])}")
+        waisen_anf = anf_ids - feat_ref_anf
+        if waisen_anf:
+            issues.append(f"Anforderungen ohne Features: {sorted(waisen_anf)}")
 
-        # Pruefung 2: Keine unerwarteten Dateien
-        details["checked"].append("no_unexpected")
-        unexpected = created_set - planned_paths
-        if unexpected:
-            warnings.append(f"{len(unexpected)} unerwartete Dateien erstellt")
+        # 2. Features ohne Tasks
+        feat_ids = {f.get("id") for f in features if f.get("id")}
+        task_ref_feat = {t.get("feature_id") for t in tasks if t.get("feature_id")}
 
-        # Pruefung 3: Erfolgsrate
-        details["checked"].append("success_rate")
-        if planned_paths:
-            success_rate = len(created_set & planned_paths) / len(planned_paths)
-            if success_rate < 0.7:
-                issues.append(f"Erfolgsrate nur {success_rate:.0%}")
-            elif success_rate < 0.9:
-                warnings.append(f"Erfolgsrate {success_rate:.0%}")
+        waisen_feat = feat_ids - task_ref_feat
+        if waisen_feat:
+            issues.append(f"Features ohne Tasks: {sorted(waisen_feat)}")
 
-        score = 1.0 - (len(issues) * 0.3) - (len(warnings) * 0.1)
-        score = max(0.0, min(1.0, score))
+        # 3. Tasks ohne Dateien (nur Warnung, da nicht alle Tasks Dateien erzeugen)
+        task_ids = {t.get("id") for t in tasks if t.get("id")}
+        file_ref_task = {fg.get("task_id") for fg in file_generations if fg.get("task_id")}
 
-        details["planned_count"] = len(planned_paths)
-        details["created_count"] = len(created_files)
-        details["missing_count"] = len(missing) if missing else 0
+        waisen_tasks = task_ids - file_ref_task
+        if waisen_tasks:
+            warnings.append(f"Tasks ohne Dateien: {sorted(waisen_tasks)}")
+
+        # Coverage berechnen
+        total = len(anf_ids) + len(feat_ids) + len(task_ids)
+        waisen_count = len(waisen_anf) + len(waisen_feat) + len(waisen_tasks)
+        coverage = 1.0 - (waisen_count / total) if total > 0 else 1.0
 
         return ValidationResult(
             passed=len(issues) == 0,
             issues=issues,
             warnings=warnings,
-            score=score,
-            details=details
+            score=coverage,
+            details={
+                "waisen": {
+                    "anforderungen_ohne_features": list(waisen_anf),
+                    "features_ohne_tasks": list(waisen_feat),
+                    "tasks_ohne_dateien": list(waisen_tasks)
+                },
+                "counts": {
+                    "anforderungen": len(anf_ids),
+                    "features": len(feat_ids),
+                    "tasks": len(task_ids),
+                    "dateien": len(file_generations)
+                },
+                "coverage": coverage
+            }
         )

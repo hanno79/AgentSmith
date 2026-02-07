@@ -35,6 +35,8 @@ class DockerConfig:
     """Konfiguration fuer Docker-Executor."""
     enabled: bool = False
     fallback_to_host: bool = True
+    auto_start_docker: bool = False
+    auto_start_timeout: int = 60
     memory_limit: str = "512m"
     cpu_limit: float = 1.0
     timeout_install: int = 300
@@ -117,6 +119,86 @@ class DockerExecutor:
         except Exception as e:
             logger.warning(f"Docker-Pruefung fehlgeschlagen: {e}")
             return False
+
+    def auto_start_docker_if_needed(self) -> bool:
+        """
+        Startet Docker automatisch wenn konfiguriert und nicht bereits laufend.
+
+        Returns:
+            True wenn Docker laeuft (bereits oder nach Start), False bei Fehler
+        """
+        if self.is_docker_available():
+            return True
+
+        if not self.config.auto_start_docker:
+            logger.info("Docker Auto-Start deaktiviert")
+            return False
+
+        docker_path = self._get_docker_path()
+        if not docker_path:
+            logger.warning("Docker nicht installiert - Auto-Start nicht moeglich")
+            return False
+
+        logger.info("Versuche Docker automatisch zu starten...")
+
+        import time
+        import sys
+
+        try:
+            if sys.platform == "win32":
+                docker_desktop_paths = [
+                    r"C:\Program Files\Docker\Docker\Docker Desktop.exe",
+                    r"C:\Program Files (x86)\Docker\Docker\Docker Desktop.exe",
+                    os.path.expandvars(r"%PROGRAMFILES%\Docker\Docker\Docker Desktop.exe"),
+                ]
+
+                docker_exe = None
+                for path in docker_desktop_paths:
+                    if os.path.exists(path):
+                        docker_exe = path
+                        break
+
+                if docker_exe:
+                    subprocess.Popen([docker_exe], shell=False)
+                    logger.info(f"Docker Desktop gestartet: {docker_exe}")
+                else:
+                    subprocess.Popen(["cmd", "/c", "start", "Docker Desktop"], shell=True)
+                    logger.info("Docker Desktop via Start-Befehl gestartet")
+
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", "-a", "Docker"])
+                logger.info("Docker Desktop auf macOS gestartet")
+
+            else:
+                result = subprocess.run(
+                    ["systemctl", "start", "docker"],
+                    capture_output=True,
+                    timeout=30
+                )
+                if result.returncode != 0:
+                    subprocess.run(
+                        ["sudo", "service", "docker", "start"],
+                        capture_output=True,
+                        timeout=30
+                    )
+                logger.info("Docker Daemon auf Linux gestartet")
+
+        except Exception as e:
+            logger.error(f"Fehler beim Starten von Docker: {e}")
+            return False
+
+        timeout = self.config.auto_start_timeout
+        start_time = time.time()
+
+        while time.time() - start_time < timeout:
+            time.sleep(2)
+            if self.is_docker_available():
+                logger.info(f"Docker erfolgreich gestartet nach {time.time() - start_time:.1f}s")
+                return True
+            logger.debug(f"Warte auf Docker... ({time.time() - start_time:.0f}s)")
+
+        logger.error(f"Docker-Start Timeout nach {timeout}s")
+        return False
 
     def install_dependencies(self, timeout: Optional[int] = None) -> DockerResult:
         """
@@ -203,6 +285,67 @@ class DockerExecutor:
             )
 
         logger.info(f"Fuehre Tests im Container aus: {cmd}")
+        return self._run_in_container(cmd, timeout)
+
+    # AENDERUNG 01.02.2026: Neue kombinierte Methode für Docker-Tests
+    def install_and_test(self, timeout: Optional[int] = None) -> DockerResult:
+        """
+        Installiert Dependencies UND fuehrt Tests im SELBEN Container aus.
+
+        Loest das Problem dass `--rm` den Container nach install_dependencies()
+        loescht und run_tests() dann keine Packages findet.
+
+        Args:
+            timeout: Timeout in Sekunden (default: timeout_install + timeout_test)
+
+        Returns:
+            DockerResult mit kombiniertem Ergebnis
+        """
+        timeout = timeout or (self.config.timeout_install + self.config.timeout_test)
+
+        if self.tech_stack == "python":
+            # Pruefe ob requirements.txt existiert
+            req_file = self.project_path / "requirements.txt"
+            test_dir = self.project_path / "tests"
+            test_files = list(self.project_path.glob("**/test_*.py"))
+
+            if not req_file.exists():
+                # Keine requirements - nur Tests laufen lassen
+                if not test_dir.exists() and not test_files:
+                    return DockerResult(
+                        success=True,
+                        stdout="Keine requirements.txt und keine Tests gefunden",
+                        stderr="",
+                        exit_code=0
+                    )
+                cmd = "python -m pytest -v --tb=short"
+            else:
+                # BEIDES in einem Container-Aufruf
+                if not test_dir.exists() and not test_files:
+                    cmd = "pip install --no-cache-dir -r requirements.txt && echo 'Dependencies installiert, keine Tests gefunden'"
+                else:
+                    cmd = "pip install --no-cache-dir -r requirements.txt && python -m pytest -v --tb=short"
+
+        elif self.tech_stack in ("nodejs", "javascript"):
+            pkg_file = self.project_path / "package.json"
+            if not pkg_file.exists():
+                return DockerResult(
+                    success=True,
+                    stdout="Keine package.json gefunden",
+                    stderr="",
+                    exit_code=0
+                )
+            cmd = "npm install --silent && npm test -- --passWithNoTests --silent"
+
+        else:
+            return DockerResult(
+                success=False,
+                stdout="",
+                stderr=f"Unbekannter TechStack: {self.tech_stack}",
+                exit_code=1
+            )
+
+        logger.info(f"Installiere und teste im selben Container: {cmd[:80]}...")
         return self._run_in_container(cmd, timeout)
 
     def run_syntax_check(self, timeout: int = 30) -> DockerResult:

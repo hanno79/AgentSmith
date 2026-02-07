@@ -58,6 +58,16 @@ class AgentTimeoutRequest(BaseModel):
     agent_timeout_seconds: int
 
 
+# ÄNDERUNG 03.02.2026: Feature 10a - Token-Limits pro Agent
+class TokenLimitRequest(BaseModel):
+    max_tokens: int
+
+
+# AENDERUNG 06.02.2026: Docker-Toggle ueber UI
+class DockerEnabledRequest(BaseModel):
+    enabled: bool
+
+
 @router.get("/config")
 def get_config():
     """Gibt die aktuelle Konfiguration zurück."""
@@ -70,7 +80,11 @@ def get_config():
         "agent_timeout_seconds": manager.config.get("agent_timeout_seconds", 300),
         "include_designer": manager.config.get("include_designer", True),
         "models": manager.config.get("models", {}),
-        "available_modes": ["test", "production", "premium"]
+        "available_modes": ["test", "production", "premium"],
+        # ÄNDERUNG 03.02.2026: Feature 10a - Token-Limits
+        "token_limits": manager.config.get("token_limits", {"default": 4096}),
+        # AENDERUNG 06.02.2026: Docker-Status fuer Frontend-Toggle
+        "docker_enabled": manager.config.get("docker", {}).get("enabled", False)
     }
 
 
@@ -105,14 +119,76 @@ def set_research_timeout(request: ResearchTimeoutRequest):
 
 
 # ÄNDERUNG 30.01.2026: Globaler Timeout für Agenten-Operationen
+# ÄNDERUNG 02.02.2026: Max von 600 auf 1800 (30 min) erhöht für langsame Free-Modelle
 @router.put("/config/agent-timeout")
 def set_agent_timeout(request: AgentTimeoutRequest):
-    """Setzt den globalen Agent Timeout in Sekunden (60-600)."""
-    if not 60 <= request.agent_timeout_seconds <= 600:
-        raise HTTPException(status_code=400, detail="agent_timeout_seconds muss zwischen 60 und 600 liegen")
+    """Setzt den globalen Agent Timeout in Sekunden (60-1800)."""
+    if not 60 <= request.agent_timeout_seconds <= 1800:
+        raise HTTPException(status_code=400, detail="agent_timeout_seconds muss zwischen 60 und 1800 liegen")
     manager.config["agent_timeout_seconds"] = request.agent_timeout_seconds
     _save_config()
     return {"status": "ok", "agent_timeout_seconds": request.agent_timeout_seconds}
+
+
+# AENDERUNG 06.02.2026: Docker-Toggle ueber UI
+@router.put("/config/docker")
+def set_docker_enabled(request: DockerEnabledRequest):
+    """Aktiviert oder deaktiviert Docker-Isolation fuer Tests."""
+    if "docker" not in manager.config:
+        manager.config["docker"] = {}
+    manager.config["docker"]["enabled"] = request.enabled
+    _save_config()
+    logger.info("[Docker] Docker-Isolation %s", "aktiviert" if request.enabled else "deaktiviert")
+    return {"status": "ok", "docker_enabled": request.enabled}
+
+
+# ÄNDERUNG 03.02.2026: Feature 10a - Token-Limits pro Agent
+@router.get("/config/token-limits")
+def get_token_limits():
+    """Gibt alle Token-Limits pro Agent zurück."""
+    default_limits = {
+        "default": 4096,
+        "coder": 8192,
+        "tester": 4096,
+        "reviewer": 2048,
+        "planner": 2048,
+        "designer": 4096,
+        "security": 2048,
+        "researcher": 4096,
+        "orchestrator": 2048,
+        "discovery": 1500
+    }
+    return manager.config.get("token_limits", default_limits)
+
+
+@router.put("/config/token-limit/{agent_role}")
+def set_token_limit(agent_role: str, request: TokenLimitRequest):
+    # ÄNDERUNG 07.02.2026: Validierung von 32000 auf 131072 erhöht (OpenRouter Maximum)
+    """Setzt das Token-Limit fuer einen Agent (100-131072)."""
+    if not 100 <= request.max_tokens <= 131072:
+        raise HTTPException(
+            status_code=400,
+            detail="max_tokens muss zwischen 100 und 131072 liegen"
+        )
+
+    # Initialisiere token_limits falls nicht vorhanden
+    if "token_limits" not in manager.config:
+        manager.config["token_limits"] = {
+            "default": 4096,
+            "coder": 8192,
+            "tester": 4096,
+            "reviewer": 2048
+        }
+
+    manager.config["token_limits"][agent_role] = request.max_tokens
+    _save_config()
+
+    logger.info(f"[TokenLimit] {agent_role} auf {request.max_tokens} gesetzt")
+    return {
+        "status": "ok",
+        "agent": agent_role,
+        "max_tokens": request.max_tokens
+    }
 
 
 @router.put("/config/max-model-attempts")
@@ -180,10 +256,7 @@ def get_agent_model(agent_role: str):
 # ÄNDERUNG 29.01.2026: Neue Endpoints für Modell-Prioritätslisten (Drag & Drop im Hub)
 @router.get("/config/model-priority/{agent_role}")
 def get_model_priority(agent_role: str):
-    """
-    Gibt die aktuelle Modell-Prioritätsliste für einen Agenten zurück.
-    Das erste Modell ist Primary, die restlichen sind Fallbacks.
-    """
+    """Gibt die Modell-Prioritaetsliste fuer einen Agenten zurueck."""
     mode = manager.config.get("mode", "test")
     model_config = manager.config.get("models", {}).get(mode, {}).get(agent_role)
 
@@ -208,13 +281,21 @@ def get_model_priority(agent_role: str):
     return {"agent": agent_role, "models": models, "mode": mode}
 
 
+# Bekannte Agent-Rollen (muss mit config.yaml / models[mode] uebereinstimmen)
+# AENDERUNG 01.02.2026: Alle Rollen aus config.yaml hinzugefuegt
+# AENDERUNG 07.02.2026: fix + task_deriver hinzugefuegt (Fix 14)
+# AENDERUNG 07.02.2026: planner, analyst, konzepter hinzugefuegt (fehlten trotz agent_factory Implementierung)
+KNOWN_AGENT_ROLES = frozenset({
+    "meta_orchestrator", "orchestrator", "researcher", "coder", "tester",
+    "designer", "database_designer", "security", "reviewer", "techstack_architect",
+    "documentation_manager", "test_generator", "orchestrator_validator",
+    "validator", "reporter", "fix", "task_deriver", "planner", "analyst", "konzepter"
+})
+
+
 @router.put("/config/model-priority/{agent_role}")
 async def set_model_priority(agent_role: str, request: Request):
-    """
-    Setzt die Modell-Prioritätsliste für einen Agenten.
-    Body: { "models": ["model_1", "model_2", "model_3", "model_4", "model_5"] }
-    Das erste Modell wird Primary, die restlichen werden Fallbacks (max 4).
-    """
+    """Setzt die Modell-Prioritaetsliste (Body: {"models": [...]}, max 5)."""
     data = await request.json()
     models = data.get("models", [])
 
@@ -230,6 +311,14 @@ async def set_model_priority(agent_role: str, request: Request):
             )
 
     mode = manager.config.get("mode", "test")
+
+    # Rolle muss bekannt sein, bevor wir config mutieren
+    if agent_role not in KNOWN_AGENT_ROLES:
+        logger.warning("set_model_priority: Unbekannte Rolle '%s'", agent_role)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unbekannte Rolle: '{agent_role}'"
+        )
 
     # Stelle sicher dass models[mode] existiert
     if "models" not in manager.config:
@@ -253,10 +342,7 @@ MODELS_CACHE_DURATION = timedelta(hours=1)
 
 
 async def fetch_openrouter_models():
-    """
-    Holt Modelle von OpenRouter API mit Caching.
-    Cache-Dauer: 1 Stunde.
-    """
+    """Holt Modelle von OpenRouter API mit Caching (1 Stunde)."""
     now = datetime.now()
 
     if _models_cache["data"] and _models_cache["timestamp"]:
@@ -364,104 +450,6 @@ def clear_rate_limits():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# =========================================================================
-# AENDERUNG 31.01.2026: Health-Check Endpoints fuer Modell-Verfuegbarkeit
-# =========================================================================
-
-@router.post("/models/health-check")
-async def run_health_check():
-    """
-    Fuehrt Health-Check fuer alle Primary-Modelle durch.
-    Markiert unavailable Modelle automatisch.
-    """
-    try:
-        router_instance = get_model_router(manager.config)
-        results = await router_instance.health_check_all_primary_models()
-        return {
-            "status": "ok",
-            "results": results,
-            "unavailable_count": len(router_instance.permanently_unavailable)
-        }
-    except Exception as e:
-        logger.exception("Health-Check Fehler: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/models/health-check/{model_id:path}")
-async def check_single_model(model_id: str):
-    """
-    Prueft ein einzelnes Modell auf Verfuegbarkeit.
-
-    Args:
-        model_id: Modell-ID (z.B. "openrouter/xiaomi/mimo-v2-flash:free")
-    """
-    try:
-        router_instance = get_model_router(manager.config)
-        available, reason = await router_instance.check_model_health(model_id)
-
-        # Bei permanent unavailable automatisch markieren
-        if not available and ("not found" in reason.lower() or "404" in reason):
-            router_instance.mark_permanently_unavailable(model_id, reason)
-
-        return {
-            "model": model_id,
-            "available": available,
-            "reason": reason,
-            "marked_unavailable": model_id in router_instance.permanently_unavailable
-        }
-    except Exception as e:
-        logger.exception("Einzelner Health-Check Fehler fuer %s: %s", model_id, e)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/models/health-status")
-def get_health_status():
-    """Gibt den aktuellen Health-Status aller Modelle zurueck."""
-    try:
-        router_instance = get_model_router(manager.config)
-        return router_instance.get_health_status()
-    except Exception as e:
-        return {"error": str(e), "permanently_unavailable": {}}
-
-
-@router.post("/models/recheck-unavailable")
-async def recheck_unavailable_models():
-    """
-    Prueft ob zuvor als unavailable markierte Modelle wieder verfuegbar sind.
-    """
-    try:
-        router_instance = get_model_router(manager.config)
-        results = await router_instance.recheck_unavailable_models()
-        return {
-            "status": "ok",
-            "rechecked": results,
-            "still_unavailable": list(router_instance.permanently_unavailable.keys())
-        }
-    except Exception as e:
-        logger.exception("Recheck-Unavailable Fehler: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/models/reactivate/{model_id:path}")
-def reactivate_model(model_id: str):
-    """
-    Reaktiviert ein als unavailable markiertes Modell manuell.
-
-    Args:
-        model_id: Modell-ID zum Reaktivieren
-    """
-    try:
-        router_instance = get_model_router(manager.config)
-        success = router_instance.reactivate_model(model_id)
-        return {
-            "status": "ok" if success else "not_found",
-            "model": model_id,
-            "reactivated": success
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 def _save_config():
     """Speichert Konfiguration zurück in config.yaml."""
     config_path = os.path.join(manager.base_dir, "config.yaml")
@@ -490,6 +478,11 @@ def _save_config():
                 existing_data["include_designer"] = manager.config["include_designer"]
             if "project_type" in manager.config:
                 existing_data["project_type"] = manager.config["project_type"]
+            # AENDERUNG 06.02.2026: Docker-Toggle persistieren
+            if "docker" in manager.config:
+                if "docker" not in existing_data:
+                    existing_data["docker"] = {}
+                existing_data["docker"]["enabled"] = manager.config["docker"].get("enabled", False)
 
             with open(config_path, "w", encoding="utf-8") as f:
                 yaml_loader.dump(existing_data, f)

@@ -215,8 +215,8 @@ class TaskDeriver:
         )
 
         try:
-            # LLM aufrufen
-            model = self.model_router.get_model("meta_orchestrator")
+            # AENDERUNG 07.02.2026: Eigene Modell-Rolle statt meta_orchestrator (Fix 14)
+            model = self.model_router.get_model("task_deriver")
             response = model.invoke(prompt)
 
             # Response parsen
@@ -546,12 +546,17 @@ class TaskDeriver:
         Ursache: Keine Laenge-/Existenz-Pruefung, project_type als Prefix
         Loesung: Mindestlaenge, Prefix-Bereinigung, Validierung gegen vorhandene Dateien
         """
-        # Laengere Extensions zuerst (jsx vor js, tsx vor ts, json vor js)
-        file_pattern = r'["\']?([a-zA-Z0-9_/\\.-]+\.(?:py|jsx|json|tsx|js|ts|html|css|yaml|yml|md))["\']?'
+        # AENDERUNG 07.02.2026: Extensions fuer alle 12 unterstuetzten Sprachen
+        # Laengere Extensions zuerst (jsx vor js, tsx vor ts, json vor js, yaml vor yml)
+        file_pattern = r'["\']?([a-zA-Z0-9_/\\.-]+\.(?:py|jsx|json|tsx|js|ts|html|css|yaml|yml|md|java|go|rs|cs|cpp|hpp|kt|kts|rb|swift|php|vue|svelte|dart|scala|ex|xml|gradle|sql|sh|bat|toml))["\']?'
         matches = re.findall(file_pattern, text)
 
         # Framework-Namen ausfiltern (Next.js, Vue.js, Node.js etc. sind keine Dateien)
-        _FRAMEWORK_NAMES = {"next.js", "vue.js", "node.js", "react.js", "angular.js", "nuxt.js", "svelte.js"}
+        # AENDERUNG 07.02.2026: Erweitert um non-JS Frameworks (Spring.java, Rails.rb etc.)
+        _FRAMEWORK_NAMES = {
+            "next.js", "vue.js", "node.js", "react.js", "angular.js", "nuxt.js", "svelte.js",
+            "express.js", "gatsby.js", "remix.js", "ember.js",
+        }
         matches = [m for m in matches
                    if m.lower() not in _FRAMEWORK_NAMES
                    and (len(m) > 4 or "/" in m)]

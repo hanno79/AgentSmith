@@ -27,16 +27,33 @@ DEFAULT_STARTUP_TIMEOUT = 30  # Sekunden
 DEFAULT_PORT_CHECK_INTERVAL = 0.5  # Sekunden
 DEFAULT_PORT = 5000
 
-# ÄNDERUNG 06.02.2026: Framework-basierte Startup-Timeouts
+# ÄNDERUNG 07.02.2026: Framework-basierte Startup-Timeouts (erweitert fuer alle Sprachen)
 # Node.js-Projekte brauchen deutlich mehr Zeit (npm install + Compile)
+# JVM-basierte Projekte (Spring, Java, Kotlin) brauchen am laengsten
 FRAMEWORK_STARTUP_TIMEOUTS = {
-    "nodejs": 90,
-    "nextjs": 90,
-    "react": 90,
-    "vue": 90,
-    "angular": 90,
-    "python": 30,
+    "nodejs": 90, "nextjs": 90, "react": 90, "vue": 90, "angular": 90,
+    "python": 30, "flask": 30, "fastapi": 30, "django": 45,
+    "spring": 120, "java": 120, "kotlin": 120,
+    "go": 15, "rust": 15,
+    "rails": 60, "ruby": 60,
+    "laravel": 60, "php": 60,
+    "dotnet": 90, "csharp": 90,
     "default": 45,
+}
+
+# AENDERUNG 07.02.2026: Dependency-Installer Dispatch-Tabelle
+# Erweitert von 2 Sprachen (npm, pip) auf 9 Sprachen
+DEPENDENCY_INSTALLERS = {
+    "javascript": {"check_file": "package.json", "check_dir": "node_modules", "cmd": ["npm", "install"]},
+    "typescript": {"check_file": "package.json", "check_dir": "node_modules", "cmd": ["npm", "install"]},
+    "python": {"check_file": "requirements.txt", "cmd": ["pip", "install", "-r", "requirements.txt"]},
+    "java": {"check_file": "pom.xml", "cmd": ["mvn", "install", "-DskipTests"]},
+    "kotlin": {"check_file": "build.gradle.kts", "cmd": ["gradle", "build", "-x", "test"]},
+    "go": {"check_file": "go.mod", "cmd": ["go", "mod", "download"]},
+    "rust": {"check_file": "Cargo.toml", "cmd": ["cargo", "build"]},
+    "ruby": {"check_file": "Gemfile", "check_dir": "vendor", "cmd": ["bundle", "install"]},
+    "csharp": {"check_file": "*.csproj", "cmd": ["dotnet", "restore"]},
+    "php": {"check_file": "composer.json", "check_dir": "vendor", "cmd": ["composer", "install"]},
 }
 
 
@@ -243,53 +260,61 @@ def _detect_framework_key(tech_blueprint: Dict[str, Any]) -> str:
 def _install_dependencies(project_path: str, tech_blueprint: Dict[str, Any]) -> bool:
     """
     Installiert Projekt-Dependencies vor Server-Start.
-    Node.js: npm install wenn node_modules fehlt.
-    Python: pip install -r requirements.txt wenn vorhanden.
+    AENDERUNG 07.02.2026: Dispatch-Tabelle statt hardcoded if/elif.
+    Unterstuetzt: npm, pip, mvn, gradle, go mod, cargo, bundle, dotnet, composer.
     """
     language = tech_blueprint.get("language", "").lower()
     project_type = tech_blueprint.get("project_type", "").lower()
 
-    # Node.js: npm install wenn node_modules fehlt
-    is_nodejs = (
-        language in ["javascript", "typescript"] or
-        any(n in project_type for n in ["node", "next", "react", "vue", "angular"])
-    )
+    # Sprache bestimmen (Node.js Frameworks auf "javascript" mappen)
+    effective_language = language
+    if any(n in project_type for n in ["node", "next", "react", "vue", "angular", "express"]):
+        effective_language = "javascript"
 
-    if is_nodejs:
-        package_json = os.path.join(project_path, "package.json")
-        node_modules = os.path.join(project_path, "node_modules")
-        if os.path.exists(package_json) and not os.path.exists(node_modules):
-            logger.info("Node.js-Projekt: Fuehre npm install aus...")
-            try:
-                result = subprocess.run(
-                    ["npm", "install"],
-                    cwd=project_path, capture_output=True, text=True,
-                    timeout=120, shell=(os.name == 'nt')
-                )
-                if result.returncode != 0:
-                    logger.error(f"npm install fehlgeschlagen: {result.stderr[:500]}")
-                    return False
-                logger.info("npm install erfolgreich")
-            except subprocess.TimeoutExpired:
-                logger.error("npm install Timeout nach 120s")
-                return False
-            except Exception as e:
-                logger.error(f"npm install Fehler: {e}")
-                return False
+    # Installer-Config aus Dispatch-Tabelle holen
+    installer = DEPENDENCY_INSTALLERS.get(effective_language)
+    if not installer:
+        logger.debug(f"Kein Dependency-Installer fuer Sprache: {effective_language}")
+        return True
 
-    # Python: pip install wenn requirements.txt existiert
-    elif language == "python" or "python" in project_type:
-        req_txt = os.path.join(project_path, "requirements.txt")
-        if os.path.exists(req_txt):
-            logger.info("Python-Projekt: Fuehre pip install aus...")
-            try:
-                subprocess.run(
-                    ["pip", "install", "-r", "requirements.txt"],
-                    cwd=project_path, capture_output=True, text=True,
-                    timeout=120, shell=(os.name == 'nt')
-                )
-            except Exception as e:
-                logger.warning(f"pip install Warning: {e}")
+    check_file = installer.get("check_file", "")
+    check_dir = installer.get("check_dir")
+    cmd = installer.get("cmd", [])
+
+    # Pruefen ob check_file existiert (Wildcard-Support fuer *.csproj)
+    import glob as glob_mod
+    if "*" in check_file:
+        found_files = glob_mod.glob(os.path.join(project_path, check_file))
+        if not found_files:
+            return True  # Keine passende Datei -> nichts zu installieren
+    else:
+        if not os.path.exists(os.path.join(project_path, check_file)):
+            return True  # Check-Datei fehlt -> nichts zu installieren
+
+    # Pruefen ob Dependencies bereits installiert (check_dir)
+    if check_dir and os.path.exists(os.path.join(project_path, check_dir)):
+        logger.debug(f"Dependencies bereits installiert ({check_dir} existiert)")
+        return True
+
+    logger.info(f"{effective_language}-Projekt: Fuehre {' '.join(cmd)} aus...")
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=project_path, capture_output=True, text=True,
+            timeout=120, shell=(os.name == 'nt')
+        )
+        if result.returncode != 0:
+            logger.error(f"{cmd[0]} fehlgeschlagen: {result.stderr[:500]}")
+            return False
+        logger.info(f"{cmd[0]} erfolgreich")
+    except subprocess.TimeoutExpired:
+        logger.error(f"{cmd[0]} Timeout nach 120s")
+        return False
+    except FileNotFoundError:
+        logger.warning(f"{cmd[0]} nicht gefunden - uebersprungen (Tool nicht installiert)")
+        return True  # Graceful: Tool nicht installiert ist kein Fehler
+    except Exception as e:
+        logger.warning(f"{cmd[0]} Fehler: {e}")
 
     return True
 

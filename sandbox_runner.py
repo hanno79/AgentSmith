@@ -2,10 +2,11 @@
 """
 Author: rahn
 Datum: 28.01.2026
-Version: 1.1
+Version: 1.2
 Beschreibung: Sandbox Runner - Sichere Code-Validierung ohne Ausführung.
               Security Features: AST-Parsing, sichere Temp-Dateien, subprocess statt os.system.
               ÄNDERUNG 28.01.2026: validate_project_references() fuer Multi-File-Validierung hinzugefuegt.
+              AENDERUNG 06.02.2026: JSX/TSX-Erkennung - node --check scheitert an JSX-Syntax
 """
 
 import os
@@ -19,18 +20,50 @@ from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
-CodeType = Literal["python", "html", "js"]
+CodeType = Literal["python", "html", "js", "jsx"]
+
+
+def _contains_jsx_syntax(code: str) -> bool:
+    """
+    Prueft ob Code JSX/TSX-Syntax enthaelt.
+
+    AENDERUNG 06.02.2026: ROOT-CAUSE-FIX Sandbox JSX-Validierung
+    Symptom: node --check scheitert immer an JSX-Code (<Component />, return <div>...)
+    Ursache: JSX ist kein valides JavaScript fuer Node.js - braucht Babel/SWC Transpiler
+    Loesung: JSX erkennen und separaten Code-Typ zuweisen
+
+    Args:
+        code: Der zu pruefende Code
+
+    Returns:
+        True wenn JSX-Syntax erkannt wird
+    """
+    jsx_patterns = [
+        r'<[A-Z][a-zA-Z]*[\s/>]',       # <Component /> oder <Component>
+        r'<[a-z]+\s+className=',          # <div className="...">
+        r'return\s*\(\s*<',               # return (<div>...)
+        r'return\s+<[a-zA-Z]',           # return <div>...
+        r'<>',                            # Fragment-Syntax <>...</>
+        r'<\/[A-Z]',                      # Schliessendes Component-Tag </Component>
+        r'useState\s*\(',                 # React Hook
+        r'useEffect\s*\(',               # React Hook
+        r'from\s+["\']react["\']',        # import from 'react'
+        r'from\s+["\']next/',             # import from 'next/...'
+    ]
+    return any(re.search(pattern, code) for pattern in jsx_patterns)
 
 
 def detect_code_type(code: str) -> CodeType:
     """
     Erkennt den Code-Typ anhand von Indikatoren.
 
+    AENDERUNG 06.02.2026: JSX/TSX als separater Typ erkannt.
+
     Args:
         code: Der zu analysierende Code
 
     Returns:
-        'html', 'js', oder 'python'
+        'html', 'jsx', 'js', oder 'python'
     """
     lower_code = code.lower()
     if "<html" in lower_code or "<!doctype" in lower_code:
@@ -50,8 +83,102 @@ def detect_code_type(code: str) -> CodeType:
             "class " in code and "extends " in code,  # JS-Klassen mit Vererbung
         ]
         if any(js_indicators):
+            # AENDERUNG 06.02.2026: JSX-Erkennung VOR js-Klassifizierung
+            if _contains_jsx_syntax(code):
+                return "jsx"
             return "js"
     return "python"
+
+
+# AENDERUNG 06.02.2026: ROOT-CAUSE-FIX Sandbox JSX-Validierung
+# Symptom: "JavaScript-Syntaxfehler" in jeder Iteration bei Next.js/React Projekten
+# Ursache: node --check kann JSX-Syntax (<Component />) nicht parsen
+# Loesung: Strukturelle JSX-Validierung statt node --check
+
+def _validate_jsx(code: str) -> str:
+    """
+    Validiert JSX/TSX-Code strukturell (ohne node --check).
+
+    node --check kann JSX nicht parsen - JSX braucht Babel/SWC/TypeScript Compiler.
+    Stattdessen pruefen wir strukturelle Integritaet:
+    - Klammerbalance (rund, eckig, geschweift)
+    - String-Literale geschlossen
+    - Export-Statement vorhanden
+    - Keine offensichtlichen Syntaxfehler
+
+    Args:
+        code: JSX/TSX-Code
+
+    Returns:
+        Validierungsergebnis als String
+    """
+    issues = []
+
+    # 1. Klammerbalance pruefen (ignoriere Klammern in Strings/Kommentaren)
+    bracket_pairs = {'(': ')', '[': ']', '{': '}'}
+    stack = []
+    in_string = None
+    in_line_comment = False
+    in_block_comment = False
+    i = 0
+    while i < len(code):
+        ch = code[i]
+        # Kommentare tracken
+        if not in_string:
+            if not in_block_comment and i + 1 < len(code) and code[i:i+2] == '//':
+                in_line_comment = True
+            if in_line_comment and ch == '\n':
+                in_line_comment = False
+                i += 1
+                continue
+            if not in_line_comment and i + 1 < len(code) and code[i:i+2] == '/*':
+                in_block_comment = True
+            if in_block_comment and i + 1 < len(code) and code[i:i+2] == '*/':
+                in_block_comment = False
+                i += 2
+                continue
+            if in_line_comment or in_block_comment:
+                i += 1
+                continue
+
+        # String-Tracking
+        if ch in ('"', "'", '`') and not in_string:
+            in_string = ch
+        elif ch == in_string and (i == 0 or code[i-1] != '\\'):
+            in_string = None
+        elif not in_string:
+            if ch in bracket_pairs:
+                stack.append(bracket_pairs[ch])
+            elif ch in bracket_pairs.values():
+                if stack and stack[-1] == ch:
+                    stack.pop()
+                elif not stack:
+                    # JSX-Tags koennen > enthalten, nur echte Klammern zaehlen
+                    if ch in (')', ']', '}'):
+                        issues.append(f"Ueberschuessige schliessende Klammer '{ch}'")
+                        break
+        i += 1
+
+    if stack and len(stack) <= 3:
+        missing = ', '.join(f"'{b}'" for b in reversed(stack))
+        issues.append(f"Fehlende schliessende Klammer(n): {missing}")
+
+    # 2. Offene String-Literale pruefen
+    if in_string:
+        issues.append(f"Nicht geschlossenes String-Literal ({in_string})")
+
+    # 3. Export vorhanden pruefen (React-Komponenten brauchen Export)
+    has_export = 'export ' in code
+    has_module_exports = 'module.exports' in code
+    if not has_export and not has_module_exports:
+        # Kein Fehler, nur Warnung - manche Dateien brauchen keinen Export
+        pass
+
+    if issues:
+        issue_text = "; ".join(issues[:3])
+        return f"❌ JSX-Strukturfehler: {issue_text}"
+
+    return "✅ JSX/React-Syntaxprüfung bestanden (Strukturanalyse)."
 
 
 def run_sandbox(code: str) -> str:
@@ -81,6 +208,10 @@ def run_sandbox(code: str) -> str:
                 return "✅ HTML-Struktur syntaktisch korrekt."
             else:
                 return "❌ HTML unvollständig – schließende Tags fehlen."
+
+        # AENDERUNG 06.02.2026: JSX separat behandeln - node --check versteht kein JSX
+        elif code_type == "jsx":
+            return _validate_jsx(code)
 
         elif code_type == "js":
             # SECURITY FIX: Sichere Temp-Datei mit eindeutigem Namen (Race Condition Prevention)

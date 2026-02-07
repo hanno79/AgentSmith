@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-01-31T19:37:00.782717",
+  "last_updated": "2026-02-07T15:03:53.525665",
   "python": {
     "version": "3.12.9",
     "packages": [
@@ -181,6 +181,11 @@
       {
         "name": "cloudpathlib",
         "version": "0.23.0",
+        "status": "installed"
+      },
+      {
+        "name": "clsx",
+        "version": "0.1.1",
         "status": "installed"
       },
       {
@@ -1589,6 +1594,11 @@
         "status": "installed"
       },
       {
+        "name": "tailwind-merge",
+        "version": "0.3.3",
+        "status": "installed"
+      },
+      {
         "name": "tenacity",
         "version": "9.1.2",
         "status": "installed"
@@ -1809,6 +1819,11 @@
     "version": "11.6.2",
     "packages": [
       {
+        "name": "@augmentcode/auggie",
+        "version": "0.15.0",
+        "status": "installed"
+      },
+      {
         "name": "@executeautomation/database-server",
         "version": "1.0.2",
         "status": "installed"
@@ -1859,6 +1874,11 @@
         "status": "installed"
       },
       {
+        "name": "@radix-ui/react-slot",
+        "version": "1.2.4",
+        "status": "installed"
+      },
+      {
         "name": "@smithery/cli",
         "version": "1.2.1",
         "status": "installed"
@@ -1869,13 +1889,38 @@
         "status": "installed"
       },
       {
+        "name": "autoprefixer",
+        "version": "10.4.24",
+        "status": "installed"
+      },
+      {
+        "name": "better-sqlite3",
+        "version": "unknown",
+        "status": "installed"
+      },
+      {
+        "name": "class-variance-authority",
+        "version": "0.7.1",
+        "status": "installed"
+      },
+      {
         "name": "claude-flow",
         "version": "unknown",
         "status": "installed"
       },
       {
+        "name": "cors",
+        "version": "2.8.6",
+        "status": "installed"
+      },
+      {
         "name": "csv-writer",
         "version": "1.6.0",
+        "status": "installed"
+      },
+      {
+        "name": "daisyui",
+        "version": "5.5.17",
         "status": "installed"
       },
       {
@@ -1909,8 +1954,23 @@
         "status": "installed"
       },
       {
+        "name": "lucide-react",
+        "version": "0.563.0",
+        "status": "installed"
+      },
+      {
+        "name": "morgan",
+        "version": "1.10.1",
+        "status": "installed"
+      },
+      {
         "name": "netlify-cli",
         "version": "22.1.3",
+        "status": "installed"
+      },
+      {
+        "name": "next",
+        "version": "16.1.6",
         "status": "installed"
       },
       {
@@ -1931,6 +1991,11 @@
       {
         "name": "pnpm",
         "version": "10.13.1",
+        "status": "installed"
+      },
+      {
+        "name": "postcss",
+        "version": "8.5.6",
         "status": "installed"
       },
       {
@@ -1961,6 +2026,11 @@
       {
         "name": "sequelize",
         "version": "6.37.7",
+        "status": "installed"
+      },
+      {
+        "name": "shadcn-ui",
+        "version": "0.9.5",
         "status": "installed"
       },
       {

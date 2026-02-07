@@ -1,37 +1,21 @@
 /**
  * Author: rahn
  * Datum: 24.01.2026
- * Version: 1.1
+ * Version: 1.2
  * Beschreibung: Mainframe Hub - Zentrale Steuerung für Konfiguration, Modelle und System-Status.
- *               ÄNDERUNG 31.01.2026: Refactoring - useModelFilter Hook für Filter-Logik (Regel 13)
+ *               ÄNDERUNG 31.01.2026: Refactoring - Panels/Modal/Slider in eigene Komponenten (Regel 1).
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { motion, AnimatePresence } from 'framer-motion';
-// ÄNDERUNG 29.01.2026: Import SortableModelList für Drag & Drop Prioritätslisten
-import SortableModelList from './components/SortableModelList';
-// ÄNDERUNG 31.01.2026: Zentraler Filter-Hook (Single Source of Truth)
-import { useModelFilter, PROVIDER_OPTIONS } from './hooks/useModelFilter';
-import {
-  Terminal,
-  Cpu,
-  Server,
-  Settings,
-  RefreshCw,
-  Zap,
-  Database,
-  Shield,
-  Activity,
-  ChevronDown,
-  Check,
-  X,
-  Clock,
-  DollarSign,
-  AlertTriangle
-} from 'lucide-react';
+import { useModelFilter } from './hooks/useModelFilter';
+import { Terminal, RefreshCw, AlertTriangle } from 'lucide-react';
+import { API_BASE } from './constants/config';
 
-import { API_BASE, DEFAULTS } from './constants/config';
+import LLMGatewayPanel from './components/LLMGatewayPanel';
+import CorePanel from './components/CorePanel';
+import ModelListPanel from './components/ModelListPanel';
+import ModelModal from './components/ModelModal';
 
 const MainframeHub = ({
   maxRetries: propMaxRetries,
@@ -54,7 +38,12 @@ const MainframeHub = ({
   const [maxRetries, setMaxRetries] = useState(5);
   const [researchTimeout, setResearchTimeout] = useState(5);
   // ÄNDERUNG 30.01.2026: Globaler Agent-Timeout in Sekunden
-  const [agentTimeout, setAgentTimeout] = useState(300);
+  // ÄNDERUNG 02.02.2026: Default von 300s (5 min) auf 900s (15 min) erhöht für langsame Free-Modelle
+  const [agentTimeout, setAgentTimeout] = useState(900);
+  // ÄNDERUNG 07.02.2026: Token-Limits als Dict für alle Agents (statt nur Coder)
+  const [tokenLimits, setTokenLimits] = useState({});
+  // AENDERUNG 06.02.2026: Docker-Toggle
+  const [dockerEnabled, setDockerEnabled] = useState(false);
   // ÄNDERUNG 25.01.2026: Lokaler State für Modellwechsel
   const [maxModelAttempts, setMaxModelAttempts] = useState(3);
   // ÄNDERUNG 25.01.2026: Filter für Modell-Listen
@@ -110,7 +99,12 @@ const MainframeHub = ({
       setMaxRetries(configRes.data.max_retries || 5);
       setResearchTimeout(configRes.data.research_timeout_minutes || 5);
       // ÄNDERUNG 30.01.2026: Globaler Agent-Timeout
-      setAgentTimeout(configRes.data.agent_timeout_seconds || 300);
+      // ÄNDERUNG 02.02.2026: Fallback von 300s auf 900s (15 min) erhöht
+      setAgentTimeout(configRes.data.agent_timeout_seconds || 900);
+      // ÄNDERUNG 07.02.2026: Alle Token-Limits laden (Dict für alle Agents)
+      setTokenLimits(configRes.data.token_limits || {});
+      // AENDERUNG 06.02.2026: Docker-Status laden
+      setDockerEnabled(configRes.data.docker_enabled || false);
     } catch (err) {
       console.error('Failed to fetch data:', err);
       setError(err);
@@ -245,6 +239,30 @@ const MainframeHub = ({
     }
   };
 
+  // ÄNDERUNG 07.02.2026: Generischer Handler für Token-Limits pro Agent
+  const updateTokenLimit = async (agentRole, value) => {
+    const previousLimits = { ...tokenLimits };
+    setTokenLimits(prev => ({ ...prev, [agentRole]: value }));
+    try {
+      await axios.put(`${API_BASE}/config/token-limit/${agentRole}`, { max_tokens: value });
+    } catch (err) {
+      console.error(`Token-Limit für ${agentRole} fehlgeschlagen:`, err);
+      setTokenLimits(previousLimits);
+    }
+  };
+
+  // AENDERUNG 06.02.2026: Handler fuer Docker-Toggle mit Rollback
+  const updateDockerEnabled = async (value) => {
+    const previousValue = dockerEnabled;
+    setDockerEnabled(value);
+    try {
+      await axios.put(`${API_BASE}/config/docker`, { enabled: value });
+    } catch (err) {
+      console.error('Docker-Toggle fehlgeschlagen:', err);
+      setDockerEnabled(previousValue);
+    }
+  };
+
   // ÄNDERUNG 25.01.2026: Handler für Modellwechsel (Dual-Slider)
   const updateModelAttempts = async (value) => {
     // Validierung: max = effectiveMaxRetries - 1
@@ -346,687 +364,73 @@ const MainframeHub = ({
         </div>
       </header>
 
-      {/* Main Content - ÄNDERUNG 25.01.2026: Feste Höhe für besseres Layout */}
-      <main className="flex-1 overflow-hidden p-4 md:p-6 lg:p-8">
-        <div className="h-[calc(100vh-140px)] grid grid-cols-1 xl:grid-cols-12 gap-6">
+      {/* Main Content - ÄNDERUNG 01.02.2026: overflow-y-auto für Scroll, min-h-fit für variable Höhe */}
+      <main className="flex-1 p-4 md:p-6 lg:p-8 overflow-y-auto page-scrollbar">
+        <div className="min-h-fit grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
 
-          {/* Left Panel: LLM Gateway */}
-          <div className="xl:col-span-4 flex flex-col gap-4">
-            <div className="bg-[#111813] rounded-xl border border-[#28392e] overflow-hidden flex-1 flex flex-col shadow-2xl">
-              <div className="px-5 py-4 border-b border-[#28392e] bg-[#16211a] flex justify-between items-center">
-                <h3 className="text-white font-bold tracking-wider uppercase flex items-center gap-2">
-                  <Server size={16} className="text-primary" />
-                  LLM Gateway [Agents]
-                </h3>
-                <div className="flex gap-1">
-                  <div className="w-2 h-2 rounded-full bg-primary" />
-                  <div className="w-2 h-2 rounded-full bg-primary/30" />
-                </div>
-              </div>
+          <LLMGatewayPanel
+            agents={agents}
+            routerStatus={routerStatus}
+            onAgentClick={(agent) => {
+              setSelectedAgent(agent);
+              setShowModelSelector(true);
+              setModalModelFilter('');
+              setModalProviderFilter('all');
+              loadModelPriority(agent.role);
+            }}
+            getModelDisplayName={getModelDisplayName}
+            isModelRateLimited={isModelRateLimited}
+            onClearRateLimits={clearRateLimits}
+          />
 
-              <div className="p-4 flex-1 overflow-y-auto custom-scrollbar flex flex-col gap-3">
-                {/* Header Row */}
-                <div className="grid grid-cols-12 gap-2 text-[10px] text-[#9cbaa6] font-mono uppercase px-3 mb-1">
-                  <div className="col-span-5">Agent</div>
-                  <div className="col-span-4">Model</div>
-                  <div className="col-span-3 text-right">Status</div>
-                </div>
+          <CorePanel
+            config={config}
+            agents={agents}
+            setMode={setMode}
+            effectiveModelAttempts={effectiveModelAttempts}
+            effectiveMaxRetries={effectiveMaxRetries}
+            effectiveResearchTimeout={effectiveResearchTimeout}
+            agentTimeout={agentTimeout}
+            onModelAttemptsChange={updateModelAttempts}
+            onMaxRetriesChange={updateMaxRetries}
+            onResearchTimeoutChange={updateResearchTimeout}
+            onAgentTimeoutChange={updateAgentTimeout}
+            dockerEnabled={dockerEnabled}
+            onDockerToggle={updateDockerEnabled}
+          />
 
-                {/* Agent Cards */}
-                {agents.map((agent) => (
-                  <motion.div
-                    key={agent.role}
-                    whileHover={{ scale: 1.01 }}
-                    onClick={() => {
-                      setSelectedAgent(agent);
-                      setShowModelSelector(true);
-                      // Modal-Filter zurücksetzen
-                      setModalModelFilter('');
-                      setModalProviderFilter('all');
-                      // ÄNDERUNG 29.01.2026: Lade Prioritätsliste beim Öffnen
-                      loadModelPriority(agent.role);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        setSelectedAgent(agent);
-                        setShowModelSelector(true);
-                        setModalModelFilter('');
-                        setModalProviderFilter('all');
-                        // ÄNDERUNG 29.01.2026: Lade Prioritätsliste beim Öffnen
-                        loadModelPriority(agent.role);
-                      }
-                    }}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`${agent.name} - ${agent.role} - ${isModelRateLimited(agent.model) ? 'Rate Limited' : 'Ready'}`}
-                    className={`group relative bg-[#1b271f] hover:bg-[#233328] border border-[#28392e] hover:border-primary/50 rounded-lg p-3 transition-all cursor-pointer ${
-                      isModelRateLimited(agent.model) ? 'opacity-60' : ''
-                    }`}
-                  >
-                    <div className="grid grid-cols-12 gap-2 items-center">
-                      <div className="col-span-5 flex flex-col">
-                        <span className="text-white font-bold text-sm">{agent.name}</span>
-                        <span className="text-[#9cbaa6] text-[10px] uppercase tracking-wider">{agent.role}</span>
-                      </div>
-                      <div className="col-span-4">
-                        <span className="text-primary text-xs font-mono truncate block">
-                          {getModelDisplayName(agent.model)}
-                        </span>
-                      </div>
-                      <div className="col-span-3 text-right">
-                        {isModelRateLimited(agent.model) ? (
-                          <span className="text-[10px] text-red-400 font-bold">RATE LIMITED</span>
-                        ) : (
-                          <span className="text-[10px] text-primary font-bold">READY</span>
-                        )}
-                      </div>
-                    </div>
-                    {/* Status Indicator */}
-                    <div className={`absolute right-0 top-0 bottom-0 w-1 rounded-r-lg ${
-                      isModelRateLimited(agent.model) ? 'bg-red-500/50' : 'bg-primary shadow-[0_0_10px_rgba(13,242,89,0.5)]'
-                    }`} />
-                  </motion.div>
-                ))}
-              </div>
-
-              {/* Rate Limited Info */}
-              {Object.keys(routerStatus.rate_limited_models || {}).length > 0 && (
-                <div className="p-4 border-t border-[#28392e] bg-[#0d120f]">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-[10px] text-red-400 uppercase tracking-wider font-bold">Rate Limited Models</span>
-                    <button
-                      onClick={clearRateLimits}
-                      className="text-[10px] text-primary hover:underline"
-                    >
-                      Clear All
-                    </button>
-                  </div>
-                  {Object.entries(routerStatus.rate_limited_models).map(([model, info]) => (
-                    <div key={model} className="flex justify-between text-xs text-[#9cbaa6]">
-                      <span className="truncate">{model.split('/').pop()}</span>
-                      <span className="flex items-center gap-1">
-                        <Clock size={10} />
-                        {info.remaining_seconds}s
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Center Panel: The Core */}
-          <div className="xl:col-span-4 flex flex-col gap-6">
-            <div className="bg-[#111813] rounded-xl border border-[#28392e] overflow-hidden flex-1 relative flex flex-col items-center justify-end shadow-[0_0_30px_rgba(13,242,89,0.05)]">
-              {/* Background Grid */}
-              <div className="absolute inset-0 opacity-10 pointer-events-none"
-                style={{ backgroundImage: 'radial-gradient(#0df259 1px, transparent 1px)', backgroundSize: '20px 20px' }}
-              />
-              {/* Core Glow */}
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 bg-primary/20 rounded-full blur-[60px] animate-pulse pointer-events-none" />
-
-              {/* Core Visual */}
-              <div className="relative z-10 w-full flex-1 flex flex-col items-center justify-center p-6">
-                <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
-                  className="w-32 h-32 rounded-full border-2 border-primary/30 flex items-center justify-center mb-6"
-                >
-                  <div className="w-24 h-24 rounded-full border border-primary/50 flex items-center justify-center">
-                    <Cpu size={48} className="text-primary" />
-                  </div>
-                </motion.div>
-
-                <h2 className="text-2xl text-white font-bold uppercase tracking-widest mb-1">The Core</h2>
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-                  <span className="text-primary text-xs font-mono">INTEGRITY: 99.8%</span>
-                </div>
-
-                {/* Stats */}
-                <div className="mt-6 grid grid-cols-2 gap-4 w-full max-w-xs">
-                  <div className="bg-[#0d120f] rounded-lg p-3 border border-[#28392e]">
-                    <div className="text-[10px] text-[#9cbaa6] uppercase mb-1">Active Agents</div>
-                    <div className="text-xl font-bold text-white">{agents.length}</div>
-                  </div>
-                  <div className="bg-[#0d120f] rounded-lg p-3 border border-[#28392e]">
-                    <div className="text-[10px] text-[#9cbaa6] uppercase mb-1">Mode</div>
-                    <div className={`text-xl font-bold ${
-                      config?.mode === 'premium' ? 'text-amber-300' :
-                      config?.mode === 'production' ? 'text-yellow-400' : 'text-primary'
-                    }`}>
-                      {config?.mode?.toUpperCase()}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Environment Control - ÄNDERUNG 30.01.2026: 3-Tier-Selector (Test/Production/Premium) */}
-              <div className="w-full bg-[#0d120f] border-t border-[#28392e] p-6">
-                <div className="flex justify-between items-center mb-4">
-                  <h4 className="text-[#9cbaa6] text-xs font-bold uppercase tracking-widest">Environment Control</h4>
-                  <div className="flex gap-2">
-                    <span className={`w-1.5 h-1.5 rounded-full ${config?.mode === 'test' ? 'bg-primary' : 'bg-primary/20'}`} />
-                    <span className={`w-1.5 h-1.5 rounded-full ${config?.mode === 'production' ? 'bg-yellow-500' : 'bg-yellow-500/20'}`} />
-                    <span className={`w-1.5 h-1.5 rounded-full ${config?.mode === 'premium' ? 'bg-amber-300' : 'bg-amber-300/20'}`} />
-                  </div>
-                </div>
-
-                {/* 3-Tier Selector */}
-                <div className="relative bg-[#1b271f] p-2 rounded-lg border border-[#28392e]">
-                  {/* Sliding Indicator */}
-                  <motion.div
-                    className={`absolute top-2 bottom-2 rounded-md ${
-                      config?.mode === 'premium'
-                        ? 'bg-gradient-to-br from-amber-500/30 to-amber-700/30 border border-amber-400/50'
-                        : config?.mode === 'production'
-                          ? 'bg-gradient-to-br from-yellow-600/30 to-yellow-800/30 border border-yellow-500/50'
-                          : 'bg-gradient-to-br from-[#4a6b56]/50 to-[#28392e]/50 border border-[#5c856b]/50'
-                    }`}
-                    initial={false}
-                    animate={{
-                      left: config?.mode === 'test' ? '8px' : config?.mode === 'production' ? 'calc(33.33% + 4px)' : 'calc(66.66% + 0px)',
-                      width: 'calc(33.33% - 8px)'
-                    }}
-                    transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                  />
-
-                  <div className="relative flex">
-                    {/* TEST */}
-                    <button
-                      onClick={() => setMode('test')}
-                      className={`flex-1 py-3 px-2 text-center transition-all z-10 rounded-md ${
-                        config?.mode === 'test' ? '' : 'hover:bg-white/5'
-                      }`}
-                    >
-                      <div className={`font-bold text-sm mb-0.5 transition-colors ${
-                        config?.mode === 'test' ? 'text-primary' : 'text-white/60'
-                      }`}>TEST</div>
-                      <div className="text-[9px] text-[#9cbaa6] uppercase">Free</div>
-                    </button>
-
-                    {/* PRODUCTION */}
-                    <button
-                      onClick={() => setMode('production')}
-                      className={`flex-1 py-3 px-2 text-center transition-all z-10 rounded-md ${
-                        config?.mode === 'production' ? '' : 'hover:bg-white/5'
-                      }`}
-                    >
-                      <div className={`font-bold text-sm mb-0.5 transition-colors ${
-                        config?.mode === 'production' ? 'text-yellow-400' : 'text-white/60'
-                      }`}>PROD</div>
-                      <div className="text-[9px] text-[#9cbaa6] uppercase">Value</div>
-                    </button>
-
-                    {/* PREMIUM */}
-                    <button
-                      onClick={() => setMode('premium')}
-                      className={`flex-1 py-3 px-2 text-center transition-all z-10 rounded-md ${
-                        config?.mode === 'premium' ? '' : 'hover:bg-white/5'
-                      }`}
-                    >
-                      <div className={`font-bold text-sm mb-0.5 transition-colors ${
-                        config?.mode === 'premium' ? 'text-amber-300' : 'text-white/60'
-                      }`}>PREMIUM</div>
-                      <div className="text-[9px] text-[#9cbaa6] uppercase">Best</div>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Mode Description */}
-                <div className="mt-3 text-center text-[10px] text-[#9cbaa6]">
-                  {config?.mode === 'test' && 'Kostenlose Modelle - Ideal für Tests und Entwicklung'}
-                  {config?.mode === 'production' && 'Preis-Leistungs-Sieger - Beste Balance für den Alltag'}
-                  {config?.mode === 'premium' && 'Top-Premium-Modelle - Höchste Qualität ohne Kompromisse'}
-                </div>
-              </div>
-
-              {/* ÄNDERUNG 25.01.2026: Dual-Slider für Iterationen & Modellwechsel */}
-              <div className="w-full bg-[#0d120f] border-t border-[#28392e] p-4">
-                <div className="flex justify-between items-center mb-3">
-                  <h4 className="text-[#9cbaa6] text-xs font-bold uppercase tracking-widest flex items-center gap-2">
-                    <RefreshCw size={14} className="text-primary" />
-                    Coder Konfiguration
-                  </h4>
-                </div>
-
-                {/* Werte-Anzeige */}
-                <div className="flex justify-between mb-3">
-                  <div className="text-center">
-                    <span className="text-amber-400 font-mono font-bold text-xl">{effectiveModelAttempts}</span>
-                    <p className="text-[9px] text-amber-400/70 uppercase">Modellwechsel</p>
-                  </div>
-                  <div className="text-center">
-                    <span className="text-primary font-mono font-bold text-xl">{effectiveMaxRetries}</span>
-                    <p className="text-[9px] text-primary/70 uppercase">Iterationen</p>
-                  </div>
-                </div>
-
-                <div className="bg-[#1b271f] p-3 rounded-lg border border-[#28392e]">
-                  {/* Dual Range Slider */}
-                  <div className="relative h-10 flex items-center px-2">
-                    {/* Track Hintergrund */}
-                    <div className="absolute left-2 right-2 h-2 bg-[#28392e] rounded-full" />
-
-                    {/* Aktiver Bereich zwischen den Punkten */}
-                    {/* ÄNDERUNG 25.01.2026: Edge Case Handling für effectiveMaxRetries <= 1 */}
-                    {(() => {
-                      const upperBound = effectiveMaxRetries - 1;
-                      const safeModelAttempts = effectiveModelAttempts < 1 ? 0 : effectiveModelAttempts;
-                      const safeUpperBound = Math.max(1, upperBound);
-                      const leftPercent = upperBound < 1 ? 0 : ((safeModelAttempts - 1) / safeUpperBound) * 100;
-                      return (
-                        <div
-                          className="absolute h-2 bg-gradient-to-r from-amber-500/60 to-primary/60 rounded-full"
-                          style={{
-                            left: `calc(${leftPercent}% + 8px)`,
-                            right: `calc(${(100 - leftPercent)}% + 8px)`
-                          }}
-                        />
-                      );
-                    })()}
-
-                    {/* Modellwechsel Slider (links, amber) */}
-                    {/* ÄNDERUNG 25.01.2026: Edge Case Handling für effectiveMaxRetries <= 1 */}
-                    {(() => {
-                      const upperBound = effectiveMaxRetries - 1;
-                      const sliderMax = Math.max(1, upperBound);
-                      const sliderValue = effectiveModelAttempts < 1 ? 1 : Math.max(1, Math.min(effectiveModelAttempts, sliderMax));
-                      const isDisabled = upperBound < 1;
-                      return (
-                        <input
-                          type="range"
-                          min="1"
-                          max={sliderMax}
-                          value={sliderValue}
-                          disabled={isDisabled}
-                          onChange={(e) => {
-                            const val = parseInt(e.target.value);
-                            updateModelAttempts(Math.min(val, upperBound));
-                          }}
-                          className="absolute inset-x-2 w-[calc(100%-16px)] dual-slider-left"
-                          style={{ zIndex: effectiveModelAttempts > effectiveMaxRetries - 10 ? 3 : 1, opacity: isDisabled ? 0.5 : 1 }}
-                        />
-                      );
-                    })()}
-
-                    {/* Iterationen Slider (rechts, primary) */}
-                    <input
-                      type="range"
-                      min="2"
-                      max="100"
-                      value={effectiveMaxRetries}
-                      onChange={(e) => {
-                        const newVal = Math.max(2, parseInt(e.target.value));
-                        updateMaxRetries(newVal);
-                        // ÄNDERUNG 25.01.2026: Edge Case Handling - Wenn Iterationen unter Modellwechsel fällt, anpassen
-                        const newUpperBound = newVal - 1;
-                        if (effectiveModelAttempts > 0 && effectiveModelAttempts >= newVal) {
-                          // Setze auf neuen upperBound, oder 0 wenn upperBound < 1
-                          updateModelAttempts(newUpperBound < 1 ? 0 : newUpperBound);
-                        } else if (effectiveModelAttempts === 0 && newUpperBound >= 1) {
-                          // Wenn Modellwechsel deaktiviert war aber jetzt wieder möglich, auf 1 setzen
-                          updateModelAttempts(1);
-                        }
-                      }}
-                      className="absolute inset-x-2 w-[calc(100%-16px)] dual-slider-right"
-                      style={{ zIndex: effectiveModelAttempts > effectiveMaxRetries - 10 ? 1 : 3 }}
-                    />
-                  </div>
-
-                  {/* Skala */}
-                  <div className="flex justify-between mt-1 px-2">
-                    <span className="text-[10px] text-[#9cbaa6] font-mono">1</span>
-                    <span className="text-[10px] text-[#9cbaa6] font-mono">100</span>
-                  </div>
-
-                  {/* Erklärung */}
-                  <div className="mt-3 p-2 bg-[#0d120f] rounded border border-[#28392e] space-y-1">
-                    <p className="text-[10px] text-[#5c856b]">
-                      <span className="text-amber-400 font-bold">Modellwechsel:</span> Nach X Fehlversuchen wird ein anderes KI-Modell verwendet ("Kollegen fragen").
-                    </p>
-                    <p className="text-[10px] text-[#5c856b]">
-                      <span className="text-primary font-bold">Iterationen:</span> Maximale Gesamtversuche für den Coder-Agenten.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* System Settings - Research Timeout */}
-              <div className="w-full bg-[#0d120f] border-t border-[#28392e] p-4">
-                <div className="flex justify-between items-center mb-3">
-                  <h4 className="text-[#9cbaa6] text-xs font-bold uppercase tracking-widest flex items-center gap-2">
-                    <Clock size={14} className="text-primary" />
-                    Research Timeout
-                  </h4>
-                  <span className="text-primary font-mono font-bold text-lg">{effectiveResearchTimeout} min</span>
-                </div>
-
-                <div className="bg-[#1b271f] p-3 rounded-lg border border-[#28392e]">
-                  <div className="flex items-center gap-4">
-                    <span className="text-[10px] text-[#9cbaa6] font-mono w-6">1</span>
-                    <input
-                      type="range"
-                      min="1"
-                      max="60"
-                      value={effectiveResearchTimeout}
-                      onChange={(e) => updateResearchTimeout(parseInt(e.target.value))}
-                      className="flex-1 mainframe-slider"
-                    />
-                    <span className="text-[10px] text-[#9cbaa6] font-mono w-8">60</span>
-                  </div>
-                  <p className="text-[10px] text-[#5c856b] mt-2 text-center">
-                    Maximale Zeit für Web-Recherche (in Minuten)
-                  </p>
-                </div>
-              </div>
-
-              {/* ÄNDERUNG 30.01.2026: Agent Timeout Slider */}
-              <div className="w-full bg-[#0d120f] border-t border-[#28392e] p-4">
-                <div className="flex justify-between items-center mb-3">
-                  <h4 className="text-[#9cbaa6] text-xs font-bold uppercase tracking-widest flex items-center gap-2">
-                    <Clock size={14} className="text-primary" />
-                    Agent Timeout
-                  </h4>
-                  <span className="text-primary font-mono font-bold text-lg">{Math.floor(agentTimeout / 60)} min</span>
-                </div>
-
-                <div className="bg-[#1b271f] p-3 rounded-lg border border-[#28392e]">
-                  <div className="flex items-center gap-4">
-                    <span className="text-[10px] text-[#9cbaa6] font-mono w-6">1</span>
-                    <input
-                      type="range"
-                      min="60"
-                      max="600"
-                      step="30"
-                      value={agentTimeout}
-                      onChange={(e) => updateAgentTimeout(parseInt(e.target.value))}
-                      className="flex-1 mainframe-slider"
-                    />
-                    <span className="text-[10px] text-[#9cbaa6] font-mono w-8">10</span>
-                  </div>
-                  <p className="text-[10px] text-[#5c856b] mt-2 text-center">
-                    Maximale Zeit pro Agent-Operation (in Minuten)
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Right Panel: Available Models - ÄNDERUNG 25.01.2026: Mit Filter und begrenzter Höhe */}
-          <div className="xl:col-span-4 flex flex-col gap-4 max-h-full">
-            <div className="bg-[#111813] rounded-xl border border-[#28392e] overflow-hidden flex flex-col shadow-2xl max-h-full">
-              <div className="px-5 py-4 border-b border-[#28392e] bg-[#16211a] flex justify-between items-center">
-                <h3 className="text-white font-bold tracking-wider uppercase flex items-center gap-2">
-                  <Database size={16} className="text-primary" />
-                  Model Registry
-                </h3>
-                <div className="px-2 py-0.5 bg-primary/20 text-primary text-[10px] font-mono rounded border border-primary/30">
-                  {/* ÄNDERUNG 31.01.2026: Nutzt memoized gefilterte Listen */}
-                  {filteredFreeModels.length + filteredPaidModels.length} / {availableModels.free_models.length + availableModels.paid_models.length}
-                </div>
-              </div>
-
-              {/* Filter - ÄNDERUNG 25.01.2026 */}
-              <div className="p-3 border-b border-[#28392e] space-y-2 bg-[#0d120f]">
-                <input
-                  type="text"
-                  placeholder="Search models..."
-                  value={modelFilter}
-                  onChange={(e) => setModelFilter(e.target.value)}
-                  className="w-full bg-[#1b271f] border border-[#28392e] rounded-lg px-3 py-2 text-sm text-white placeholder-[#6b8f71] focus:outline-none focus:border-primary"
-                />
-                <select
-                  value={providerFilter}
-                  onChange={(e) => setProviderFilter(e.target.value)}
-                  className="w-full bg-[#1b271f] border border-[#28392e] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary"
-                >
-                  {/* ÄNDERUNG 31.01.2026: Nutzt zentrale PROVIDER_OPTIONS */}
-                  {PROVIDER_OPTIONS.map(opt => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="p-4 overflow-y-auto custom-scrollbar" style={{maxHeight: 'calc(100vh - 380px)'}}>
-                {/* Free Models */}
-                <div className="mb-4">
-                  <div className="text-[10px] text-primary uppercase tracking-widest font-bold mb-2 flex items-center gap-2">
-                    <Zap size={12} />
-                    Free Tier
-                  </div>
-                  {/* ÄNDERUNG 31.01.2026: Nutzt memoized filteredFreeModels */}
-                  <div className="space-y-2">
-                    {filteredFreeModels.slice(0, 50).map((model) => (
-                      <div
-                        key={model.id}
-                        className="bg-[#1b271f] border border-[#28392e] rounded-lg p-3 hover:border-primary/30 transition-colors"
-                      >
-                        <div className="flex justify-between items-start mb-1">
-                          <span className="text-white font-bold text-sm">{model.name}</span>
-                          <span className="text-[10px] text-primary bg-primary/10 px-2 py-0.5 rounded">{model.provider}</span>
-                        </div>
-                        <div className="text-[10px] text-[#9cbaa6] truncate">{model.id}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Paid Models */}
-                <div>
-                  <div className="text-[10px] text-yellow-400 uppercase tracking-widest font-bold mb-2 flex items-center gap-2">
-                    <DollarSign size={12} />
-                    Premium Tier
-                  </div>
-                  {/* ÄNDERUNG 31.01.2026: Nutzt memoized filteredPaidModels */}
-                  <div className="space-y-2">
-                    {filteredPaidModels.slice(0, 50).map((model) => (
-                      <div
-                        key={model.id}
-                        className="bg-[#1b271f] border border-[#28392e] rounded-lg p-3 hover:border-yellow-500/30 transition-colors"
-                      >
-                        <div className="flex justify-between items-start mb-1">
-                          <span className="text-white font-bold text-sm">{model.name}</span>
-                          <span className="text-[10px] text-yellow-400 bg-yellow-400/10 px-2 py-0.5 rounded">{model.provider}</span>
-                        </div>
-                        <div className="text-[10px] text-[#9cbaa6] truncate">{model.id}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Footer Stats */}
-              <div className="border-t border-[#28392e] bg-[#0d120f] p-3 flex justify-end items-center text-[10px] font-mono text-[#5c856b]">
-                <div className="flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                  <span>LIVE_SYNC</span>
-                </div>
-              </div>
-            </div>
-          </div>
+          <ModelListPanel
+            modelFilter={modelFilter}
+            onModelFilterChange={setModelFilter}
+            providerFilter={providerFilter}
+            onProviderFilterChange={setProviderFilter}
+            filteredFreeModels={filteredFreeModels}
+            filteredPaidModels={filteredPaidModels}
+            availableModels={availableModels}
+          />
         </div>
       </main>
 
-      {/* Model Selector Modal - ÄNDERUNG 29.01.2026: Erweitert um sortierbare Prioritätsliste */}
-      <AnimatePresence>
-        {showModelSelector && selectedAgent && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            onClick={() => setShowModelSelector(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-[#111813] border border-[#28392e] rounded-xl w-full max-w-4xl overflow-hidden shadow-2xl"
-            >
-              {/* Modal Header */}
-              <div className="px-6 py-4 border-b border-[#28392e] bg-[#16211a]">
-                <h3 className="text-white font-bold text-lg">Modell-Priorität für {selectedAgent.name}</h3>
-                <p className="text-[#9cbaa6] text-sm mt-1">Ziehe Modelle per Drag & Drop um die Reihenfolge zu ändern. Das erste Modell ist Primary.</p>
-              </div>
-
-              {/* Two Column Layout */}
-              <div className="flex flex-col md:flex-row">
-                {/* Left: Sortable Priority List */}
-                <div className="md:w-1/2 border-b md:border-b-0 md:border-r border-[#28392e] p-4">
-                  <div className="flex justify-between items-center mb-3">
-                    <h4 className="text-[10px] text-primary uppercase tracking-widest font-bold">Modell-Priorität (1-5)</h4>
-                    <span className="text-[10px] text-[#9cbaa6]">{agentModelPriority.length}/5 Modelle</span>
-                  </div>
-
-                  <div className="min-h-[200px]">
-                    <SortableModelList
-                      models={agentModelPriority}
-                      onReorder={setAgentModelPriority}
-                      onRemove={removeModelFromPriority}
-                      maxModels={5}
-                      disabled={savingPriority}
-                    />
-                  </div>
-
-                  {/* Info Box */}
-                  <div className="mt-4 p-3 bg-[#0d120f] rounded-lg border border-[#28392e]">
-                    <p className="text-[10px] text-[#5c856b]">
-                      <span className="text-primary font-bold">Primary:</span> Wird zuerst verwendet
-                    </p>
-                    <p className="text-[10px] text-[#5c856b] mt-1">
-                      <span className="text-[#9cbaa6] font-bold">Fallback 1-4:</span> Bei Fehler/Rate-Limit der Reihe nach
-                    </p>
-                  </div>
-                </div>
-
-                {/* Right: Available Models to Add */}
-                <div className="md:w-1/2 flex flex-col">
-                  {/* Filter */}
-                  <div className="p-4 border-b border-[#28392e] space-y-2 bg-[#0d120f]">
-                    <input
-                      type="text"
-                      placeholder="Search models..."
-                      value={modalModelFilter}
-                      onChange={(e) => setModalModelFilter(e.target.value)}
-                      className="w-full bg-[#1b271f] border border-[#28392e] rounded-lg px-3 py-2 text-sm text-white placeholder-[#6b8f71] focus:outline-none focus:border-primary"
-                    />
-                    <select
-                      value={modalProviderFilter}
-                      onChange={(e) => setModalProviderFilter(e.target.value)}
-                      className="w-full bg-[#1b271f] border border-[#28392e] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary"
-                    >
-                      {/* ÄNDERUNG 31.01.2026: Nutzt zentrale PROVIDER_OPTIONS */}
-                      {PROVIDER_OPTIONS.map(opt => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Model List */}
-                  <div className="p-4 max-h-80 overflow-y-auto custom-scrollbar flex-1">
-                    <div className="text-[10px] text-primary uppercase tracking-widest font-bold mb-2">Free Models</div>
-                    {/* ÄNDERUNG 31.01.2026: Nutzt memoized filteredModalFreeModels */}
-                    <div className="space-y-2 mb-4">
-                      {filteredModalFreeModels.slice(0, 30).map((model) => {
-                          const isInList = agentModelPriority.includes(model.id);
-                          return (
-                            <button
-                              key={model.id}
-                              onClick={() => !isInList && addModelToPriority(model.id)}
-                              disabled={isInList || agentModelPriority.length >= 5}
-                              className={`w-full text-left p-2 rounded-lg border transition-all ${
-                                isInList
-                                  ? 'bg-primary/20 border-primary opacity-50 cursor-not-allowed'
-                                  : agentModelPriority.length >= 5
-                                    ? 'bg-[#1b271f] border-[#28392e] opacity-50 cursor-not-allowed'
-                                    : 'bg-[#1b271f] border-[#28392e] hover:border-primary/50 cursor-pointer'
-                              }`}
-                            >
-                              <div className="flex justify-between items-center">
-                                <div>
-                                  <span className="text-white font-bold text-sm">{model.name}</span>
-                                  <span className="text-[#9cbaa6] text-xs ml-2">({model.provider})</span>
-                                </div>
-                                {isInList ? (
-                                  <Check size={14} className="text-primary" />
-                                ) : agentModelPriority.length < 5 ? (
-                                  <span className="text-[10px] text-primary">+ Add</span>
-                                ) : null}
-                              </div>
-                            </button>
-                          );
-                        })}
-                    </div>
-
-                    {/* # ÄNDERUNG [31.01.2026]: Premium-Models auch im Premium-Modus anzeigen */}
-                    {(config?.mode === 'production' || config?.mode === 'premium') && (
-                      <>
-                        <div className="text-[10px] text-yellow-400 uppercase tracking-widest font-bold mb-2">Premium Models</div>
-                        {/* ÄNDERUNG 31.01.2026: Nutzt memoized filteredModalPaidModels */}
-                        <div className="space-y-2">
-                          {filteredModalPaidModels.slice(0, 30).map((model) => {
-                              const isInList = agentModelPriority.includes(model.id);
-                              return (
-                                <button
-                                  key={model.id}
-                                  onClick={() => !isInList && addModelToPriority(model.id)}
-                                  disabled={isInList || agentModelPriority.length >= 5}
-                                  className={`w-full text-left p-2 rounded-lg border transition-all ${
-                                    isInList
-                                      ? 'bg-yellow-400/20 border-yellow-400 opacity-50 cursor-not-allowed'
-                                      : agentModelPriority.length >= 5
-                                        ? 'bg-[#1b271f] border-[#28392e] opacity-50 cursor-not-allowed'
-                                        : 'bg-[#1b271f] border-[#28392e] hover:border-yellow-400/50 cursor-pointer'
-                                  }`}
-                                >
-                                  <div className="flex justify-between items-center">
-                                    <div>
-                                      <span className="text-white font-bold text-sm">{model.name}</span>
-                                      <span className="text-[#9cbaa6] text-xs ml-2">({model.provider})</span>
-                                    </div>
-                                    {isInList ? (
-                                      <Check size={14} className="text-yellow-400" />
-                                    ) : agentModelPriority.length < 5 ? (
-                                      <span className="text-[10px] text-yellow-400">+ Add</span>
-                                    ) : null}
-                                  </div>
-                                </button>
-                              );
-                            })}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Modal Footer */}
-              <div className="px-6 py-4 border-t border-[#28392e] bg-[#0d120f] flex justify-between">
-                <button
-                  onClick={() => setShowModelSelector(false)}
-                  className="px-4 py-2 rounded-lg border border-[#28392e] text-[#9cbaa6] hover:text-white hover:border-white/20 transition-colors"
-                >
-                  Abbrechen
-                </button>
-                <button
-                  onClick={saveModelPriority}
-                  disabled={savingPriority || agentModelPriority.length === 0}
-                  className={`px-6 py-2 rounded-lg font-bold transition-all ${
-                    savingPriority || agentModelPriority.length === 0
-                      ? 'bg-[#28392e] text-[#5c856b] cursor-not-allowed'
-                      : 'bg-primary text-black hover:bg-primary/80'
-                  }`}
-                >
-                  {savingPriority ? 'Speichern...' : 'Priorität speichern'}
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <ModelModal
+        open={showModelSelector && !!selectedAgent}
+        onClose={() => setShowModelSelector(false)}
+        selectedAgent={selectedAgent}
+        agentModelPriority={agentModelPriority}
+        onReorder={setAgentModelPriority}
+        onRemove={removeModelFromPriority}
+        onAdd={addModelToPriority}
+        onSave={saveModelPriority}
+        savingPriority={savingPriority}
+        modalModelFilter={modalModelFilter}
+        onModalModelFilterChange={setModalModelFilter}
+        modalProviderFilter={modalProviderFilter}
+        onModalProviderFilterChange={setModalProviderFilter}
+        filteredModalFreeModels={filteredModalFreeModels}
+        filteredModalPaidModels={filteredModalPaidModels}
+        configMode={config?.mode}
+        tokenLimits={tokenLimits}
+        onTokenLimitChange={updateTokenLimit}
+      />
 
     </div>
   );

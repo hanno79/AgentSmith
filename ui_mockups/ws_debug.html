@@ -1,0 +1,117 @@
+<!--
+Author: rahn
+Datum: 29.01.2026
+Version: 1.0
+Beschreibung: Debug-UI fuer WebSocket-Analyse (Playwright Lauf).
+-->
+<!-- AENDERUNG 29.01.2026: Debug-UI fuer WS-Logs und Run-Trigger hinzugefuegt -->
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WS Debug Console</title>
+    <style>
+      body { font-family: "Segoe UI", Tahoma, sans-serif; margin: 16px; }
+      .row { display: flex; gap: 12px; flex-wrap: wrap; }
+      .panel { border: 1px solid #ccc; padding: 12px; border-radius: 6px; }
+      #log { height: 360px; overflow: auto; background: #111; color: #eee; padding: 8px; font-size: 12px; }
+      input, button { padding: 6px 10px; }
+      .status { font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <h2>WS Debug Console</h2>
+    <div class="row">
+      <div class="panel">
+        <div>WS-Status: <span id="wsStatus" class="status">DISCONNECTED</span></div>
+        <div>Letzte Nachricht: <span id="lastMsg">-</span></div>
+        <div>Close-Code: <span id="closeCode">-</span></div>
+        <div>Close-Reason: <span id="closeReason">-</span></div>
+      </div>
+      <div class="panel">
+        <div>Run-Trigger</div>
+        <input id="goalInput" type="text" size="60" value="Diagnose: WS reconnect nach Memory Schritt" />
+        <button id="runBtn">/run starten</button>
+      </div>
+    </div>
+
+    <h3>Log</h3>
+    <pre id="log"></pre>
+
+    <script>
+      const logEl = document.getElementById("log");
+      const wsStatusEl = document.getElementById("wsStatus");
+      const lastMsgEl = document.getElementById("lastMsg");
+      const closeCodeEl = document.getElementById("closeCode");
+      const closeReasonEl = document.getElementById("closeReason");
+      const runBtn = document.getElementById("runBtn");
+      const goalInput = document.getElementById("goalInput");
+
+      let ws = null;
+      let pingTimer = null;
+
+      function logLine(line) {
+        const ts = new Date().toISOString();
+        const fullLine = `[${ts}] ${line}`;
+        logEl.textContent += `${fullLine}\n`;
+        logEl.scrollTop = logEl.scrollHeight;
+        console.log(fullLine);
+      }
+
+      function connect() {
+        const url = "ws://127.0.0.1:8000/ws";
+        logLine(`WS connect -> ${url}`);
+        ws = new WebSocket(url);
+
+        ws.onopen = () => {
+          wsStatusEl.textContent = "CONNECTED";
+          logLine("WS open");
+          if (pingTimer) clearInterval(pingTimer);
+          pingTimer = setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: "ping" }));
+              logLine("WS ping");
+            }
+          }, 10000);
+        };
+
+        ws.onmessage = (event) => {
+          lastMsgEl.textContent = event.data.slice(0, 120);
+          logLine(`WS msg: ${event.data}`);
+        };
+
+        ws.onerror = (err) => {
+          logLine(`WS error: ${err?.message || "unbekannt"}`);
+        };
+
+        ws.onclose = (event) => {
+          wsStatusEl.textContent = "CLOSED";
+          closeCodeEl.textContent = String(event.code);
+          closeReasonEl.textContent = event.reason || "-";
+          logLine(`WS close: code=${event.code} reason=${event.reason}`);
+          if (pingTimer) clearInterval(pingTimer);
+        };
+      }
+
+      async function runTask() {
+        const goal = goalInput.value.trim();
+        logLine(`/run -> ${goal}`);
+        try {
+          const res = await fetch("http://127.0.0.1:8000/run", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ goal })
+          });
+          const body = await res.text();
+          logLine(`/run response: ${res.status} ${body}`);
+        } catch (err) {
+          logLine(`/run error: ${err?.message || "unbekannt"}`);
+        }
+      }
+
+      runBtn.addEventListener("click", runTask);
+      connect();
+    </script>
+  </body>
+</html>

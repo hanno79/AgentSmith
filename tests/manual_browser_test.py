@@ -1,16 +1,20 @@
 """
 Author: rahn
 Datum: 24.01.2026
-Version: 1.0
+Version: 1.1
 Beschreibung: Manueller Browser-Test fuer Security-Agent Verhalten.
               Oeffnet Browser, erstellt Test-Aufgabe, beobachtet Security-Feedback.
+              
+              AENDERUNG 05.02.2026: @pytest.mark.asyncio hinzugefuegt
 """
 
+import pytest
 import asyncio
 from playwright.async_api import async_playwright
 import time
 
 
+@pytest.mark.asyncio
 async def test_security_agent_behavior():
     """
     Testet das Security-Agent Verhalten im Browser.

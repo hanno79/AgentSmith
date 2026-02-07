@@ -9,6 +9,7 @@ Beschreibung: Content Validator - Erkennt leere Seiten, fehlende Inhalte und
               ÄNDERUNG 31.01.2026: JavaScript-Check Guard und flexible run_command Validierung
 """
 
+import json
 import os
 import logging
 from typing import Any, Dict, List, Optional
@@ -575,4 +576,71 @@ def validate_run_bat(project_path: str, tech_blueprint: Dict[str, Any]) -> Conte
         )
 
     result.has_visible_content = True  # run.bat hat Inhalt
+    return result
+
+
+# AENDERUNG 07.02.2026: Next.js Pflichtdateien-Pruefung
+# ROOT-CAUSE-FIX:
+# Symptom: Generiertes Next.js-Projekt startet nicht / Tailwind wirkt nicht
+# Ursache: Coder vergisst pages/_app.js, styles/globals.css, react-dom
+# Loesung: Dateisystem-Validierung nach Coder-Output mit Feedback fuer naechste Iteration
+def validate_nextjs_structure(project_path: str, tech_blueprint: Dict[str, Any]) -> ContentValidationResult:
+    """
+    Prueft ob Next.js-Pflichtdateien vorhanden sind.
+
+    Args:
+        project_path: Projektverzeichnis
+        tech_blueprint: Blueprint mit project_type
+
+    Returns:
+        ContentValidationResult mit Warnungen/Fehlern
+    """
+    result = ContentValidationResult()
+    result.checks_performed.append("nextjs_structure")
+
+    project_type = str(tech_blueprint.get("project_type", "")).lower()
+    if "next" not in project_type:
+        return result
+
+    # 1. pages/_app.js vorhanden?
+    app_extensions = ["_app.js", "_app.jsx", "_app.tsx"]
+    app_found = any(
+        os.path.exists(os.path.join(project_path, "pages", ext))
+        for ext in app_extensions
+    )
+    if not app_found:
+        result.issues.append(
+            "pages/_app.js fehlt - Tailwind CSS und globale Styles funktionieren NICHT ohne _app.js. "
+            "Erstelle pages/_app.js mit: import '../styles/globals.css'"
+        )
+
+    # 2. styles/globals.css vorhanden?
+    css_names = ["globals.css", "global.css"]
+    css_found = any(
+        os.path.exists(os.path.join(project_path, "styles", name))
+        for name in css_names
+    )
+    if not css_found:
+        result.warnings.append(
+            "styles/globals.css fehlt - Kein globales Styling. "
+            "Erstelle styles/globals.css mit @tailwind base/components/utilities"
+        )
+
+    # 3. package.json: react-dom vorhanden?
+    pkg_path = os.path.join(project_path, "package.json")
+    if os.path.exists(pkg_path):
+        try:
+            with open(pkg_path, "r", encoding="utf-8") as f:
+                pkg = json.load(f)
+            deps = pkg.get("dependencies", {})
+            if "react" in deps and "react-dom" not in deps:
+                result.issues.append(
+                    "react-dom fehlt in package.json - Next.js/React braucht zwingend react-dom. "
+                    "Fuege 'react-dom' mit gleicher Version wie 'react' hinzu"
+                )
+        except (json.JSONDecodeError, OSError) as e:
+            logger.warning(f"package.json konnte nicht geprueft werden: {e}")
+
+    result.is_critical_failure = len(result.issues) > 0
+    result.has_visible_content = not result.is_critical_failure
     return result

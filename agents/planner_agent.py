@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 """
 Author: rahn
-Datum: 31.01.2026
-Version: 1.0
+Datum: 02.02.2026
+Version: 1.1
 Beschreibung: Planner Agent - Zerlegt Projekte in einzelne Datei-Tasks.
+              AENDERUNG 02.02.2026: Eigenes Planner-Modell statt Coder-Modell.
               Loest das Truncation-Problem bei Free-Tier-Modellen durch
               File-by-File Code-Generierung statt "alles auf einmal".
 
@@ -35,10 +36,10 @@ def create_planner(config: Dict[str, Any], project_rules: Dict[str, List[str]], 
         Konfigurierte CrewAI Agent-Instanz
     """
     if router:
-        # Planner nutzt das Coder-Modell (gleiche Faehigkeiten benoetigt)
-        model = router.get_model("coder")
+        # AENDERUNG 02.02.2026: Planner nutzt eigenes Modell fuer bessere Kontrolle
+        model = router.get_model("planner")
     else:
-        model = get_model_from_config(config, "coder")
+        model = get_model_from_config(config, "planner")
 
     combined_rules = combine_project_rules(project_rules, "planner")
 

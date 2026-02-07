@@ -1,11 +1,12 @@
 /**
  * Author: rahn
- * Datum: 01.02.2026
- * Version: 1.1
+ * Datum: 03.02.2026
+ * Version: 1.2
  * Beschreibung: Konstanten fuer WebSocket-Kommunikation.
  *               Extrahiert aus useWebSocket.js (Regel 1: Max 500 Zeilen)
  *
  *               AENDERUNG 01.02.2026 v1.1: UTDS Events hinzugefuegt
+ *               AENDERUNG 03.02.2026 v1.2: AGENT_TO_DATA_KEY Mapping fuer Worker-Status-Reset
  */
 
 // Reconnection-Konfiguration
@@ -15,13 +16,16 @@ export const BASE_RECONNECT_DELAY = 1000;  // 1 Sekunde
 export const MAX_RECONNECT_DELAY = 30000;  // 30 Sekunden
 
 // Events die anzeigen dass ein Agent arbeitet
+// AENDERUNG 02.02.2026: 'Heartbeat' ENTFERNT - Heartbeats duerfen Status nicht aendern
+// Heartbeats sind nur fuer Fortschritts-Informationen, nicht fuer Status-Aenderungen
 export const WORKING_EVENTS = [
   'Status', 'Iteration', 'searching', 'RescanStart',
   'Analysis', 'generating', 'processing', 'testing',
   'reviewing', 'designing', 'InstallStart', 'InstallProgress',
-  'Heartbeat',
   // AENDERUNG 01.02.2026: UTDS Events
-  'DerivationStart', 'BatchExecutionStart'
+  'DerivationStart', 'BatchExecutionStart',
+  // AENDERUNG 07.02.2026: Fix-Agent Events (Fix 14)
+  'FixStart'
 ];
 
 // Events die anzeigen dass ein Agent fertig ist
@@ -31,10 +35,15 @@ export const COMPLETION_EVENTS = [
   'SecurityRescanOutput', 'TechStackOutput', 'DBDesignerOutput',
   'InstallComplete', 'InstallError', 'InstallSkipped',
   // AENDERUNG 01.02.2026: UTDS Events
-  'DerivationComplete', 'BatchExecutionComplete'
+  'DerivationComplete', 'BatchExecutionComplete',
+  // AENDERUNG 03.02.2026: Planner Event hinzugefuegt
+  'PlannerOutput',
+  // AENDERUNG 07.02.2026: Fix-Agent Events (Fix 14)
+  'FixOutput'
 ];
 
 // Mapping von Office-Namen zu AgentData-Keys
+// AENDERUNG 02.02.2026: Planner Office hinzugefuegt
 export const OFFICE_KEY_MAP = {
   'coder': 'coder',
   'tester': 'tester',
@@ -44,8 +53,30 @@ export const OFFICE_KEY_MAP = {
   'researcher': 'researcher',
   'reviewer': 'reviewer',
   'techstack_architect': 'techstack',
+  'planner': 'planner',
   // AENDERUNG 01.02.2026: UTDS
-  'utds': 'utds'
+  'utds': 'utds',
+  // AENDERUNG 07.02.2026: Fix-Agent Office (Fix 14)
+  'fix': 'fix'
+};
+
+// AENDERUNG 03.02.2026: Mapping von Agent-Namen (lowercase) zu agentData Keys
+// Verwendet fuer Worker-Status-Reset bei COMPLETION_EVENTS
+// Bug Fix: Glow-Effekt stoppt nicht wenn Agent fertig ist
+export const AGENT_TO_DATA_KEY = {
+  'coder': 'coder',
+  'tester': 'tester',
+  'designer': 'designer',
+  'reviewer': 'reviewer',
+  'researcher': 'researcher',
+  'security': 'security',
+  'techarchitect': 'techstack',
+  'dbdesigner': 'dbdesigner',
+  'documentationmanager': 'documentationmanager',
+  'planner': 'planner',
+  'orchestrator': 'orchestrator',
+  // AENDERUNG 07.02.2026: Fix-Agent (Fix 14)
+  'fix': 'fix'
 };
 
 // Berechnet den Reconnection-Delay mit Exponential Backoff + Jitter
@@ -55,6 +86,6 @@ export const getReconnectDelay = (attemptCount) => {
     MAX_RECONNECT_DELAY
   );
   // Jitter: +/- 20% um Thundering Herd zu vermeiden
-  const jitter = baseDelay * 0.2 * (Math.random() - 0.5);
+  const jitter = baseDelay * 0.4 * (Math.random() - 0.5);
   return Math.round(baseDelay + jitter);
 };

@@ -46,9 +46,10 @@ console = Console()
 class DiscoverySession:
     """Hauptcontroller fuer die Discovery Session."""
 
-    def __init__(self, config: Dict = None, memory_path: str = None):
+    def __init__(self, config: Dict = None, memory_path: str = None, model_router=None):
         self.config = config or {}
         self.memory_path = memory_path
+        self.model_router = model_router
         self.ui = GuidedChoiceUI()
         self.option_generator = OptionGenerator(memory_path)
         self.answers: List[Answer] = []
@@ -340,8 +341,8 @@ class DiscoverySession:
                 "open_points_count": len(briefing.offene_punkte)
             }
 
-            # TaskDeriver initialisieren
-            deriver = TaskDeriver(config or self.config)
+            # TaskDeriver initialisieren (model_router zuerst, dann config)
+            deriver = TaskDeriver(self.model_router, config or self.config)
 
             # Tasks ableiten
             result = deriver.derive_tasks(briefing_text, "discovery", context)

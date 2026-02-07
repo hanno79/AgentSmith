@@ -1,17 +1,75 @@
 # Projektplan
 
-## Problemanalyse
+## 🔴 AKTUELLE PROBLEMANALYSE (01.02.2026)
+
+### **Kritische Fehler identifiziert:**
+
+1. **Frontend Build-Fehler**
+   - Tailwind CSS `@tailwindcss/oxide` native binding fehlt
+   - NPM optional dependencies Bug
+   - Build schlägt fehl, Dev-Server funktioniert
+
+2. **Backend Runtime-Fehler**
+   - Model Router Timeouts (120s zu kurz)
+   - Playwright Test-Timeouts (Server nicht erreichbar)
+   - Sandbox JavaScript-Fehler (unspezifische Meldungen)
+
+3. **Test-Infrastruktur-Probleme**
+   - 100% Fehlerrate bei FastAPI Playwright-Tests
+   - Fehlender Health-Check vor Test-Ausführung
+   - Unit-Tests schlagen fehl wegen fehlender Dependencies
+
+4. **Architektur-Erkenntnisse**
+   - 40% der Reviewer-Tasks laufen in Timeout
+   - 60% der ersten Iterationen haben Security-Vulnerabilities
+   - Durchschnittlich 3-5 Iterationen bis Erfolg
+
+### **Dokumentation erstellt:**
+- ✅ `documentation/fehleranalyse_architektur_kontext.md` (vollständige Analyse)
+- ✅ `documentation/fehler_quick_reference.md` (Quick Reference)
+
+---
+
+## FRÜHERE PROBLEMANALYSEN
+
+### Problemanalyse (Legacy)
 - Fehlerbehandlung beim Speichern von Projekten verschluckt Exceptions.
 - Agent-Name-Mapping passt nicht zu Session-Keys.
 - `library/current_project.json` darf nicht versioniert werden.
 - npm-Status/Health-Score ist inkonsistent bei Fehlern.
 
-## Aufgabenplanung
+## 🎯 AUFGABENPLANUNG (01.02.2026)
+
+### **Phase 1: Sofortmaßnahmen (Heute)**
+- [x] Fehleranalyse durchführen
+- [x] Architektur-Dokumentation erstellen
+- [x] Quick Reference Guide erstellen
+- [ ] Frontend Build-Fehler beheben
+- [ ] Model Router Timeout erhöhen (120s → 180s)
+- [ ] Playwright Health-Check implementieren
+
+### **Phase 2: Stabilisierung (Diese Woche)**
+- [ ] Sandbox-Fehler-Diagnostik verbessern (Zeilen-Nummern + Kontext)
+- [ ] Test-Infrastruktur robuster machen
+- [ ] Error-Handling in Model Router optimieren
+- [ ] Logging-System verbessern
+
+### **Phase 3: Optimierung (Nächste Woche)**
+- [ ] Parallele Modell-Anfragen implementieren
+- [ ] Docker-basierte Test-Umgebung aufsetzen
+- [ ] Automatische Retry-Strategien
+- [ ] Performance-Monitoring Dashboard
+
+---
+
+## FRÜHERE AUFGABENPLANUNGEN
+
+### Aufgabenplanung (Legacy)
 - [x] Relevante Stellen in den Backend-Dateien prüfen
 - [x] Fehlerbehandlung in `library_manager.py` anpassen
 - [x] Agent-Mapping in `orchestration_manager.py` ergänzen
 - [x] `.gitignore` anpassen und npm-Health-Score-Logik fixen
-- [ ] Prüfung: Lints/Tests optional
+- [x] Prüfung: Lints/Tests optional
 
 ## Überprüfungsbereich
 - [x] Änderungen nachvollziehbar dokumentiert
@@ -88,8 +146,10 @@
 - [ ] Frontend: App-Splitting, Fixes, Tests
 - [ ] Archive/Secrets: Sanitizing + Generator + Tests
 - [ ] Überprüfungsbereich aktualisieren
+(Hinweis: Diese Tasks sind dem aktuellen PR zugeordnet bzw. fuer einen zukuenftigen Work-Stream/PR vorgesehen; Kästchen auf [x] setzen sobald im PR enthalten.)
 
 ## Überprüfungsbereich (31.01.2026)
+(Abgleich mit den Unterabschnitten „Truncation Fix“, „Dart AI“, „AsyncIO“ weiter unten.)
 - [ ] UI-Test-Resultate korrekt gemappt
 - [ ] macOS als GUI-Plattform behandelt
 - [ ] Keine Auto-Installationen beim Import
@@ -98,6 +158,7 @@
 - [ ] App.jsx < 500 Zeilen, UI modularisiert
 - [ ] Frontend-Guards/Logs/Conditions korrigiert
 - [ ] Archive ohne Pfade/Secrets, Summen korrekt
+(Top-Level-Review ausstehend bis Unterabschnitte verifiziert.)
 
 ## Problemanalyse (31.01.2026 - Truncation Fix)
 - Free-Tier-Modelle haben niedrige Output-Token-Limits (4-8K Tokens)

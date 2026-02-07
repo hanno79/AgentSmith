@@ -5,21 +5,32 @@ project_type: webapp
 include_designer: true
 max_retries: 50
 max_model_attempts: 5
-# AENDERUNG 01.02.2026: Parallele Datei-Generierung
 parallel_file_generation:
-  enabled: true          # Aktiviert parallele Generierung statt sequenziell
-  max_workers: null       # null = unbegrenzt (so viele wie Dateien im Batch)
-  timeout_per_file: 120   # Timeout pro Datei in Sekunden
-  batch_timeout: 300      # Timeout pro Batch in Sekunden
-# AENDERUNG 02.02.2026: Targeted Fix Konfiguration (Bug #12)
+  enabled: true
+  max_workers: null
+  timeout_per_file: 750
+  batch_timeout: 1500
 targeted_fix:
-  enabled: true           # Aktiviert gezielte Fixes statt kompletter Regenerierung
-  max_files: 7            # Max Dateien fuer gezielten Fix (erhoeht von 3 auf 7)
-  prefer_fix_below_files: 5  # Unter dieser Anzahl immer Fix versuchen
-# File-by-File Modus (Anti-Truncation)
+  enabled: true
+  max_files: 7
+  prefer_fix_below_files: 5
 enable_file_by_file_mode: true
 research_timeout_minutes: 5
-agent_timeout_seconds: 600
+agent_timeout_seconds: 750
+token_limits:
+  default: 8192
+  coder: 131072
+  tester: 8192
+  reviewer: 131072
+  planner: 65536
+  designer: 8192
+  security: 4096
+  researcher: 8192
+  orchestrator: 4096
+  fix: 131072
+  task_deriver: 24576
+  discovery: 4096
+  validator: 12288
 security_max_retries: 10
 dependency_agent:
   auto_install: true
@@ -49,21 +60,12 @@ models:
       - openrouter/nousresearch/hermes-3-llama-3.1-405b:free
       - openrouter/z-ai/glm-4.5-air:free
     coder:
-      primary: openrouter/qwen/qwen3-coder:free
+      primary: openrouter/openai/gpt-oss-120b:free
       fallback:
-      - openrouter/openai/gpt-oss-120b:free
-      # AENDERUNG 02.02.2026: nvidia/llama-3.1-nemotron-70b-instruct:free ersetzt - existiert nicht (404)
-      - openrouter/nousresearch/deephermes-3-llama-3-8b:free
-      - openrouter/arcee-ai/trinity-large-preview:free
-      - openrouter/z-ai/glm-4.5-air:free
-      # AENDERUNG 01.02.2026: Extended Fallbacks wenn alle Top-Modelle erschoepft
-      extended_fallback:
-      - openrouter/xiaomi/mimo-v2-flash:free
-      - openrouter/deepseek/deepseek-r1-0528:free
       - openrouter/meta-llama/llama-3.3-70b-instruct:free
-      - openrouter/google/gemma-3-27b-it:free
+      - openrouter/arcee-ai/trinity-large-preview:free
+      - openrouter/qwen/qwen3-coder:free
       - openrouter/mistralai/mistral-small-3.1-24b-instruct:free
-      - openrouter/nousresearch/deephermes-3-llama-3-8b:free
     tester:
       primary: openrouter/openai/gpt-oss-120b:free
       fallback:
@@ -76,8 +78,6 @@ models:
       - openrouter/z-ai/glm-4.5-air:free
       - openrouter/google/gemma-3-27b-it:free
       - openrouter/mistralai/mistral-small-3.1-24b-instruct:free
-      # AENDERUNG 02.02.2026: nvidia/llama-3.1-nemotron-70b-instruct:free ersetzt - existiert nicht (404)
-      - openrouter/nousresearch/deephermes-3-llama-3-8b:free
       - openrouter/xiaomi/mimo-v2-flash:free
     designer:
       primary: openrouter/google/gemma-3-27b-it:free
@@ -87,19 +87,12 @@ models:
       - openrouter/qwen/qwen2.5-vl-7b-instruct:free
       - openrouter/google/gemma-3-12b-it:free
     database_designer:
-      primary: openrouter/qwen/qwen3-coder:free
+      primary: openrouter/meta-llama/llama-3.3-70b-instruct:free
       fallback:
-      - openrouter/openai/gpt-oss-120b:free
-      - openrouter/meta-llama/llama-3.3-70b-instruct:free
-      - openrouter/deepseek/deepseek-r1-0528:free
       - openrouter/google/gemma-3-27b-it:free
-      extended_fallback:
-      - openrouter/arcee-ai/trinity-large-preview:free
-      - openrouter/z-ai/glm-4.5-air:free
-      # AENDERUNG 02.02.2026: nvidia/llama-3.1-nemotron-70b-instruct:free ersetzt - existiert nicht (404)
-      - openrouter/nousresearch/deephermes-3-llama-3-8b:free
-      - openrouter/xiaomi/mimo-v2-flash:free
-      - openrouter/mistralai/mistral-small-3.1-24b-instruct:free
+      - openrouter/openai/gpt-oss-120b:free
+      - openrouter/deepseek/deepseek-r1-0528:free
+      - openrouter/qwen/qwen3-coder:free
     security:
       primary: openrouter/openai/gpt-oss-120b:free
       fallback:
@@ -111,8 +104,6 @@ models:
       - openrouter/deepseek/deepseek-r1-0528:free
       - openrouter/arcee-ai/trinity-large-preview:free
       - openrouter/google/gemma-3-27b-it:free
-      # AENDERUNG 02.02.2026: nvidia/llama-3.1-nemotron-70b-instruct:free ersetzt - existiert nicht (404)
-      - openrouter/nousresearch/deephermes-3-llama-3-8b:free
       - openrouter/xiaomi/mimo-v2-flash:free
     reviewer:
       primary: openrouter/meta-llama/llama-3.3-70b-instruct:free
@@ -121,13 +112,6 @@ models:
       - openrouter/openai/gpt-oss-120b:free
       - openrouter/meta-llama/llama-3.1-405b-instruct:free
       - openrouter/nousresearch/hermes-3-llama-3.1-405b:free
-      extended_fallback:
-      - openrouter/deepseek/deepseek-r1-0528:free
-      - openrouter/arcee-ai/trinity-large-preview:free
-      - openrouter/z-ai/glm-4.5-air:free
-      - openrouter/google/gemma-3-27b-it:free
-      # AENDERUNG 02.02.2026: nvidia/llama-3.1-nemotron-70b-instruct:free ersetzt - existiert nicht (404)
-      - openrouter/nousresearch/deephermes-3-llama-3-8b:free
     techstack_architect:
       primary: openrouter/meta-llama/llama-3.3-70b-instruct:free
       fallback:
@@ -168,6 +152,27 @@ models:
       - openrouter/deepseek/deepseek-r1-0528:free
       - openrouter/qwen/qwen3-235b-a22b:free
       - openrouter/openai/gpt-oss-120b:free
+    planner:
+      primary: openrouter/meta-llama/llama-3.3-70b-instruct:free
+      fallback:
+      - openrouter/deepseek/deepseek-r1-0528:free
+      - openrouter/openai/gpt-oss-120b:free
+      - openrouter/qwen/qwen3-coder:free
+      - openrouter/z-ai/glm-4.5-air:free
+    fix:
+      primary: openrouter/openai/gpt-oss-120b:free
+      fallback:
+      - openrouter/meta-llama/llama-3.3-70b-instruct:free
+      - openrouter/qwen/qwen3-coder:free
+      - openrouter/arcee-ai/trinity-large-preview:free
+      - openrouter/mistralai/mistral-small-3.1-24b-instruct:free
+    task_deriver:
+      primary: openrouter/meta-llama/llama-3.3-70b-instruct:free
+      fallback:
+      - openrouter/deepseek/deepseek-r1-0528:free
+      - openrouter/openai/gpt-oss-120b:free
+      - openrouter/qwen/qwen3-coder:free
+      - openrouter/z-ai/glm-4.5-air:free
   production:
     meta_orchestrator:
       primary: openrouter/deepseek/deepseek-r1-0528
@@ -193,10 +198,10 @@ models:
     coder:
       primary: openrouter/moonshotai/kimi-k2.5
       fallback:
-      - openrouter/deepseek/deepseek-r1-0528
-      - openrouter/qwen/qwen-3
-      - openrouter/google/gemini-2.5-flash
+      - openrouter/minimax/minimax-m2
       - openrouter/z-ai/glm-4.7
+      - openrouter/google/gemini-2.5-flash
+      - openrouter/qwen/qwen3-coder:free
     tester:
       primary: openrouter/deepseek/deepseek-r1-0528
       fallback:
@@ -219,12 +224,12 @@ models:
       - openrouter/mistralai/mistral-medium-3.1
       - openrouter/google/gemini-2.5-flash
     security:
-      primary: openrouter/deepseek/deepseek-r1-0528
+      primary: openrouter/google/gemini-2.5-flash
       fallback:
+      - openrouter/deepseek/deepseek-r1-0528
       - openrouter/z-ai/glm-4.7
       - openrouter/mistralai/mistral-medium-3.1
       - openrouter/qwen/qwen-3
-      - openrouter/google/gemini-2.5-flash
     reviewer:
       primary: openrouter/deepseek/deepseek-r1-0528
       fallback:
@@ -251,6 +256,7 @@ models:
       - openrouter/qwen/qwen-3
       - openrouter/mistralai/mistral-medium-3.1
       - openrouter/google/gemini-2.5-flash
+      - openrouter/stepfun/step-3.5-flash:free
     orchestrator_validator:
       primary: openrouter/deepseek/deepseek-r1-0528
       fallback:
@@ -265,6 +271,25 @@ models:
       - openrouter/google/gemini-2.5-flash
       - openrouter/qwen/qwen-3
     reporter:
+      primary: openrouter/deepseek/deepseek-r1-0528
+      fallback:
+      - openrouter/mistralai/mistral-medium-3.1
+      - openrouter/google/gemini-2.5-flash
+      - openrouter/qwen/qwen-3
+    planner:
+      primary: openrouter/deepseek/deepseek-r1-0528
+      fallback:
+      - openrouter/mistralai/mistral-medium-3.1
+      - openrouter/google/gemini-2.5-flash
+      - openrouter/qwen/qwen-3
+    fix:
+      primary: openrouter/moonshotai/kimi-k2.5
+      fallback:
+      - openrouter/minimax/minimax-m2
+      - openrouter/z-ai/glm-4.7
+      - openrouter/google/gemini-2.5-flash
+      - openrouter/qwen/qwen3-coder:free
+    task_deriver:
       primary: openrouter/deepseek/deepseek-r1-0528
       fallback:
       - openrouter/mistralai/mistral-medium-3.1
@@ -367,6 +392,25 @@ models:
       - openrouter/google/gemini-3-pro
       - openrouter/x-ai/grok-4.1-thinking
     reporter:
+      primary: openrouter/anthropic/claude-opus-4.5-thinking
+      fallback:
+      - openrouter/openai/gpt-5.1
+      - openrouter/google/gemini-3-pro
+      - openrouter/x-ai/grok-4.1-thinking
+    planner:
+      primary: openrouter/anthropic/claude-opus-4.5-thinking
+      fallback:
+      - openrouter/openai/gpt-5.1
+      - openrouter/google/gemini-3-pro
+      - openrouter/x-ai/grok-4.1-thinking
+    fix:
+      primary: openrouter/anthropic/claude-opus-4.5-thinking
+      fallback:
+      - openrouter/openai/gpt-5.2-high
+      - openrouter/google/gemini-3-pro
+      - openrouter/minimax/minimax-m2.1
+      - openrouter/z-ai/glm-4.7
+    task_deriver:
       primary: openrouter/anthropic/claude-opus-4.5-thinking
       fallback:
       - openrouter/openai/gpt-5.1

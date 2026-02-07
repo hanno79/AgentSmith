@@ -2,13 +2,14 @@
 """
 Author: rahn
 Datum: 24.01.2026
-Version: 1.0
+Version: 1.1
 Beschreibung: Tests für Sandbox Runner - Testet Code-Validierung und Syntax-Checks.
+              AENDERUNG 06.02.2026: JSX-Erkennung und -Validierung Tests.
 """
 
 import pytest
 import shutil
-from sandbox_runner import detect_code_type, run_sandbox
+from sandbox_runner import detect_code_type, run_sandbox, _contains_jsx_syntax, _validate_jsx
 
 
 class TestDetectCodeType:
@@ -47,6 +48,41 @@ class TestDetectCodeType:
     def test_detect_empty_code(self):
         """Test: Leerer Code wird als Python erkannt."""
         assert detect_code_type("") == "python"
+
+    # AENDERUNG 06.02.2026: JSX-Erkennung Tests
+    def test_detect_jsx_react_component(self):
+        """Test: React-Komponente wird als JSX erkannt."""
+        code = '''import React from 'react';
+export default function App() {
+  return <div className="app"><h1>Hello</h1></div>;
+}'''
+        assert detect_code_type(code) == "jsx", (
+            "Erwartet: JSX erkannt bei React-Komponente"
+        )
+
+    def test_detect_jsx_nextjs_page(self):
+        """Test: Next.js-Page wird als JSX erkannt."""
+        code = '''import Head from 'next/head';
+export default function Home() {
+  const [items, setItems] = useState([]);
+  return (
+    <div>
+      <Head><title>Home</title></Head>
+      <TodoList items={items} />
+    </div>
+  );
+}'''
+        assert detect_code_type(code) == "jsx", (
+            "Erwartet: JSX erkannt bei Next.js-Page"
+        )
+
+    def test_detect_plain_js_not_jsx(self):
+        """Test: Plain JavaScript ohne JSX bleibt 'js'."""
+        code = "const express = require('express');\nconst app = express();\napp.get('/', (req, res) => { res.send('ok'); });"
+        result = detect_code_type(code)
+        assert result == "js", (
+            f"Erwartet: 'js' fuer Plain JavaScript, erhalten: {result}"
+        )
 
 
 class TestRunSandbox:
@@ -113,11 +149,22 @@ if __name__ == "__main__":
         assert "✅" in result
         assert "HTML" in result
 
-    def test_invalid_html_missing_closing(self, invalid_html_code):
-        """Test: Unvollständiger HTML-Code wird erkannt."""
-        result = run_sandbox(invalid_html_code)
+    def test_invalid_html_missing_closing(self):
+        """Test: Unvollstaendiger HTML-Code (ohne </html>) wird erkannt."""
+        # NOTE: Der HTML-Validator prueft nur ob <html> und </html> vorhanden sind.
+        # Wir muessen tatsaechlich </html> entfernen um ungueltiges HTML zu haben.
+        code = '''<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Page</title>
+</head>
+<body>
+    <h1>Missing closing tags
+</body>'''  # Ohne </html>
+        result = run_sandbox(code)
         assert "❌" in result
-        assert "unvollständig" in result.lower()
+        # Fehlermeldung kann "unvollstaendig" oder "unvollstaendig" sein
+        assert "unvoll" in result.lower()
 
     def test_html_minimal_valid(self):
         """Test: Minimaler gültiger HTML-Code."""
@@ -194,3 +241,126 @@ class TestRunSandboxSecurity:
         result = run_sandbox(code)
         assert "✅" in result
         # Keine Ausgabe von "This should not print" erwartet
+
+
+# AENDERUNG 06.02.2026: Tests fuer JSX-Erkennung und -Validierung
+class TestContainsJsxSyntax:
+    """Tests fuer _contains_jsx_syntax()."""
+
+    def test_react_component_tag(self):
+        """Erkennt <Component /> als JSX."""
+        assert _contains_jsx_syntax("<TodoList />") is True
+
+    def test_classname_attribute(self):
+        """Erkennt className= als JSX."""
+        assert _contains_jsx_syntax('<div className="app">') is True
+
+    def test_return_jsx(self):
+        """Erkennt return (<div>...) als JSX."""
+        assert _contains_jsx_syntax("return (\n    <div>") is True
+
+    def test_react_import(self):
+        """Erkennt import from 'react' als JSX."""
+        assert _contains_jsx_syntax("import React from 'react';") is True
+
+    def test_next_import(self):
+        """Erkennt import from 'next/...' als JSX."""
+        assert _contains_jsx_syntax("import Head from 'next/head';") is True
+
+    def test_use_state_hook(self):
+        """Erkennt useState() als JSX/React."""
+        assert _contains_jsx_syntax("const [x, setX] = useState(0);") is True
+
+    def test_fragment_syntax(self):
+        """Erkennt Fragment-Syntax <>."""
+        assert _contains_jsx_syntax("return <><div>Test</div></>;") is True
+
+    def test_plain_javascript(self):
+        """Plain JS ohne JSX wird nicht als JSX erkannt."""
+        assert _contains_jsx_syntax("const x = require('express');") is False
+
+    def test_plain_node_server(self):
+        """Node.js-Server ohne JSX wird nicht als JSX erkannt."""
+        code = "const http = require('http');\nhttp.createServer((req, res) => { res.end('ok'); });"
+        assert _contains_jsx_syntax(code) is False
+
+
+class TestValidateJsx:
+    """Tests fuer _validate_jsx()."""
+
+    def test_valid_react_component(self):
+        """Gueltige React-Komponente besteht Validierung."""
+        code = '''import React from 'react';
+
+export default function App() {
+  const [count, setCount] = React.useState(0);
+  return (
+    <div className="app">
+      <h1>Counter: {count}</h1>
+      <button onClick={() => setCount(count + 1)}>+1</button>
+    </div>
+  );
+}'''
+        result = _validate_jsx(code)
+        assert "✅" in result, f"Erwartet: Validierung bestanden, erhalten: {result}"
+
+    def test_valid_nextjs_page(self):
+        """Gueltige Next.js-Page besteht Validierung."""
+        code = '''import Head from 'next/head';
+import dynamic from 'next/dynamic';
+
+const TodoList = dynamic(() => import('../components/TodoList'), { ssr: false });
+
+export default function Home() {
+  return (
+    <div>
+      <Head><title>Todo App</title></Head>
+      <TodoList />
+    </div>
+  );
+}'''
+        result = _validate_jsx(code)
+        assert "✅" in result, f"Erwartet: Validierung bestanden, erhalten: {result}"
+
+    def test_unbalanced_braces(self):
+        """Unbalancierte geschweiften Klammern werden erkannt."""
+        code = '''export default function App() {
+  return (
+    <div>Test</div>
+  );
+'''  # Fehlende schliessende }
+        result = _validate_jsx(code)
+        assert "❌" in result, f"Erwartet: Fehler erkannt, erhalten: {result}"
+        assert "Klammer" in result, f"Erwartet: Klammer-Fehler, erhalten: {result}"
+
+    def test_unclosed_string(self):
+        """Nicht geschlossenes String-Literal wird erkannt."""
+        code = '''const name = "Hello;
+export function App() { return <div>{name}</div>; }'''
+        result = _validate_jsx(code)
+        assert "❌" in result, f"Erwartet: Fehler bei offenem String, erhalten: {result}"
+
+    def test_empty_code(self):
+        """Leerer Code besteht Validierung (keine Strukturfehler)."""
+        result = _validate_jsx("")
+        assert "✅" in result, f"Erwartet: Validierung bestanden bei leerem Code, erhalten: {result}"
+
+    def test_comments_ignored(self):
+        """Klammern in Kommentaren werden ignoriert."""
+        code = '''// Diese Klammer { wird ignoriert
+/* Und diese auch { und diese } */
+export function App() { return <div>OK</div>; }'''
+        result = _validate_jsx(code)
+        assert "✅" in result, f"Erwartet: Kommentar-Klammern ignoriert, erhalten: {result}"
+
+    def test_run_sandbox_uses_jsx_validator(self):
+        """run_sandbox() nutzt JSX-Validator bei JSX-Code."""
+        code = '''import React from 'react';
+export default function App() {
+  return <div className="app"><h1>Hello</h1></div>;
+}'''
+        result = run_sandbox(code)
+        assert "✅" in result, f"Erwartet: JSX-Code besteht run_sandbox(), erhalten: {result}"
+        assert "JSX" in result or "Struktur" in result, (
+            f"Erwartet: JSX-Validierung-Meldung, erhalten: {result}"
+        )

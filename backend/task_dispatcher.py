@@ -327,6 +327,16 @@ class TaskDispatcher:
                     error_message=f"Kein Agent fuer {task.target_agent.value} verfuegbar"
                 )
 
+            # AENDERUNG 07.02.2026: Fix-Agent Start-Event (Fix 14)
+            is_fix = task.target_agent.value == "fix"
+            if is_fix:
+                self._emit_fix_event("FixStart", {
+                    "task_id": task.id,
+                    "affected_files": task.affected_files,
+                    "error_type": task.category.value,
+                    "title": task.title[:100]
+                })
+
             # CrewAI Task erstellen
             crew_task = Task(
                 description=self._build_task_description(task),
@@ -350,6 +360,20 @@ class TaskDispatcher:
             # ÄNDERUNG 03.02.2026: UTDS-Fixes zu manager.current_code synchronisieren
             # Verhindert dass Fixes bei nächster Coder-Iteration verloren gehen
             self._sync_modified_files_to_manager(modified_files, result_text)
+
+            # AENDERUNG 07.02.2026: Fix-Agent Output-Event (Fix 14)
+            if is_fix:
+                model_name = ""
+                if hasattr(agent, 'llm') and hasattr(agent.llm, 'model'):
+                    model_name = agent.llm.model
+                self._emit_fix_event("FixOutput", {
+                    "task_id": task.id,
+                    "success": True,
+                    "affected_files": task.affected_files,
+                    "modified_files": modified_files,
+                    "model": model_name,
+                    "duration": round(time.time() - start_time, 1)
+                })
 
             return TaskExecutionResult(
                 task_id=task.id,
@@ -507,6 +531,15 @@ class TaskDispatcher:
 """
         return desc
 
+    def _emit_fix_event(self, event_type: str, data: Dict) -> None:
+        """
+        AENDERUNG 07.02.2026: Sendet Fix-Agent Event an Frontend via on_log (Fix 14).
+        """
+        if hasattr(self.manager, 'on_log') and self.manager.on_log:
+            import json
+            event_data = json.dumps(data, ensure_ascii=False, default=str)
+            self.manager.on_log("Fix", event_type, event_data)
+
     def _build_dependency_graph(self, tasks: List[DerivedTask]) -> Dict[str, List[str]]:
         """Erstellt Abhaengigkeits-Graph."""
         graph = {}
@@ -516,15 +549,20 @@ class TaskDispatcher:
 
     def _extract_modified_files(self, result: str, task: DerivedTask) -> List[str]:
         """Extrahiert geaenderte Dateien aus Ergebnis."""
-        # Suche nach Dateinamen im Ergebnis (laengere Extensions zuerst: jsx vor js, json vor js)
-        file_pattern = r'["\']?([a-zA-Z0-9_/\\.-]+\.(?:py|jsx|json|tsx|js|ts|html|css))["\']?'
+        # AENDERUNG 07.02.2026: Extensions fuer alle 12 unterstuetzten Sprachen
+        # Laengere Extensions zuerst (jsx vor js, json vor js, tsx vor ts)
+        file_pattern = r'["\']?([a-zA-Z0-9_/\\.-]+\.(?:py|jsx|json|tsx|js|ts|html|css|yaml|yml|md|java|go|rs|cs|cpp|hpp|kt|kts|rb|swift|php|vue|svelte|dart|scala|ex|xml|gradle|sql|sh|bat|toml))["\']?'
         matches = re.findall(file_pattern, result)
 
         # AENDERUNG 06.02.2026: ROOT-CAUSE-FIX Framework-Namen in Patch-Liste
         # Symptom: Next.js, Node.js landen als "Dateien" in der Patch-Liste (Patch-Ratio 0%)
         # Ursache: Regex matcht Framework-Namen (Name.js) als Dateinamen
         # Loesung: Gleicher Filter wie in task_deriver.py:553-557
-        _FRAMEWORK_NAMES = {"next.js", "vue.js", "node.js", "react.js", "angular.js", "nuxt.js", "svelte.js"}
+        # AENDERUNG 07.02.2026: Erweitert um weitere JS-Frameworks
+        _FRAMEWORK_NAMES = {
+            "next.js", "vue.js", "node.js", "react.js", "angular.js", "nuxt.js", "svelte.js",
+            "express.js", "gatsby.js", "remix.js", "ember.js",
+        }
         matches = [m for m in matches if m.lower() not in _FRAMEWORK_NAMES]
 
         found = list(set(matches))[:10]

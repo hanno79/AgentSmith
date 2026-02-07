@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 """
 Author: rahn
-Datum: 28.01.2026
-Version: 1.2
+Datum: 01.02.2026
+Version: 1.3
 Beschreibung: Reviewer Agent - Validiert Code-Qualität, Funktionalität und Regelkonformität.
+              ÄNDERUNG 01.02.2026: Root Cause Format - Bei Fehlern MUSS Ursachenanalyse erfolgen.
               ÄNDERUNG 28.01.2026: Verschärfte Vollständigkeitsprüfung - kein OK bei fehlenden Dateien.
 """
 
@@ -52,7 +53,12 @@ def create_reviewer(config: Dict[str, Any], project_rules: Dict[str, List[str]],
             "- Du selbst schreibst 'muss noch erstellt werden', 'fehlt noch', 'wird benötigt'\n"
             "- Dateien referenziert werden die nicht im Code enthalten sind\n"
             "- Der Code unvollständig ist\n\n"
-            "Antworte NUR mit OK wenn der Code KOMPLETT, LAUFFÄHIG und FEHLERFREI ist."
+            "Antworte NUR mit OK wenn der Code KOMPLETT, LAUFFÄHIG und FEHLERFREI ist.\n\n"
+            "ROOT CAUSE FORMAT - Bei Fehlern MUSS dein Feedback dieses Format enthalten:\n"
+            "URSACHE: [Warum ist der Fehler aufgetreten - die eigentliche Root Cause]\n"
+            "BETROFFENE DATEIEN: [Welche Dateien müssen geändert werden]\n"
+            "LÖSUNG: [Konkrete Schritte zur Behebung]\n\n"
+            "WICHTIG: Analysiere nicht nur WAS falsch ist, sondern WARUM es falsch ist!"
         ),
         backstory=(
             "Du bist ein strenger, erfahrener Software-Tester und Code-Reviewer. "

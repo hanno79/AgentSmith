@@ -1,21 +1,28 @@
 /**
  * Author: rahn
- * Datum: 25.01.2026
- * Version: 1.6
+ * Datum: 03.02.2026
+ * Version: 1.7
  * Beschreibung: AgentCard Komponente - Zeigt Status und Logs eines einzelnen Agenten.
  *               Mit farbigem Glow-Effekt bei aktiven Agenten.
  *               ÄNDERUNG 25.01.2026: Bug Fix - Glow nur bei explizit aktiven Status (nicht bei *Output).
  *               ÄNDERUNG 25.01.2026: Worker-Anzeige für parallele Verarbeitung (Badge mit aktiv/total).
  *               ÄNDERUNG 25.01.2026: Kompaktere Status-Badges und gefilterte Logs.
- *               ÄNDERUNG 25.01.2026: BUG FIX - Glow-Effekt auch bei aktiven Workern (activeWorkers > 0).
  *               ÄNDERUNG 31.01.2026: Refactoring - Nutzt zentrale COLORS aus config.js (Single Source of Truth)
+ *               ÄNDERUNG 31.01.2026: PropTypes für name, icon, color (oneOf COLORS), status, logs, onOpenOffice, workers
+ *               ÄNDERUNG 31.01.2026: Explizite Fallbacks bei ungültigem color-Prop (DEFAULT_COLOR, keine undefined-Werte)
+ *               ÄNDERUNG 03.02.2026: ROOT-CAUSE-FIX - "|| activeWorkers > 0" entfernt aus isActive Logik.
+ *                                    Agent-Status hat Vorrang, Worker nur fuer Badge relevant.
  */
 
 import React, { useMemo } from 'react';
+import PropTypes from 'prop-types';
 import { motion } from 'framer-motion';
 import { ExternalLink, Users } from 'lucide-react';
 // ÄNDERUNG 31.01.2026: Import aus zentraler Konfiguration statt lokaler Duplikate
-import { COLORS, getColorClasses } from '../constants/config';
+import { COLORS, DEFAULT_COLOR, getColorClasses } from '../constants/config';
+
+// Gültige color-Werte für PropTypes (Single Source of Truth aus COLORS)
+const COLOR_KEYS = Object.keys(COLORS);
 
 // ÄNDERUNG 25.01.2026: Aktive Status-Werte (Agent arbeitet gerade)
 // ÄNDERUNG 28.01.2026: 'Working' hinzugefügt als universeller Arbeitsstatus
@@ -88,24 +95,32 @@ const filterLogs = (logs) => {
  * @param {Array} workers - Worker-Daten für dieses Office (optional)
  */
 const AgentCard = ({ name, icon, color, status, logs, onOpenOffice, workers = [] }) => {
-  // ÄNDERUNG 25.01.2026: Worker-Statistiken berechnen
+  // ÄNDERUNG 31.01.2026: Sichere Farbauflösung – bei ungültigem color Fallback auf DEFAULT_COLOR
+  const colorDef = COLORS[color] ?? COLORS[DEFAULT_COLOR];
+  // ÄNDERUNG 25.01.2026: Worker-Statistiken berechnen (für Badge-Anzeige)
   const activeWorkers = workers.filter(w => w.status === 'working').length;
   const totalWorkers = workers.length;
-  // ÄNDERUNG 25.01.2026: Prüfe ob Status in activeStates ODER mit "Status" beginnt
-  // ÄNDERUNG 25.01.2026: BUG FIX - Glow auch wenn Worker aktiv sind!
-  const isActive = (status && (activeStates.includes(status) || status === 'Status')) || activeWorkers > 0;
+  // ÄNDERUNG 03.02.2026: ROOT-CAUSE-FIX - Agent-Status hat Vorrang
+  // Symptom: Glow-Effekt stoppte nicht wenn Agent fertig war
+  // Ursache: "|| activeWorkers > 0" liess Glow weiterlaufen wenn Worker-Daten veraltet waren
+  // Loesung: Nur Agent-Status entscheidet ueber Glow, Worker nur fuer Badge relevant
+  const isActive = status && (activeStates.includes(status) || status === 'Status');
   // ÄNDERUNG 25.01.2026: Gefilterte Logs einmal berechnen statt zweimal
   const filteredLogs = useMemo(() => filterLogs(logs), [logs]);
 
+  // ÄNDERUNG 02.02.2026: Key basierend auf isActive für korrektes Animations-Stoppen
+  // Framer Motion stoppt repeat:Infinity nicht automatisch bei Prop-Änderungen
+  // Der key zwingt ein Neu-Rendern bei Status-Wechsel
   return (
     <motion.div
-      initial={false}
+      key={`${name}-${isActive ? 'active' : 'idle'}`}
+      initial={{ boxShadow: 'none', borderColor: 'transparent' }}
       animate={{
-        boxShadow: isActive ? COLORS[color]?.glow : 'none',
-        borderColor: isActive ? COLORS[color]?.hex : '',
+        boxShadow: isActive ? colorDef.glow : 'none',
+        borderColor: isActive ? colorDef.hex : 'transparent',
       }}
       transition={{ duration: 0.6, repeat: isActive ? Infinity : 0, repeatType: 'reverse', ease: 'easeInOut' }}
-      className={`p-4 rounded-xl border ${COLORS[color]?.border} bg-[#1c2127] transition-all relative overflow-hidden group ${isActive ? 'ring-1 ring-white/10' : ''}`}
+      className={`p-4 rounded-xl border ${colorDef.border} bg-[#1c2127] transition-all relative overflow-hidden group ${isActive ? 'ring-1 ring-white/10' : ''}`}
     >
       {/* Hintergrund-Icon */}
       <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
@@ -115,7 +130,7 @@ const AgentCard = ({ name, icon, color, status, logs, onOpenOffice, workers = []
       {/* Header mit Name und Status - ÄNDERUNG 25.01.2026: Kompakteres Layout */}
       <div className="flex justify-between items-start mb-4 relative z-10">
         <div className="flex items-center gap-2">
-          <div className={`p-2 rounded-lg bg-slate-800 border border-border-dark ${COLORS[color]?.text}`}>
+          <div className={`p-2 rounded-lg bg-slate-800 border border-border-dark ${colorDef.text}`}>
             {icon}
           </div>
           <div className="min-w-0">
@@ -168,6 +183,31 @@ const AgentCard = ({ name, icon, color, status, logs, onOpenOffice, workers = []
       </div>
     </motion.div>
   );
+};
+
+AgentCard.propTypes = {
+  name: PropTypes.string.isRequired,
+  icon: PropTypes.element.isRequired,
+  color: PropTypes.oneOf(COLOR_KEYS).isRequired,
+  status: PropTypes.string,
+  logs: PropTypes.arrayOf(
+    PropTypes.shape({
+      event: PropTypes.string,
+      message: PropTypes.string,
+    })
+  ),
+  onOpenOffice: PropTypes.func,
+  workers: PropTypes.arrayOf(
+    PropTypes.shape({
+      status: PropTypes.string,
+    })
+  ),
+};
+
+AgentCard.defaultProps = {
+  status: 'Idle',
+  logs: [],
+  workers: [],
 };
 
 export default AgentCard;

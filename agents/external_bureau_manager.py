@@ -25,6 +25,7 @@ from external_specialists.base_specialist import (
 )
 from external_specialists.coderabbit_specialist import CodeRabbitSpecialist
 from external_specialists.exa_specialist import EXASpecialist
+from external_specialists.augment_specialist import AugmentSpecialist
 
 logger = logging.getLogger(__name__)
 
@@ -72,10 +73,22 @@ class ExternalBureauManager:
         exa_config = self.config.get("exa_search", {})
         if exa_config.get("enabled", False):
             try:
-                self.specialists["exa_search"] = EXASpecialist(exa_config)
+                self.specialists["exa"] = EXASpecialist(exa_config)
                 logger.info("External Bureau: EXA Search Specialist geladen")
             except Exception as e:
                 logger.error(f"EXA Search Initialisierung fehlgeschlagen: {e}")
+
+        # Augment Context Engine
+        augment_config = self.config.get("augment_context", {})
+        if augment_config.get("enabled", False):
+            try:
+                # ÄNDERUNG 06.02.2026: Key muss mit to_dict()-ID uebereinstimmen
+                # ROOT-CAUSE-FIX: Frontend sendet ID aus Klassenname (AugmentSpecialist -> "augment"),
+                # aber Lookup schlug fehl weil Key "augment_context" war
+                self.specialists["augment"] = AugmentSpecialist(augment_config)
+                logger.info("External Bureau: Augment Context Specialist geladen")
+            except Exception as e:
+                logger.error(f"Augment Context Initialisierung fehlgeschlagen: {e}")
 
         logger.info(f"External Bureau: {len(self.specialists)} Specialist(s) initialisiert")
 
@@ -112,7 +125,7 @@ class ExternalBureauManager:
         Holt einen Specialist nach ID.
 
         Args:
-            specialist_id: z.B. "coderabbit" oder "exa_search"
+            specialist_id: z.B. "coderabbit" oder "exa"
 
         Returns:
             BaseSpecialist Instanz oder None
@@ -215,7 +228,7 @@ class ExternalBureauManager:
         Returns:
             SpecialistResult oder None
         """
-        exa = self.specialists.get("exa_search")
+        exa = self.specialists.get("exa")
         if not exa:
             logger.debug("External Bureau: EXA Search nicht konfiguriert")
             return None

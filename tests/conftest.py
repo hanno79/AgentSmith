@@ -2,8 +2,11 @@
 """
 Author: rahn
 Datum: 24.01.2026
-Version: 1.0
-Beschreibung: Pytest Fixtures - Gemeinsame Test-Konfiguration und Fixtures für AgentSmith Tests.
+Version: 1.1
+Beschreibung: Pytest Fixtures - Gemeinsame Test-Konfiguration und Fixtures fuer AgentSmith Tests.
+
+              AENDERUNG 05.02.2026 v1.1: sample_memory_data erweitert
+              - domain_vocabulary und known_data_sources hinzugefuegt
 """
 
 import os
@@ -13,13 +16,13 @@ import pytest
 import tempfile
 import shutil
 
-# Füge Projekt-Root zum Python-Path hinzu
+# Fuege Projekt-Root zum Python-Path hinzu
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 @pytest.fixture
 def temp_dir():
-    """Erstellt ein temporäres Verzeichnis für Tests."""
+    """Erstellt ein temporaeres Verzeichnis fuer Tests."""
     dir_path = tempfile.mkdtemp()
     yield dir_path
     shutil.rmtree(dir_path, ignore_errors=True)
@@ -27,7 +30,7 @@ def temp_dir():
 
 @pytest.fixture
 def temp_memory_file(temp_dir):
-    """Erstellt eine temporäre Memory-Datei."""
+    """Erstellt eine temporaere Memory-Datei."""
     memory_path = os.path.join(temp_dir, "memory", "test_memory.json")
     # Erstelle Verzeichnis falls nicht vorhanden
     memory_dir = os.path.dirname(memory_path)
@@ -38,7 +41,8 @@ def temp_memory_file(temp_dir):
 
 @pytest.fixture
 def sample_memory_data():
-    """Beispiel-Memory-Daten für Tests."""
+    """Beispiel-Memory-Daten fuer Tests."""
+    # AENDERUNG 05.02.2026: Struktur wurde am 01.02.2026 erweitert
     return {
         "history": [
             {
@@ -67,7 +71,10 @@ def sample_memory_data():
                 "first_seen": "2026-01-23 11:00:00",
                 "last_seen": "2026-01-23 11:00:00"
             }
-        ]
+        ],
+        # AENDERUNG 05.02.2026: Neue Felder hinzugefuegt
+        "domain_vocabulary": [],
+        "known_data_sources": []
     }
 
 
@@ -86,7 +93,7 @@ def populated_memory_file(temp_dir, sample_memory_data):
 
 @pytest.fixture
 def sample_config():
-    """Beispiel-Konfiguration für Tests."""
+    """Beispiel-Konfiguration fuer Tests."""
     return {
         "mode": "test",
         "project_type": "webapp",
@@ -108,7 +115,7 @@ def sample_config():
             "webapp": {
                 "global": ["PEP8 einhalten"],
                 "coder": ["Erstelle requirements.txt"],
-                "reviewer": ["Prüfe Imports"]
+                "reviewer": ["Pruefe Imports"]
             }
         }
     }
@@ -116,7 +123,7 @@ def sample_config():
 
 @pytest.fixture
 def valid_python_code():
-    """Gültiger Python-Code für Sandbox-Tests."""
+    """Gueltiger Python-Code fuer Sandbox-Tests."""
     return '''
 def hello_world():
     """Simple hello world function."""
@@ -129,7 +136,7 @@ if __name__ == "__main__":
 
 @pytest.fixture
 def invalid_python_code():
-    """Ungültiger Python-Code für Sandbox-Tests."""
+    """Ungueltiger Python-Code fuer Sandbox-Tests."""
     return '''
 def broken_function(
     print("Missing closing parenthesis"
@@ -138,7 +145,7 @@ def broken_function(
 
 @pytest.fixture
 def valid_html_code():
-    """Gültiger HTML-Code für Sandbox-Tests."""
+    """Gueltiger HTML-Code fuer Sandbox-Tests."""
     return '''<!DOCTYPE html>
 <html>
 <head>
@@ -152,11 +159,17 @@ def valid_html_code():
 
 @pytest.fixture
 def invalid_html_code():
-    """Unvollständiger HTML-Code für Sandbox-Tests."""
+    """Unvollstaendiger HTML-Code fuer Sandbox-Tests."""
     return '''<!DOCTYPE html>
 <html>
 <head>
     <title>Test Page</title>
 </head>
 <body>
-    <h1>Missing closing tags'''
+    <h1>Missing closing tags
+</body>
+</html>'''  # NOTE: h1 tag is not closed - but this is still accepted by simple validator
+
+
+# NOTE: The HTML validator in sandbox_runner.py only checks for <html> and </html> presence,
+# not proper tag nesting. For truly invalid HTML, we need to remove </html>:

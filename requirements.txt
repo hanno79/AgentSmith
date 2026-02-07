@@ -29,3 +29,6 @@ slowapi
 
 # Security (für Memory-Verschlüsselung)
 cryptography>=41.0.0
+
+# Version-Vergleich (PEP 440, dependency_checker)
+packaging>=24.0

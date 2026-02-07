@@ -54,6 +54,10 @@ const App = () => {
     // ÄNDERUNG 30.01.2026: Documentation Manager und Quality Gate
     documentationmanager: { status: 'Idle', lastUpdate: '' },
     qualitygate: { status: 'Idle', lastUpdate: '' },
+    // AENDERUNG 02.02.2026: Planner Agent
+    planner: { status: 'Idle', lastUpdate: '' },
+    // AENDERUNG 07.02.2026: Fix-Agent (Fix 14)
+    fix: { status: 'Idle', lastUpdate: '' },
   });
 
   // Strukturierte Agent-Daten für Live-Anzeige in Agent Offices
@@ -145,6 +149,27 @@ const App = () => {
       overallScore: 0,       // Gesamt-Quality-Score (0-100)
       issues: [],            // Offene Issues
       warnings: []           // Warnings
+    },
+    // AENDERUNG 02.02.2026: Planner Agent Daten
+    planner: {
+      files: [],             // Geplante Dateien
+      fileCount: 0,          // Anzahl der Dateien
+      estimatedLines: 0,     // Geschaetzte Zeilen
+      model: '',             // Verwendetes Modell
+      totalTokens: 0,        // Token-Verbrauch (geschaetzt)
+      source: ''             // "planner" oder "default"
+    },
+    // AENDERUNG 07.02.2026: Fix-Agent Daten (Fix 14)
+    fix: {
+      status: '',              // 'fixing', 'completed', ''
+      currentFile: '',         // Aktuell bearbeitete Datei
+      currentTask: '',         // Aktueller Task-Titel
+      errorType: '',           // Fehlertyp (code, test, security)
+      modifiedFiles: [],       // Alle modifizierten Dateien
+      model: '',               // Verwendetes Modell
+      fixCount: 0,             // Anzahl durchgefuehrter Fixes
+      totalDuration: 0,        // Gesamtdauer in Sekunden
+      lastResult: null         // Letztes Fix-Ergebnis
     }
   });
 
@@ -346,6 +371,8 @@ const App = () => {
         // ÄNDERUNG 30.01.2026: Documentation Manager und Quality Gate
         documentationmanager: { status: 'Idle', lastUpdate: '' },
         qualitygate: { status: 'Idle', lastUpdate: '' },
+        // AENDERUNG 02.02.2026: Planner Agent
+        planner: { status: 'Idle', lastUpdate: '' },
       });
 
       // AgentData zurücksetzen
@@ -361,6 +388,8 @@ const App = () => {
         // ÄNDERUNG 30.01.2026: Documentation Manager und Quality Gate
         documentationmanager: { readme: '', changelog: '', files: [], model: '', status: '', timestamp: '', workers: [] },
         qualitygate: { validations: [], overallScore: 0, issues: [], warnings: [] },
+        // AENDERUNG 02.02.2026: Planner Agent
+        planner: { files: [], fileCount: 0, estimatedLines: 0, model: '', totalTokens: 0, source: '' },
       });
 
     } catch (error) {

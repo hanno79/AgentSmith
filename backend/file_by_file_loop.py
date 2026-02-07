@@ -36,6 +36,10 @@ from backend.heartbeat_utils import run_with_heartbeat
 from backend.orchestration_helpers import is_rate_limit_error
 # AENDERUNG 31.01.2026: Fehleranalyse fuer intelligente Retries
 from backend.error_analyzer import ErrorAnalyzer, FileError
+# AENDERUNG 02.02.2026: Planner Worker-Status Logging
+from backend.orchestration_worker_status import update_worker_status
+# AENDERUNG 02.02.2026: Memory-Integration fuer Planner
+from agents.memory_core import add_plan_entry
 
 logger = logging.getLogger(__name__)
 
@@ -168,6 +172,17 @@ async def run_planner(
     """
     manager._ui_log("Planner", "Status", "Erstelle File-by-File Plan...")
 
+    # AENDERUNG 02.02.2026: Worker-Status fuer Planner-Buero senden
+    planner_model = manager.model_router.get_model("planner") if manager.model_router else "unknown"
+    update_worker_status(
+        office_manager=manager.office_manager,
+        office="planner",
+        worker_status="working",
+        task_description="Erstelle File-by-File Plan...",
+        model=planner_model,
+        on_log=manager._ui_log
+    )
+
     try:
         planner = create_planner(
             manager.config,
@@ -195,11 +210,41 @@ async def run_planner(
         plan = parse_planner_output(result)
         if plan and plan.get("files"):
             file_count = len(plan["files"])
-            manager._ui_log("Planner", "Result", json.dumps({
+            # AENDERUNG 03.02.2026: "Result" zu "PlannerOutput" geaendert
+            # Grund: Frontend erwartet COMPLETION_EVENTS fuer Status-Reset auf "Idle"
+            manager._ui_log("Planner", "PlannerOutput", json.dumps({
                 "status": "success",
                 "file_count": file_count,
                 "files": [f["path"] for f in plan["files"]]
             }, ensure_ascii=False))
+
+            # AENDERUNG 02.02.2026: Token-Metrics fuer Planner (geschaetzt)
+            estimated_tokens = len(result) // 4 if result else 0
+            manager._ui_log("Planner", "TokenMetrics", json.dumps({
+                "total_tokens": estimated_tokens,
+                "total_cost": 0.0,
+                "model": planner_model,
+                "estimated": True
+            }, ensure_ascii=False))
+
+            # AENDERUNG 02.02.2026: Plan in Memory speichern
+            try:
+                if hasattr(manager, 'memory_path') and manager.memory_path:
+                    add_plan_entry(
+                        memory_path=manager.memory_path,
+                        plan=plan,
+                        source="planner"
+                    )
+            except Exception as mem_err:
+                manager._ui_log("Memory", "Warning", f"Plan nicht gespeichert: {mem_err}")
+
+            # Worker-Status: Completed
+            update_worker_status(
+                office_manager=manager.office_manager,
+                office="planner",
+                worker_status="completed",
+                on_log=manager._ui_log
+            )
             return plan
 
         # Planner hat keinen gueltigen Plan geliefert
@@ -208,9 +253,29 @@ async def run_planner(
     except Exception as e:
         manager._ui_log("Planner", "Error", f"Planner fehlgeschlagen: {e}")
 
+    # Worker-Status: Completed (auch bei Fehler/Fallback)
+    update_worker_status(
+        office_manager=manager.office_manager,
+        office="planner",
+        worker_status="completed",
+        on_log=manager._ui_log
+    )
+
     # Fallback: Default-Plan
     plan = create_default_plan(manager.tech_blueprint, user_goal)
     manager._ui_log("Planner", "Info", f"Default-Plan mit {len(plan['files'])} Dateien erstellt")
+
+    # AENDERUNG 02.02.2026: Auch Default-Plan in Memory speichern
+    try:
+        if hasattr(manager, 'memory_path') and manager.memory_path:
+            add_plan_entry(
+                memory_path=manager.memory_path,
+                plan=plan,
+                source="default"
+            )
+    except Exception as mem_err:
+        manager._ui_log("Memory", "Warning", f"Default-Plan nicht gespeichert: {mem_err}")
+
     return plan
 
 
@@ -484,6 +549,21 @@ async def run_file_by_file_loop(
         manager, plan, completed_files, failed_files, existing_content
     )
 
+    # AENDERUNG 02.02.2026: Fix #9 - Automatisch pytest hinzufuegen wenn Tests existieren
+    # Verhindert "No module named pytest" Fehler in Docker-Tests
+    from backend.dev_loop_helpers import _ensure_test_dependencies
+
+    req_path = os.path.join(manager.project_path, "requirements.txt")
+    if os.path.exists(req_path):
+        with open(req_path, "r", encoding="utf-8") as f:
+            req_content = f.read()
+
+        updated_req = _ensure_test_dependencies(req_content, completed_files)
+        if updated_req != req_content:
+            with open(req_path, "w", encoding="utf-8") as f:
+                f.write(updated_req)
+            manager._ui_log("FileByFile", "AutoFix", "pytest zu requirements.txt hinzugefuegt")
+
     # 4. Ergebnis
     total = len(sorted_files)
     created = len(completed_files)
@@ -606,3 +686,206 @@ async def _integrate_file_by_file_results(
         manager._ui_log("Memory", "Info", result)
     except Exception as e:
         logger.warning(f"Memory Agent Integration fehlgeschlagen: {e}")
+
+
+# AENDERUNG 01.02.2026: Truncation Recovery - File-by-File Reparatur
+async def run_file_by_file_repair(
+    manager,
+    project_rules: Dict[str, Any],
+    truncated_files: List[Tuple[str, str]],
+    existing_code: str,
+    user_goal: str,
+    max_iterations: int = 3
+) -> Tuple[bool, str, Dict[str, str]]:
+    """
+    Repariert abgeschnittene Dateien im File-by-File Modus.
+
+    Diese Funktion wird aufgerufen wenn bei Fix-Iterationen Truncation erkannt wurde.
+    Sie generiert nur die betroffenen Dateien einzeln neu.
+
+    Args:
+        manager: OrchestrationManager
+        project_rules: Projekt-Regeln
+        truncated_files: Liste von (filepath, error) Tuples
+        existing_code: Der bisherige Code (alle Dateien)
+        user_goal: Benutzer-Anforderung
+        max_iterations: Max. Versuche pro Datei
+
+    Returns:
+        Tuple (success, message, repaired_content_dict)
+    """
+    manager._ui_log("FileByFile", "RepairStart", json.dumps({
+        "mode": "truncation_recovery",
+        "files_to_repair": [f[0] for f in truncated_files]
+    }, ensure_ascii=False))
+
+    # Extrahiere existierende Dateien aus existing_code
+    existing_files: Dict[str, str] = {}
+    import re
+    pattern = r'###\s*FILENAME:\s*(.+?)\s*\n(.*?)(?=###\s*FILENAME:|$)'
+    matches = re.findall(pattern, existing_code, re.DOTALL)
+    for filepath, content in matches:
+        filepath = filepath.strip()
+        # Nur nicht-abgeschnittene Dateien behalten
+        is_truncated = any(tf[0] == filepath for tf in truncated_files)
+        if not is_truncated:
+            existing_files[filepath] = content.strip()
+
+    repaired_content: Dict[str, str] = {}
+    failed_repairs: List[str] = []
+
+    for filepath, error_msg in truncated_files:
+        manager._ui_log("FileByFile", "RepairFile", json.dumps({
+            "file": filepath,
+            "reason": "truncation"
+        }, ensure_ascii=False))
+
+        # Erstelle Task fuer diese Datei
+        file_task = {
+            "path": filepath,
+            "description": f"Repariere abgeschnittene Datei. Die vorherige Version war unvollstaendig. "
+                          f"Generiere eine VOLLSTAENDIGE, syntaktisch korrekte Version. "
+                          f"WICHTIG: Halte den Code kompakt (max. 100 Zeilen wenn moeglich).",
+            "depends_on": []
+        }
+
+        # Fehlerkontext fuer intelligenten Retry
+        error_context = {
+            "error_type": "truncation",
+            "suggested_fix": "Generiere eine kuerzere, kompaktere Version der Datei.",
+            "context_hint": f"Die vorherige Version wurde abgeschnitten: {error_msg[:100]}..."
+        }
+
+        success = False
+        for attempt in range(max_iterations):
+            result_path, result = run_single_file_coder(
+                manager,
+                project_rules,
+                file_task,
+                existing_files,
+                user_goal,
+                attempt,
+                error_context=error_context
+            )
+
+            if result_path and result:
+                # Validiere: Keine offenen Klammern/Bloecke
+                if _validate_file_complete(result, filepath):
+                    repaired_content[filepath] = result
+                    existing_files[filepath] = result  # Fuer naechste Dateien
+                    success = True
+
+                    # Speichere reparierte Datei
+                    full_path = os.path.join(manager.project_path, filepath)
+                    os.makedirs(os.path.dirname(full_path), exist_ok=True)
+                    with open(full_path, "w", encoding="utf-8") as f:
+                        f.write(result)
+
+                    manager._ui_log("FileByFile", "RepairSuccess", json.dumps({
+                        "file": filepath,
+                        "lines": len(result.split('\n')),
+                        "attempt": attempt + 1
+                    }, ensure_ascii=False))
+                    break
+                else:
+                    error_context["context_hint"] = "Die Datei hat noch offene Klammern/Bloecke. Stelle sicher dass alle geschlossen sind."
+                    manager._ui_log("FileByFile", "RepairIncomplete",
+                                   f"{filepath} noch unvollstaendig, Versuch {attempt + 2}")
+            else:
+                error_context["context_hint"] = f"Generierung fehlgeschlagen. {error_context.get('suggested_fix', '')}"
+
+        if not success:
+            failed_repairs.append(filepath)
+            manager._ui_log("FileByFile", "RepairFailed",
+                           f"Reparatur von {filepath} fehlgeschlagen nach {max_iterations} Versuchen")
+
+    # Ergebnis
+    total = len(truncated_files)
+    repaired = len(repaired_content)
+    failed = len(failed_repairs)
+
+    if failed == 0:
+        return True, f"Alle {repaired} Dateien erfolgreich repariert", repaired_content
+    elif repaired > 0:
+        return True, f"{repaired}/{total} Dateien repariert, {failed} fehlgeschlagen", repaired_content
+    else:
+        return False, f"Keine Dateien repariert ({failed} Fehler)", {}
+
+
+def _validate_file_complete(content: str, filepath: str) -> bool:
+    """
+    Validiert ob eine Datei vollstaendig ist (keine offenen Klammern/Bloecke).
+
+    Args:
+        content: Dateiinhalt
+        filepath: Dateipfad (fuer Typ-Erkennung)
+
+    Returns:
+        True wenn Datei vollstaendig erscheint
+    """
+    if not content or not content.strip():
+        return False
+
+    ext = os.path.splitext(filepath)[1].lower()
+
+    # Python-Dateien: Keine offenen Klammern
+    if ext == '.py':
+        open_parens = content.count('(') - content.count(')')
+        open_brackets = content.count('[') - content.count(']')
+        open_braces = content.count('{') - content.count('}')
+        if open_parens != 0 or open_brackets != 0 or open_braces != 0:
+            return False
+
+    # JavaScript/TypeScript: Klammern pruefen
+    elif ext in ['.js', '.jsx', '.ts', '.tsx']:
+        open_braces = content.count('{') - content.count('}')
+        open_parens = content.count('(') - content.count(')')
+        if open_braces != 0 or open_parens != 0:
+            return False
+
+    # HTML: Tags pruefen (einfach) – Fragmente ohne </html>/</body> werden akzeptiert
+    elif ext in ['.html', '.htm']:
+        pass
+
+    # CSS: Geschweifte Klammern pruefen
+    elif ext == '.css':
+        open_braces = content.count('{') - content.count('}')
+        if open_braces != 0:
+            return False
+
+    return True
+
+
+def merge_repaired_files(existing_code: str, repaired_content: Dict[str, str]) -> str:
+    """
+    Merged reparierte Dateien in den existierenden Code.
+
+    Ersetzt die abgeschnittenen Versionen durch die reparierten Versionen.
+
+    Args:
+        existing_code: Der bisherige Code (alle Dateien)
+        repaired_content: Dict mit {filepath: repaired_content}
+
+    Returns:
+        Aktualisierter Code mit reparierten Dateien
+    """
+    import re
+
+    result = existing_code
+
+    for filepath, new_content in repaired_content.items():
+        # Pattern: ### FILENAME: filepath\n...content...(bis zum naechsten ### FILENAME oder Ende)
+        pattern = rf'(###\s*FILENAME:\s*{re.escape(filepath)}\s*\n).*?(?=###\s*FILENAME:|$)'
+
+        # Ersetze mit neuer Version
+        replacement = f"### FILENAME: {filepath}\n{new_content}\n"
+
+        new_result = re.sub(pattern, replacement, result, flags=re.DOTALL)
+
+        if new_result == result:
+            # Datei war nicht im Code - anhaengen
+            result = result.rstrip() + f"\n\n### FILENAME: {filepath}\n{new_content}\n"
+        else:
+            result = new_result
+
+    return result

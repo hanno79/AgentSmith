@@ -96,12 +96,18 @@ def extract_tables_from_schema(schema: str) -> List[Dict[str, Any]]:
 def is_server_error(error: Exception) -> bool:
     """
     Prüft, ob eine Exception ein Server-Fehler ist (500/502/503/504).
+    ÄNDERUNG 02.02.2026: Sichere Attribut-Zugriffe mit try-except (Bug-Fix)
     """
+    # ÄNDERUNG 02.02.2026: Sichere Attribut-Zugriffe statt hasattr()
+    # hasattr() kann bei manchen Exception-Objekten fehlschlagen
     status_code = None
-    if hasattr(error, 'response') and hasattr(error.response, 'status_code'):
+    try:
         status_code = error.response.status_code
-    elif hasattr(error, 'status_code'):
-        status_code = error.status_code
+    except (AttributeError, TypeError):
+        try:
+            status_code = error.status_code
+        except (AttributeError, TypeError):
+            pass
 
     if status_code in [500, 502, 503, 504]:
         return True
@@ -145,6 +151,7 @@ def is_litellm_internal_error(error: Exception) -> bool:
 
 
 # ÄNDERUNG 29.01.2026: Modell-Nicht-Verfügbar Fehler erkennen (404)
+# ÄNDERUNG 02.02.2026: Sichere Attribut-Zugriffe mit try-except (Bug-Fix)
 def is_model_unavailable_error(error: Exception) -> bool:
     """
     Prüft ob ein Fehler bedeutet, dass das Modell nicht verfügbar ist.
@@ -156,12 +163,15 @@ def is_model_unavailable_error(error: Exception) -> bool:
     Returns:
         True wenn das Modell nicht verfügbar ist (404, NotFound)
     """
-    # Prüfe Status-Code
+    # ÄNDERUNG 02.02.2026: Sichere Attribut-Zugriffe statt hasattr()
     status_code = None
-    if hasattr(error, 'response') and hasattr(error.response, 'status_code'):
+    try:
         status_code = error.response.status_code
-    elif hasattr(error, 'status_code'):
-        status_code = error.status_code
+    except (AttributeError, TypeError):
+        try:
+            status_code = error.status_code
+        except (AttributeError, TypeError):
+            pass
 
     if status_code == 404:
         return True
@@ -219,7 +229,10 @@ def handle_model_error(model_router, model: str, error: Exception) -> str:
         error: Der aufgetretene Fehler
 
     Returns:
-        Fehlertyp-String ("permanent", "rate_limit", "unavailable")
+        Fehlertyp-String: "permanent", "rate_limit", "unavailable" oder "unknown".
+        "unknown" wird zurueckgegeben, wenn der Fehler keinem der bekannten Muster
+        (permanent, Rate-Limit, 404/unavailable) zugeordnet werden kann; Aufrufer
+        sollten dies als generischen Fehlerpfad behandeln (z.B. Logging und Retry).
     """
     if is_permanently_unavailable_error(error):
         # Permanenter Fehler - Modell fuer diesen Run deaktivieren
@@ -456,6 +469,7 @@ def is_rate_limit_error(error: Exception) -> bool:
     """
     Prüft, ob eine Exception ein Rate-Limit-Fehler ist.
     Server-Fehler (500, 503) sind keine Rate-Limits.
+    ÄNDERUNG 02.02.2026: Sichere Attribut-Zugriffe mit try-except (Bug-Fix)
 
     Args:
         error: Die Exception, die geprüft werden soll
@@ -463,11 +477,15 @@ def is_rate_limit_error(error: Exception) -> bool:
     Returns:
         True NUR wenn Status-Code 429/402 oder explizites Rate-Limit erkannt wird
     """
+    # ÄNDERUNG 02.02.2026: Sichere Attribut-Zugriffe statt hasattr()
     status_code = None
-    if hasattr(error, 'response') and hasattr(error.response, 'status_code'):
+    try:
         status_code = error.response.status_code
-    elif hasattr(error, 'status_code'):
-        status_code = error.status_code
+    except (AttributeError, TypeError):
+        try:
+            status_code = error.status_code
+        except (AttributeError, TypeError):
+            pass
 
     error_str = str(error).lower()
     rate_limit_pattern = r'\brate[_\s-]?limit\b'
@@ -490,6 +508,30 @@ def is_rate_limit_error(error: Exception) -> bool:
                   "Upstream-Fehler erkannt - wird als Rate-Limit behandelt für Fallback")
 
     return is_rate_limit or is_upstream
+
+
+# ÄNDERUNG 02.02.2026: OpenRouter-Fehler Erkennung für sofortigen Modellwechsel
+def is_openrouter_error(error: Exception) -> bool:
+    """
+    Prueft ob ein Timeout ein OpenRouter-spezifischer Fehler ist.
+    Diese sollten sofort einen Modellwechsel ausloesen (wie Rate-Limits).
+
+    OpenRouter meldet Provider-Fehler als litellm.Timeout mit speziellem Text:
+    'litellm.Timeout: OpenrouterException - Provider returned error'
+
+    Args:
+        error: Die aufgetretene Exception
+
+    Returns:
+        True wenn es ein OpenRouter-spezifischer Fehler ist
+    """
+    error_str = str(error).lower()
+    openrouter_patterns = [
+        'openrouterexception',
+        'provider returned error',
+        'upstream error'
+    ]
+    return any(pattern in error_str for pattern in openrouter_patterns)
 
 
 def is_empty_or_invalid_response(response: str) -> bool:

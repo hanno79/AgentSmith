@@ -10,6 +10,9 @@ Beschreibung: Agent zur Verwaltung von Docker-Containern fuer generierte Projekt
 from crewai import Agent
 from typing import Optional, Dict, Any
 
+# AENDERUNG 02.02.2026: Import fuer konsistente Modellwahl
+from agents.agent_utils import get_model_from_config
+
 # =========================================================================
 # Agent Backstory und Prompts
 # =========================================================================
@@ -85,20 +88,12 @@ def create_docker_agent(
     Returns:
         Konfigurierter CrewAI Agent
     """
-    # Model aus Config oder Fallback
-    mode = config.get("mode", "test")
-    models = config.get("models", {}).get(mode, {})
-
+    # AENDERUNG 02.02.2026: Vereinfachte Modellwahl (Single Source of Truth)
     # Docker-Agent nutzt dasselbe Modell wie Coder (Code-Generierung)
-    model_config = models.get("coder", {})
-    if isinstance(model_config, dict):
-        model = model_config.get("primary", "openrouter/meta-llama/llama-3.3-70b-instruct:free")
-    else:
-        model = model_config
-
-    # Mit Router das aktuelle Modell holen (Fallback-aware)
     if router:
         model = router.get_model("coder")
+    else:
+        model = get_model_from_config(config, "coder")
 
     backstory = DOCKER_AGENT_BACKSTORY
 
