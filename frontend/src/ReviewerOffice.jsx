@@ -28,7 +28,8 @@ import {
   Gavel,
   Edit3,
   Cpu,
-  RefreshCw
+  RefreshCw,
+  Eye
 } from 'lucide-react';
 
 // ÄNDERUNG 24.01.2026: Erweiterte Props für echte Daten vom Backend (inkl. humanSummary)
@@ -83,6 +84,19 @@ const ReviewerOffice = ({
     return 50;
   };
   const confidenceScore = calculateConfidence();
+
+  // AENDERUNG 08.02.2026: Fix 24 - SecondOpinion Events erkennen (Vier-Augen-Prinzip)
+  const isSecondOpinionEvent = (log) => {
+    const msg = (log.message || '').toLowerCase();
+    const evt = (log.event || '').toLowerCase();
+    return msg.includes('vier-augen') || msg.includes('second opinion') ||
+           msg.includes('zweite meinung') || evt.includes('secondopinion');
+  };
+
+  // AENDERUNG 08.02.2026: SecondOpinion Logs extrahieren fuer dedizierte Anzeige
+  const secondOpinionLogs = logs.filter(isSecondOpinionEvent);
+  const lastSecondOpinion = secondOpinionLogs.length > 0 ? secondOpinionLogs[secondOpinionLogs.length - 1] : null;
+  const secondOpinionDissent = secondOpinionLogs.find(l => (l.message || '').toLowerCase().includes('widerspricht'));
 
   // ÄNDERUNG 24.01.2026: Dynamische Status Cards basierend auf echten Daten
   const getStatusCards = () => {
@@ -197,7 +211,9 @@ const ReviewerOffice = ({
                   <div
                     key={i}
                     className={`p-3 rounded-lg border transition-colors ${
-                      log.event === 'Feedback' || log.event === 'ReviewOutput'
+                      isSecondOpinionEvent(log)
+                        ? 'bg-indigo-900/10 border-indigo-500/20'
+                        : log.event === 'Feedback' || log.event === 'ReviewOutput'
                         ? 'bg-yellow-900/10 border-yellow-500/20'
                         : log.event === 'Error'
                         ? 'bg-red-900/10 border-red-500/20'
@@ -207,12 +223,16 @@ const ReviewerOffice = ({
                     }`}
                   >
                     <div className="flex items-center gap-2 mb-1">
-                      <span className={`text-[10px] font-bold uppercase ${
+                      <span className={`text-[10px] font-bold uppercase flex items-center gap-1 ${
+                        isSecondOpinionEvent(log) ? 'text-indigo-400' :
                         log.event === 'Feedback' || log.event === 'ReviewOutput' ? 'text-yellow-500' :
                         log.event === 'Error' ? 'text-red-400' :
                         log.event === 'Status' && log.message.includes('OK') ? 'text-green-400' :
                         'text-slate-400'
-                      }`}>{log.event}</span>
+                      }`}>
+                        {isSecondOpinionEvent(log) && <Eye size={10} />}
+                        {isSecondOpinionEvent(log) ? 'Vier-Augen' : log.event}
+                      </span>
                       <span className="text-[10px] text-slate-500">{formatTime(i)}</span>
                     </div>
                     <p className="text-xs text-slate-300 line-clamp-3">{log.message}</p>
@@ -361,6 +381,7 @@ const ReviewerOffice = ({
                       <div
                         key={i}
                         className={`flex gap-4 ${
+                          isSecondOpinionEvent(log) ? 'border-l-2 border-indigo-500 pl-4 bg-indigo-500/5 py-2' :
                           log.event === 'Error' ? 'border-l-2 border-red-500 pl-4 bg-red-500/5 py-2' :
                           log.event === 'Warning' ? 'border-l-2 border-yellow-500 pl-4 bg-yellow-500/5 py-2' :
                           log.event === 'Success' ? 'text-green-400' :
@@ -370,11 +391,15 @@ const ReviewerOffice = ({
                       >
                         <span className="text-slate-500 select-none">{String(i + 1).padStart(2, '0')}</span>
                         <span className={
+                          isSecondOpinionEvent(log) ? 'text-indigo-400' :
                           log.event === 'Error' ? 'text-red-400' :
                           log.event === 'Warning' ? 'text-yellow-500' :
                           log.event === 'Success' ? 'text-green-400' :
                           'text-slate-300'
-                        }>{log.message}</span>
+                        }>
+                          {isSecondOpinionEvent(log) && '🔍 '}
+                          {log.message}
+                        </span>
                       </div>
                     ))
                   )}
@@ -503,6 +528,38 @@ const ReviewerOffice = ({
             )}
           </div>
 
+          {/* AENDERUNG 08.02.2026: Fix 24 - Vier-Augen-Prinzip Anzeige */}
+          {lastSecondOpinion && (
+            <div className="p-4 border-b border-[#30363d] bg-[#0d1117]">
+              <h3 className="text-xs font-bold text-indigo-400 flex items-center gap-2 mb-3">
+                <Eye size={16} />
+                Vier-Augen-Prinzip
+              </h3>
+              <div className={`w-full py-3 px-4 rounded-lg text-sm flex items-center gap-2 ${
+                secondOpinionDissent
+                  ? 'bg-indigo-600/20 border border-indigo-500/30 text-indigo-300'
+                  : 'bg-green-600/20 border border-green-500/30 text-green-300'
+              }`}>
+                {secondOpinionDissent ? (
+                  <>
+                    <AlertTriangle size={16} />
+                    <span>Zweite Meinung widerspricht</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle size={16} />
+                    <span>Zweite Meinung stimmt zu</span>
+                  </>
+                )}
+              </div>
+              {secondOpinionDissent && (
+                <div className="mt-2 p-2 rounded bg-indigo-900/10 border border-indigo-500/20 text-xs text-indigo-300 max-h-32 overflow-auto">
+                  {secondOpinionDissent.message}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Feedback Section (wenn vorhanden) - ÄNDERUNG: Vollständiges Feedback ohne Begrenzung */}
           {feedback && (
             <div className="p-4 border-b border-[#30363d] bg-[#0d1117]">
@@ -531,6 +588,7 @@ const ReviewerOffice = ({
                     <span className="text-slate-500 font-mono">{formatTime(i)}</span>
                     <div className="flex-1">
                       <p className={
+                        isSecondOpinionEvent(log) ? 'text-indigo-400' :
                         log.event === 'Error' ? 'text-red-400' :
                         log.event === 'Warning' || log.event === 'Feedback' ? 'text-yellow-500' :
                         log.event === 'Success' || (log.event === 'Status' && log.message.includes('OK')) ? 'text-green-400' :

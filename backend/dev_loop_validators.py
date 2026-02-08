@@ -33,7 +33,7 @@ from agents.memory_agent import (
 from backend.docker_executor import create_docker_executor
 from unit_test_runner import run_unit_tests
 from agents.tester_agent import test_project, summarize_ui_result
-from content_validator import validate_run_bat, validate_nextjs_structure, validate_import_dependencies, validate_template_structure, validate_no_inline_svg
+from content_validator import validate_run_bat, validate_nextjs_structure, validate_import_dependencies, validate_template_structure, validate_no_inline_svg, validate_no_pages_router
 from .agent_factory import init_agents
 from .orchestration_helpers import (
     is_rate_limit_error,
@@ -378,6 +378,17 @@ def run_sandbox_and_tests(
                 sandbox_result += f"\nInline-SVG WARNING: {warning}"
     except Exception as svg_err:
         manager._ui_log("Sandbox", "Warning", f"Inline-SVG-Pruefung fehlgeschlagen: {svg_err}")
+
+    # AENDERUNG 08.02.2026: Router-Konsistenz bei Next.js pruefen (Fix 23B)
+    # ROOT-CAUSE-FIX: DevLoop generiert pages/ UND app/ Dateien parallel → Hybrid Router
+    try:
+        router_result = validate_no_pages_router(manager.project_path, manager.tech_blueprint)
+        if router_result.warnings:
+            for warning in router_result.warnings:
+                manager._ui_log("Sandbox", "RouterConflict", warning)
+                sandbox_result += f"\nRouter WARNING: {warning}"
+    except Exception as router_err:
+        manager._ui_log("Sandbox", "Warning", f"Router-Konsistenz-Pruefung fehlgeschlagen: {router_err}")
 
     if sandbox_failed:
         try:

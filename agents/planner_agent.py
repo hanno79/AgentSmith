@@ -140,6 +140,45 @@ REGELN:
 Gib NUR den JSON-Block aus, keine zusaetzlichen Erklaerungen.
 """
 
+    # AENDERUNG 08.02.2026: DB-Pflichtdateien an Planner durchreichen (Fix 22.5)
+    # ROOT-CAUSE-FIX: Planner plant keine DB-Dateien wenn Blueprint database != "none"
+    # Generisch fuer alle Sprachen und Frameworks
+    db_type = blueprint.get("database", "none")
+    language = blueprint.get("language", "").lower()
+    project_type = blueprint.get("project_type", "").lower()
+
+    if db_type and db_type != "none":
+        if language in ("javascript", "typescript"):
+            if "next" in project_type:
+                db_files = (
+                    "- lib/db.js: Datenbank-Initialisierung und Verbindung\n"
+                    "- app/api/[resource]/route.js: CRUD API-Route Handler (GET/POST/PUT/DELETE)"
+                )
+            elif "express" in project_type:
+                db_files = (
+                    "- src/database.js: Datenbank-Initialisierung und Verbindung\n"
+                    "- src/routes/: API-Routen mit DB-Zugriff"
+                )
+            else:
+                db_files = "- src/database.js: Datenbank-Initialisierung und Verbindung"
+        elif language == "python":
+            if "flask" in project_type or "fastapi" in project_type:
+                db_files = (
+                    "- src/database.py: Datenbank-Initialisierung und Verbindung\n"
+                    "- src/models.py: Datenmodelle\n"
+                    "- src/routes.py: API-Routen mit DB-Zugriff"
+                )
+            else:
+                db_files = "- src/database.py: Datenbank-Initialisierung und Abfragen"
+        else:
+            db_files = "- Datenbank-Initialisierungsdatei"
+
+        description += f"""
+DATENBANK-PFLICHTDATEIEN (database: {db_type}):
+{db_files}
+Diese Dateien MUESSEN im Plan enthalten sein!
+"""
+
     return Task(
         description=description,
         expected_output="JSON mit Datei-Liste und Abhaengigkeiten",
@@ -280,6 +319,25 @@ def create_default_plan(blueprint: Dict[str, Any], user_prompt: str) -> Dict[str
                 "priority": 3
             }
         ]
+        # AENDERUNG 08.02.2026: DB-Dateien fuer JS Default-Plan (Fix 22.5)
+        db_type = blueprint.get("database", "none")
+        if db_type and db_type != "none":
+            if "next" in project_type:
+                files.insert(1, {
+                    "path": "lib/db.js",
+                    "description": f"Datenbank-Initialisierung ({db_type})",
+                    "depends_on": [],
+                    "estimated_lines": 60,
+                    "priority": 1
+                })
+            else:
+                files.insert(1, {
+                    "path": "src/database.js",
+                    "description": f"Datenbank-Initialisierung ({db_type})",
+                    "depends_on": ["src/config.js"],
+                    "estimated_lines": 80,
+                    "priority": 2
+                })
     else:
         # Generischer Fallback
         files = [

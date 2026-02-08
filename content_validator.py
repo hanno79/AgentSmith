@@ -801,6 +801,58 @@ def validate_no_inline_svg(project_path: str, tech_blueprint: Dict[str, Any]) ->
     return result
 
 
+# AENDERUNG 08.02.2026: Router-Konsistenz bei Next.js pruefen (Fix 23B)
+# ROOT-CAUSE-FIX: DevLoop generiert pages/ UND app/ Dateien parallel
+# Symptom: Hybrid Router → Next.js Build-Konflikte, doppelte API-Routes
+# Loesung: WARNING wenn pages/ Dateien neben app/ existieren
+def validate_no_pages_router(project_path: str, tech_blueprint: Dict[str, Any]) -> ContentValidationResult:
+    """
+    Prueft ob Next.js-Projekt sowohl App Router als auch Pages Router verwendet.
+
+    Wenn app/layout.js existiert (App Router aktiv) UND pages/ Dateien vorhanden sind,
+    wird eine Warnung generiert. Doppelte Router verursachen Build-Konflikte.
+
+    Args:
+        project_path: Projektverzeichnis
+        tech_blueprint: Blueprint mit project_type
+
+    Returns:
+        ContentValidationResult mit Warnungen bei Hybrid-Router-Fund
+    """
+    result = ContentValidationResult()
+    result.checks_performed.append("pages_router_check")
+
+    project_type = tech_blueprint.get("project_type", "").lower()
+    if "next" not in project_type:
+        return result
+
+    app_layout = os.path.join(project_path, "app", "layout.js")
+    pages_dir = os.path.join(project_path, "pages")
+
+    if not os.path.exists(app_layout) or not os.path.isdir(pages_dir):
+        return result
+
+    # Sammle pages/ Dateien (ignoriere _document.js das manchmal noetig ist)
+    pages_files = []
+    for root_dir, dirs, files in os.walk(pages_dir):
+        for fname in files:
+            if fname.endswith((".js", ".jsx", ".ts", ".tsx")):
+                rel_path = os.path.relpath(
+                    os.path.join(root_dir, fname), project_path
+                ).replace("\\", "/")
+                pages_files.append(rel_path)
+
+    if pages_files:
+        result.warnings.append(
+            f"HYBRID ROUTER: App Router (app/) UND Pages Router (pages/) koexistieren. "
+            f"Pages-Dateien: {', '.join(pages_files[:5])}. "
+            f"Verwende AUSSCHLIESSLICH App Router fuer Next.js 14+. "
+            f"Entferne pages/ Dateien und verschiebe Logik nach app/."
+        )
+
+    return result
+
+
 def validate_import_dependencies(project_path: str, tech_blueprint: Dict[str, Any]) -> ContentValidationResult:
     """
     Prueft ob alle importierten Packages in package.json deklariert sind.

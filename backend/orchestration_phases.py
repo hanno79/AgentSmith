@@ -72,6 +72,31 @@ def run_techstack_phase(
     update_worker_status_callback("techstack_architect", "working", "Analysiere TechStack...",
                                    model_router.get_model("techstack_architect"))
 
+    # AENDERUNG 08.02.2026: Template-Score als Empfehlung an TechArchitect (Fix 22.1)
+    # ROOT-CAUSE-FIX: TechArchitect-LLM ignoriert Template-Ranking weil es nur als Auflistung kommt
+    # Symptom: nextjs_tailwind gewaehlt statt nextjs_sqlite trotz Score 50 vs 72
+    # Loesung: Expliziten Score-Vergleich als "STARKE EMPFEHLUNG" in Task-Description
+    template_hint = ""
+    try:
+        from techstack_templates.template_loader import find_matching_templates
+        template_matches = find_matching_templates(user_goal)
+        if template_matches:
+            top_id, _top_tmpl, top_score = template_matches[0]
+            second_score = template_matches[1][2] if len(template_matches) > 1 else 0
+            if top_score > second_score * 1.3:
+                template_hint = (
+                    f"\n\nSTARKE EMPFEHLUNG: Verwende Template '{top_id}' "
+                    f"(Score {top_score} vs naechstbestes {second_score}). "
+                    f"Dieses Template passt am besten zu den Anforderungen."
+                )
+                ui_log_callback("TechArchitect", "Info",
+                    f"Template-Matching: '{top_id}' empfohlen (Score {top_score} vs {second_score})")
+            elif template_matches:
+                top3 = [f"'{tid}' (Score {s})" for tid, _, s in template_matches[:3]]
+                template_hint = f"\n\nTemplate-Ranking: {', '.join(top3)}"
+    except Exception as tmpl_err:
+        logger.warning("Template-Matching fehlgeschlagen: %s", tmpl_err)
+
     # ÄNDERUNG 02.02.2026: MAX_TECHSTACK_RETRIES erhöht von 3 auf 7 (Bug #3 Fix)
     # Grund: primary + 4 fallbacks + extended_fallbacks + dynamischer Fallback brauchen mehr Versuche
     MAX_TECHSTACK_RETRIES = 7
@@ -81,7 +106,7 @@ def run_techstack_phase(
         try:
             agent_techstack = init_agents(config, base_project_rules, router=model_router,
                                           include=["techstack_architect"]).get("techstack_architect")
-            techstack_task = Task(description=f"Entscheide TechStack für: {user_goal}",
+            techstack_task = Task(description=f"Entscheide TechStack für: {user_goal}{template_hint}",
                                   expected_output="JSON-Blueprint.", agent=agent_techstack)
             techstack_result = run_with_heartbeat(
                 func=lambda: str(techstack_task.execute_sync()), ui_log_callback=ui_log_callback,
@@ -147,11 +172,13 @@ def run_techstack_phase(
             ui_log_callback
         )
         # AENDERUNG 07.02.2026: Pflicht-Dependencies ergaenzen (react-dom, postcss etc.)
+        # AENDERUNG 08.02.2026: database-Parameter durchreichen fuer DB-Dependency Safety Net (Fix 22.2)
         tech_blueprint["dependencies"] = _ensure_required_dependencies(
             tech_blueprint["dependencies"],
             tech_blueprint.get("language", ""),
             tech_blueprint.get("project_type", ""),
-            ui_log_callback
+            ui_log_callback,
+            database=tech_blueprint.get("database", "none")
         )
 
     ui_log_callback("TechArchitect", "Blueprint", json.dumps(tech_blueprint, ensure_ascii=False))
@@ -338,3 +365,51 @@ def run_designer_phase(
                 })
 
     return design_concept
+
+
+# AENDERUNG 08.02.2026: Fix 24 - Waisen-Check Phase
+def run_waisen_check_phase(
+    anforderungen: list,
+    features: list,
+    tasks: list,
+    file_generations: list,
+    quality_gate: QualityGate,
+    ui_log_callback: Callable
+):
+    """
+    Waisen-Check: Prueft Traceability-Kette ANF → FEAT → TASK → FILE.
+    Aufgerufen nach Feature-Ableitung und Planner-Phase.
+
+    ROOT-CAUSE-FIX 08.02.2026:
+    Symptom: QualityGate.validate_waisen() existiert, wird aber nirgends aufgerufen
+    Ursache: Fehlende Integration in Orchestration-Flow
+    Loesung: Dedizierte Phase nach Feature-Ableitung
+    """
+    try:
+        result = quality_gate.validate_waisen(
+            anforderungen, features, tasks, file_generations
+        )
+
+        ui_log_callback("Validator", "WaisenCheck", json.dumps({
+            "step": "WaisenCheck",
+            "passed": result.passed,
+            "score": result.score,
+            "waisen": result.details.get("waisen", {}),
+            "counts": result.details.get("counts", {})
+        }, ensure_ascii=False))
+
+        if not result.passed:
+            for issue in result.issues:
+                ui_log_callback("Validator", "WaisenWarning", issue)
+
+        if result.warnings:
+            for warning in result.warnings:
+                ui_log_callback("Validator", "WaisenInfo", warning)
+
+        logger.info(f"Waisen-Check: passed={result.passed}, score={result.score:.2f}")
+        return result
+
+    except Exception as e:
+        logger.warning(f"Waisen-Check Fehler: {e}")
+        ui_log_callback("Validator", "WaisenError", f"Waisen-Check fehlgeschlagen: {e}")
+        return None

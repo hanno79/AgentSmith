@@ -75,6 +75,8 @@ from .worker_pool import OfficeManager, WorkerStatus
 from .orchestration_helpers import (
     is_model_unavailable_error, is_rate_limit_error, is_empty_response_error
 )
+# AENDERUNG 08.02.2026: Fix 24 - Waisen-Check Phase
+from .orchestration_phases import run_waisen_check_phase
 from .dev_loop import DevLoop
 from .library_manager import get_library_manager
 from .session_manager import get_session_manager
@@ -315,7 +317,8 @@ class OrchestrationManager:
             if self.project_path:
                 project_id = os.path.basename(self.project_path)
 
-            AGENT_TIMEOUT = self.config.get("agent_timeout_seconds", 300)
+            # AENDERUNG 08.02.2026: Globales agent_timeout_seconds entfernt, Pro-Agent-Timeouts aus agent_timeouts Dict
+            agent_timeouts = self.config.get("agent_timeouts", {})
             MAX_RESEARCHER_RETRIES = 3
             start_context = ""
             research_query = ""
@@ -369,8 +372,8 @@ class OrchestrationManager:
 
             # 🔎 RESEARCH PHASE
             if self.is_first_run:
-                timeout_minutes = self.config.get("research_timeout_minutes", 5)
-                RESEARCH_TIMEOUT_SECONDS = timeout_minutes * 60
+                # AENDERUNG 08.02.2026: research_timeout_minutes entfernt → agent_timeouts["researcher"]
+                RESEARCH_TIMEOUT_SECONDS = agent_timeouts.get("researcher", 600)
                 research_query = f"Suche technische Details für: {user_goal}"
 
                 for researcher_attempt in range(MAX_RESEARCHER_RETRIES):
@@ -472,7 +475,7 @@ class OrchestrationManager:
                 # 🛠️ TECHSTACK
                 base_project_rules = self.config.get("templates", {}).get("webapp", {})
                 if "techstack_architect" in plan_data["plan"]:
-                    self._run_techstack_phase(user_goal, base_project_rules, project_id, AGENT_TIMEOUT)
+                    self._run_techstack_phase(user_goal, base_project_rules, project_id, agent_timeouts.get("techstack_architect", 750))
 
                 self.doc_service = DocumentationService(self.project_path)
                 self.doc_service.collect_goal(user_goal)
@@ -504,9 +507,9 @@ class OrchestrationManager:
             # Design & DB
             if self.is_first_run:
                 if "database_designer" in plan_data["plan"]:
-                    self._run_db_designer_phase(user_goal, self.project_rules, project_id, AGENT_TIMEOUT)
+                    self._run_db_designer_phase(user_goal, self.project_rules, project_id, agent_timeouts.get("database_designer", 750))
                 if "designer" in plan_data["plan"]:
-                    self._run_designer_phase(user_goal, self.project_rules, project_id, AGENT_TIMEOUT)
+                    self._run_designer_phase(user_goal, self.project_rules, project_id, agent_timeouts.get("designer", 300))
                 self._ui_log("Security", "Status", "Security-Scan wird nach Code-Generierung durchgeführt...")
 
             # 🔄 DEV LOOP
@@ -520,6 +523,30 @@ class OrchestrationManager:
             # ÄNDERUNG 03.02.2026: Entfernt - wird jetzt in dev_loop.py nach erster Iteration gesetzt (Fix 6)
             # self.is_first_run = False
             if success:
+                # AENDERUNG 08.02.2026: Fix 24 - Waisen-Check nach erfolgreichem DevLoop
+                if hasattr(self, 'quality_gate') and self.quality_gate:
+                    try:
+                        from .traceability_manager import TraceabilityManager
+                        trace_path = self.project_path / "traceability_matrix.json"
+                        if trace_path.exists():
+                            tm = TraceabilityManager(str(self.project_path))
+                            tm.load()
+                            matrix = tm.get_matrix()
+                            run_waisen_check_phase(
+                                anforderungen=list(matrix.get("anforderungen", {}).values()),
+                                features=list(matrix.get("features", {}).values()),
+                                tasks=list(matrix.get("tasks", {}).values()),
+                                file_generations=[
+                                    {"task_id": t_id}
+                                    for t_id, t in matrix.get("tasks", {}).items()
+                                    if t.get("dateien")
+                                ],
+                                quality_gate=self.quality_gate,
+                                ui_log_callback=self._ui_log
+                            )
+                    except Exception as wc_err:
+                        logger.warning(f"Waisen-Check nach DevLoop: {wc_err}")
+
                 self._ui_log("System", "Success", "Projekt erfolgreich erstellt/geändert.")
                 self._finalize_success(project_id)
             else:

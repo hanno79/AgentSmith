@@ -48,6 +48,12 @@ token_limits:
   database_designer: 8192
   techstack_architect: 8192
 security_max_retries: 10
+# AENDERUNG 08.02.2026: Fix 24 - Vier-Augen-Prinzip (Second Opinion Review)
+vier_augen:
+  enabled: true
+  timeout_factor: 0.5
+  skip_on_error: true
+  log_dissent: true
 dependency_agent:
   auto_install: true
   check_vulnerabilities: true

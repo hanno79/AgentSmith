@@ -390,6 +390,17 @@ def build_coder_prompt(
     if briefing_context:
         c_prompt += f"\n{briefing_context}\n"
 
+    # AENDERUNG 08.02.2026: Designer-Output als Pflicht-Input fuer Coder (Fix 22.6)
+    # ROOT-CAUSE-FIX: Designer generiert Farbpalette/CSS-Variablen, Coder ignoriert sie komplett
+    # Gilt fuer ALLE Projekttypen (Web, Desktop, CLI mit UI)
+    if hasattr(manager, 'design_concept') and manager.design_concept and "Kein Design" not in manager.design_concept:
+        design_brief = manager.design_concept[:500]
+        c_prompt += (
+            f"\n### DESIGN-VORGABEN (PFLICHT — vom Designer-Agenten):\n"
+            f"{design_brief}\n"
+            f"Verwende diese Farben und das beschriebene Design-Konzept!\n"
+        )
+
     # AENDERUNG 05.02.2026: UTDS-Task-Erkennung für Patch-Modus
     use_patch_mode = False
     patch_mode_reason = ""
@@ -674,16 +685,29 @@ def build_coder_prompt(
             framework = manager.tech_blueprint.get("framework", "").lower()
             project_type = manager.tech_blueprint.get("project_type", "").lower()
             if "next" in framework or "next" in project_type:
-                c_prompt += "\nNEXT.JS REGELN:\n"
+                # AENDERUNG 08.02.2026: App Router statt Pages Router (Fix 22.4C)
+                c_prompt += "\nNEXT.JS REGELN (App Router):\n"
                 c_prompt += "- ES6 import/export (KEIN require/module.exports)\n"
-                c_prompt += "- Dateien in pages/, components/, lib/ DIREKT im Root (NICHT src/)\n"
-                c_prompt += "- pages/_app.js + styles/globals.css MUESSEN existieren\n"
-                c_prompt += "- API-Routen: export default function handler(req, res)\n"
+                c_prompt += "- Dateien in app/, components/, lib/ DIREKT im Root (NICHT src/)\n"
+                c_prompt += "- app/layout.js + app/globals.css MUESSEN existieren\n"
+                c_prompt += "- API-Routen als Route Handlers: export async function GET/POST(request) in app/api/*/route.js\n"
+                c_prompt += "- Client-Components mit 'use client' Direktive am Dateianfang\n"
                 c_prompt += "- Verwende next/jest, NICHT @next/jest\n"
                 # AENDERUNG 07.02.2026: SVG Data-URL Verbot (Fix 20)
                 c_prompt += "- KEINE inline SVG Data-URLs in CSS oder JSX! "
                 c_prompt += "Verwende stattdessen: CSS-Gradienten (radial-gradient, linear-gradient), "
                 c_prompt += "separate .svg Dateien in public/, oder Unicode-Zeichen.\n"
+
+    # AENDERUNG 08.02.2026: Router-Konsistenz bei Next.js erzwingen (Fix 23A)
+    # ROOT-CAUSE-FIX: DevLoop/Reviewer erstellt pages/ Dateien neben app/ Dateien
+    # Symptom: Hybrid Router — BEIDE Verzeichnisse koexistieren → Next.js Konflikte
+    if manager.tech_blueprint:
+        _pt = manager.tech_blueprint.get("project_type", "").lower()
+        if "next" in _pt:
+            c_prompt += "\nROUTER-KONSISTENZ (KRITISCH):\n"
+            c_prompt += "- VERBOTEN: Erstelle KEINE Dateien unter pages/ (Pages Router ist VERALTET)\n"
+            c_prompt += "- Verwende AUSSCHLIESSLICH App Router: app/layout.js, app/page.js, app/api/*/route.js\n"
+            c_prompt += "- Wenn pages/ Dateien existieren: IGNORIERE sie, erstelle KEINE neuen\n"
 
     # AENDERUNG 07.02.2026: Datei-Blacklist (gilt fuer ALLE Frameworks)
     c_prompt += "\nDIESE DATEIEN NIEMALS GENERIEREN:\n"

@@ -55,6 +55,40 @@ def validate_techstack(
                     f"aber Blueprint hat '{blueprint_db}'"
                 )
 
+    # AENDERUNG 08.02.2026: Pruefung 1b — DB-Dependencies vorhanden? (Fix 22.3)
+    # ROOT-CAUSE-FIX: Blueprint hat database="sqlite" aber keine sqlite3/sqlite in Dependencies
+    # Generisch fuer alle Sprachen und Datenbank-Typen
+    blueprint_db = blueprint.get("database")
+    blueprint_lang = blueprint.get("language", "").lower()
+    if blueprint_db and blueprint_db not in ("none", "generic_db"):
+        details["checked"].append("db_dependencies")
+        deps = blueprint.get("dependencies", [])
+        deps_lower = [d.lower() for d in deps] if isinstance(deps, list) else []
+
+        # Sprach-spezifische Erwartungen
+        # Python: sqlite3 ist stdlib (kein Package noetig), postgres/mongo brauchen Packages
+        DB_EXPECTED_DEPS = {
+            "javascript": {
+                "sqlite": ["sqlite3", "sqlite", "better-sqlite3"],
+                "postgres": ["pg", "postgres", "sequelize"],
+                "mongodb": ["mongodb", "mongoose"],
+            },
+            "python": {
+                # sqlite: stdlib — kein externes Package noetig
+                "postgres": ["psycopg2", "asyncpg", "sqlalchemy"],
+                "mongodb": ["pymongo", "motor"],
+            }
+        }
+        lang_key = "python" if blueprint_lang == "python" else "javascript"
+        expected = DB_EXPECTED_DEPS.get(lang_key, {}).get(blueprint_db, [])
+        if expected:
+            has_any = any(exp in d for d in deps_lower for exp in expected)
+            if not has_any:
+                warnings.append(
+                    f"Blueprint hat database='{blueprint_db}', aber keine "
+                    f"passenden DB-Packages in Dependencies (erwartet: {', '.join(expected)})"
+                )
+
     # Prüfung 2: Sprach-Vorgabe respektiert?
     if requirements.get("language"):
         details["checked"].append("language")

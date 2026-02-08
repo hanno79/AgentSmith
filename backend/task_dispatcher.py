@@ -605,6 +605,14 @@ class TaskDispatcher:
             elif lang == 'python':
                 matches = [m for m in matches if not m.endswith(('.jsx', '.tsx', '.ex', '.rb', '.go', '.rs', '.kt', '.swift'))]
 
+        # AENDERUNG 08.02.2026: Schritt 2b — Pages Router Blacklist bei Next.js (Fix 23C)
+        # ROOT-CAUSE-FIX: UTDS generiert pages/ Tasks obwohl Projekt App Router nutzt
+        # Symptom: pages/index.js, pages/_app.js, pages/api/* neben app/ Dateien
+        if tech_blueprint:
+            project_type = tech_blueprint.get('project_type', '').lower()
+            if 'next' in project_type:
+                matches = [m for m in matches if not m.startswith('pages/') and not m.startswith('pages\\')]
+
         # AENDERUNG 07.02.2026: Schritt 3 — Validierung gegen existierende Dateien (Fix 20)
         if existing_files:
             validated = []

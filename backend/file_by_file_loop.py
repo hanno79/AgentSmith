@@ -196,8 +196,9 @@ async def run_planner(
             user_goal
         )
 
-        # Fuehre Planner mit Heartbeat aus
-        timeout = manager.config.get("agent_timeout_seconds", 120)
+        # AENDERUNG 08.02.2026: Pro-Agent Timeout statt globalem agent_timeout_seconds
+        agent_timeouts = manager.config.get("agent_timeouts", {})
+        timeout = agent_timeouts.get("planner", 300)
         result = run_with_heartbeat(
             func=lambda: str(task.execute_sync()),
             ui_log_callback=manager._ui_log,
@@ -344,8 +345,9 @@ def run_single_file_coder(
             agent=coder
         )
 
-        # Fuehre mit Heartbeat aus
-        timeout = manager.config.get("agent_timeout_seconds", 120)
+        # AENDERUNG 08.02.2026: Pro-Agent Timeout statt globalem agent_timeout_seconds
+        agent_timeouts = manager.config.get("agent_timeouts", {})
+        timeout = agent_timeouts.get("coder", 750)
         result = run_with_heartbeat(
             func=lambda: str(task.execute_sync()),
             ui_log_callback=manager._ui_log,

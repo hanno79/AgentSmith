@@ -62,6 +62,8 @@ from .dev_loop_task_derivation import DevLoopTaskDerivation, integrate_task_deri
 from .file_status_detector import FileStatusDetector, get_file_status_summary_for_log
 # AENDERUNG 07.02.2026: Version-Normalisierung nach Code-Speicherung
 from server_runner import _normalize_package_json_versions
+# AENDERUNG 08.02.2026: Fix 24 - Vier-Augen-Prinzip (Second Opinion Review)
+from .dev_loop_second_opinion import run_second_opinion_review
 
 # ÄNDERUNG 29.01.2026: Dev-Loop aus OrchestrationManager ausgelagert
 
@@ -534,6 +536,26 @@ class DevLoop:
             has_minimum_files = created_count >= 3
 
             if review_says_ok and not sandbox_failed and security_passed and has_minimum_files:
+
+                # AENDERUNG 08.02.2026: Fix 24 - Vier-Augen-Prinzip (Second Opinion Review)
+                # ROOT-CAUSE-FIX: Code wird nur von EINEM LLM reviewed → blinde Flecken
+                # Loesung: Nach Primary-OK automatisch Fallback-Modell als Gegencheck
+                vier_augen_enabled = manager.config.get("vier_augen", {}).get("enabled", False)
+                if vier_augen_enabled and review_verdict == "OK":
+                    primary_model = manager.model_router.get_model("reviewer") if manager.model_router else None
+                    if primary_model:
+                        agrees, second_feedback, second_model = run_second_opinion_review(
+                            manager, project_rules, manager.current_code,
+                            sandbox_result, test_summary, sandbox_failed, primary_model
+                        )
+                        if not agrees:
+                            review_says_ok = False
+                            # Feedback fuer naechste Iteration erweitern
+                            review_output = f"{review_output}\n\n[VIER-AUGEN FEEDBACK ({second_model})]\n{second_feedback}"
+                            manager._ui_log("SecondOpinion", "Dissent",
+                                f"Vier-Augen: Zweite Meinung widerspricht → Iteration wird wiederholt")
+                            continue
+
                 success = True
                 manager._ui_log("Security", "SecurityGate", "✅ Security-Gate bestanden - Code ist sicher.")
                 manager._ui_log("Reviewer", "Status", f"Code OK - Projekt komplett mit {created_count} Dateien.")
@@ -555,6 +577,31 @@ class DevLoop:
                         "warnings": final_validation.warnings,
                         "component_status": final_validation.details.get("component_status", {})
                     }, ensure_ascii=False))
+
+                    # AENDERUNG 08.02.2026: Fix 24 - Waisen-Check in Final Validation
+                    # Prueft Traceability-Kette: ANF → FEAT → TASK → FILE
+                    if hasattr(manager, 'traceability_manager') and manager.traceability_manager:
+                        try:
+                            matrix = manager.traceability_manager.get_matrix()
+                            waisen_result = manager.quality_gate.validate_waisen(
+                                anforderungen=list(matrix.get("anforderungen", {}).values()),
+                                features=list(matrix.get("features", {}).values()),
+                                tasks=list(matrix.get("tasks", {}).values()),
+                                file_generations=[
+                                    {"task_id": t_id}
+                                    for t_id, t in matrix.get("tasks", {}).items()
+                                    if t.get("dateien")
+                                ]
+                            )
+                            manager._ui_log("QualityGate", "WaisenCheck", json.dumps({
+                                "step": "WaisenCheck",
+                                "passed": waisen_result.passed,
+                                "score": waisen_result.score,
+                                "waisen": waisen_result.details.get("waisen", {}),
+                                "counts": waisen_result.details.get("counts", {})
+                            }, ensure_ascii=False))
+                        except Exception as wc_err:
+                            logger.warning(f"Waisen-Check Fehler: {wc_err}")
 
                 # ÄNDERUNG 30.01.2026: Sammle Iterations-Daten für Dokumentation
                 if hasattr(manager, 'doc_service') and manager.doc_service:

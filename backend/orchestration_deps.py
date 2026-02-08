@@ -29,19 +29,70 @@ INVALID_PYTHON_PACKAGES = {
 }
 
 
-def ensure_required_dependencies(deps: list, language: str, project_type: str, ui_log_callback: Callable) -> list:
+def ensure_required_dependencies(deps: list, language: str, project_type: str, ui_log_callback: Callable, database: str = "none") -> list:
     """
     AENDERUNG 07.02.2026: Fuegt fehlende Pflicht-Dependencies hinzu basierend auf Framework.
+    AENDERUNG 08.02.2026: Generisches DB-Dependency Safety Net (Fix 22.2).
     Symptom: react-dom fehlte in package.json -> Next.js App startet nicht.
     Ursache: LLM vergisst haeufig Co-Dependencies (react-dom, postcss, autoprefixer).
     Loesung: Automatische Ergaenzung nach Blueprint-Parsing.
+
+    Args:
+        deps: Liste der Dependencies
+        language: Programmiersprache (javascript, python, etc.)
+        project_type: Projekttyp (nextjs, flask, etc.)
+        ui_log_callback: UI-Log Callback
+        database: Datenbank-Typ aus Blueprint (sqlite, postgres, mongodb, none)
     """
-    if not deps or language.lower() not in ("javascript", "typescript"):
+    if not deps:
         return deps
-    # AENDERUNG 07.02.2026: Set statt Liste, nach jedem Append aktualisieren
-    # ROOT-CAUSE-FIX: deps_lower war stale nach Append -> react-dom wurde doppelt eingefuegt
+
+    # AENDERUNG 08.02.2026: Generisches Database-Dependency Safety Net (Fix 22.2)
+    # ROOT-CAUSE-FIX: TechArchitect setzt database im Blueprint, aber vergisst DB-Packages
+    # Gilt fuer ALLE Sprachen und DB-Typen (JS: sqlite3+sqlite, Python: psycopg2 etc.)
+    DB_REQUIRED_PACKAGES = {
+        "javascript": {
+            "sqlite":     ["sqlite3", "sqlite"],
+            "postgres":   ["pg"],
+            "mongodb":    ["mongodb"],
+            "mysql":      ["mysql2"],
+            "redis":      ["redis"],
+        },
+        "python": {
+            # sqlite3 ist in Python stdlib — keine externe Dependency noetig
+            "postgres":   ["psycopg2-binary"],
+            "mongodb":    ["pymongo"],
+            "mysql":      ["mysql-connector-python"],
+            "redis":      ["redis"],
+        }
+    }
     deps_lower = {d.lower() for d in deps}
     added = []
+
+    lang_key = language.lower()
+    if lang_key == "typescript":
+        lang_key = "javascript"
+    db_key = (database or "").lower()
+    if db_key and db_key != "none" and lang_key in DB_REQUIRED_PACKAGES:
+        required_pkgs = DB_REQUIRED_PACKAGES.get(lang_key, {}).get(db_key, [])
+        for pkg in required_pkgs:
+            if pkg.lower() not in deps_lower:
+                deps.append(pkg)
+                deps_lower.add(pkg.lower())
+                added.append(pkg)
+        if required_pkgs and added:
+            ui_log_callback("TechArchitect", "Info",
+                f"DB-Dependencies automatisch ergaenzt (database={db_key}): {', '.join(added)}")
+
+    # Ab hier nur noch JS/TS-spezifische Co-Dependency-Regeln
+    if lang_key not in ("javascript", "typescript"):
+        if added:
+            ui_log_callback("TechArchitect", "Info",
+                f"Pflicht-Dependencies automatisch ergaenzt: {', '.join(added)}")
+        return deps
+
+    # AENDERUNG 07.02.2026: Set statt Liste, nach jedem Append aktualisieren
+    # ROOT-CAUSE-FIX: deps_lower war stale nach Append -> react-dom wurde doppelt eingefuegt
     # React braucht zwingend react-dom
     if "react" in deps_lower and "react-dom" not in deps_lower:
         deps.append("react-dom")

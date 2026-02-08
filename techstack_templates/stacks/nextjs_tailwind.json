@@ -1,7 +1,7 @@
 {
   "template_id": "nextjs_tailwind",
-  "template_version": "1.0",
-  "display_name": "Next.js 14 + Tailwind CSS",
+  "template_version": "1.2",
+  "display_name": "Next.js 15 + Tailwind CSS",
   "source": "manual",
   "match_keywords": ["next", "nextjs", "next.js", "react", "tailwind", "webapp", "webseite", "website"],
   "match_priority": 10,
@@ -13,9 +13,9 @@
     "database": "none",
     "package_file": "package.json",
     "dependencies": {
-      "next": "14.2.15",
-      "react": "18.2.0",
-      "react-dom": "18.2.0",
+      "next": "15.1.0",
+      "react": "19.0.0",
+      "react-dom": "19.0.0",
       "tailwindcss": "3.4.1",
       "postcss": "8.4.31",
       "autoprefixer": "10.4.16"
@@ -27,8 +27,9 @@
     "server_startup_time_ms": 90000
   },
   "required_files": [
-    "pages/_app.js",
-    "styles/globals.css",
+    "app/layout.js",
+    "app/globals.css",
+    "app/page.js",
     "package.json",
     "tailwind.config.js",
     "postcss.config.js",
@@ -37,20 +38,21 @@
     "run.bat"
   ],
   "directory_structure": {
-    "pages/": "Next.js Seiten (Pages Router)",
-    "pages/api/": "API-Routen",
+    "app/": "Next.js App Router Seiten und Layouts",
+    "app/api/": "API Route Handlers",
     "components/": "Wiederverwendbare React-Komponenten",
     "lib/": "Hilfsfunktionen und Utilities",
-    "styles/": "CSS und Tailwind Styles",
     "public/": "Statische Assets"
   },
   "coder_rules": [
     "ES6 import/export verwenden - KEIN require() oder module.exports",
     "Alle Dateien im Root-Verzeichnis ablegen, NICHT unter src/",
     "Exakte Versionsnummern verwenden - KEIN ^ oder ~ Prefix",
-    "API-Routen muessen 'export default function handler(req, res)' exportieren",
+    "App Router verwenden: app/layout.js, app/page.js, app/api/",
+    "API-Routen als Route Handlers: export async function GET/POST(request) in app/api/*/route.js",
     "NIEMALS package-lock.json, node_modules/ oder .next/ generieren",
-    "pages/_app.js MUSS '../styles/globals.css' importieren",
+    "app/layout.js MUSS './globals.css' importieren",
+    "Client-Components mit 'use client' Direktive am Dateianfang",
     "Tailwind-Klassen direkt in JSX verwenden",
     "next.config.js mit module.exports ist die einzige Ausnahme fuer CommonJS"
   ],
