@@ -8,6 +8,7 @@ Beschreibung: Content-basierte Validierungsregeln (Dreifach-Schutz Ebene 3).
               - ESM-Pflicht (import/export statt require/module.exports)
               - App Router (Next.js: pages/ verboten)
               - Purple-Verbot (CLAUDE.md Regel 19)
+              - Hydration-Schutz (Next.js: suppressHydrationWarning, Date-Formatting)
               Extrahiert aus dev_loop_helpers.py (Regel 1: Max 500 Zeilen)
 """
 
@@ -52,6 +53,15 @@ def validate_content_rules(code_dict: dict, tech_blueprint: dict) -> List[str]:
         # Regel: Purple-Verbot (CLAUDE.md Regel 19)
         if ext in ('css', 'scss', 'less', 'jsx', 'tsx', 'js', 'ts'):
             _check_purple_colors(filename, content, warnings)
+
+        # AENDERUNG 09.02.2026: Fix 39 — Hydration-Schutz (Next.js)
+        # Regel: suppressHydrationWarning in layout.js (Browser-Extensions)
+        if 'layout' in filename.lower() and ext in ('js', 'jsx', 'ts', 'tsx'):
+            _check_hydration_safety(filename, content, warnings)
+
+        # Regel: Date-Formatting in Client-Components (Hydration-Mismatch)
+        if ext in ('js', 'jsx', 'ts', 'tsx') and jsx_mode:
+            _check_date_hydration(filename, content, warnings)
 
     return warnings
 
@@ -126,6 +136,45 @@ def _check_purple_colors(filename: str, content: str, warnings: List[str]) -> No
         warnings.append(
             f"[{filename}] FARB-VERLETZUNG (Regel 19): '{purple_words[0]}' gefunden "
             f"— keine blue-purple Gradients verwenden"
+        )
+
+
+# AENDERUNG 09.02.2026: Fix 39 — Hydration-Error Praevention
+# ROOT-CAUSE-FIX:
+# Symptom: Next.js Hydration-Error im Browser ("server rendered HTML didn't match the client")
+# Ursache 1: <body> ohne suppressHydrationWarning → Browser-Extensions modifizieren DOM
+# Ursache 2: Date.toLocaleDateString() in Client-Components → Server/Client-Locale-Mismatch
+# Loesung: Content-basierte Checks als Validator-Warnungen
+
+
+def _check_hydration_safety(filename: str, content: str, warnings: List[str]) -> None:
+    """Prueft ob layout.js suppressHydrationWarning auf html/body hat."""
+    if '<body' in content and 'suppressHydrationWarning' not in content:
+        warnings.append(
+            f"[{filename}] HYDRATION-WARNUNG: <body> ohne suppressHydrationWarning "
+            f"— Browser-Extensions verursachen Hydration-Errors ohne dieses Attribut"
+        )
+    if '<html' in content and 'suppressHydrationWarning' not in content:
+        warnings.append(
+            f"[{filename}] HYDRATION-WARNUNG: <html> ohne suppressHydrationWarning "
+            f"— fuege suppressHydrationWarning zum <html>-Tag hinzu"
+        )
+
+
+def _check_date_hydration(filename: str, content: str, warnings: List[str]) -> None:
+    """Prueft ob Date-Formatierung direkt in JSX gerendert wird (Hydration-Mismatch)."""
+    # Nur Client-Components pruefen (die 'use client' haben)
+    if "'use client'" not in content and '"use client"' not in content:
+        return
+    # toLocaleDateString/toLocaleString/toLocaleTimeString in JSX
+    date_patterns = re.findall(
+        r'\.to(?:Locale(?:Date|Time)?String|LocaleString)\s*\(',
+        content
+    )
+    if date_patterns:
+        warnings.append(
+            f"[{filename}] HYDRATION-WARNUNG: Date.toLocale*String() in Client-Component "
+            f"— verursacht Server/Client Mismatch. Verwende useEffect+useState oder ISO-String"
         )
 
 

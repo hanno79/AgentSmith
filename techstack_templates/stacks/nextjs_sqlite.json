@@ -60,7 +60,9 @@
     "Datenbank-Zugriff ueber 'import sqlite from sqlite' und 'import sqlite3 from sqlite3'",
     "Datenbank-Initialisierung in lib/db.js als wiederverwendbares Modul",
     "API-Routen fuer DB in app/api/ mit GET/POST/PUT/DELETE Route Handlers",
-    "next.config.js mit module.exports ist die einzige Ausnahme fuer CommonJS"
+    "next.config.js mit module.exports ist die einzige Ausnahme fuer CommonJS",
+    "In app/layout.js: <html> und <body> MUESSEN suppressHydrationWarning haben (verhindert Hydration-Errors durch Browser-Extensions)",
+    "Datums-Formatierung NIEMALS direkt in JSX rendern (Hydration-Mismatch!) — stattdessen in useEffect+useState oder als ISO-String"
   ],
   "file_templates_dir": "nextjs",
   "container_ids": ["__next", "root", "app"]

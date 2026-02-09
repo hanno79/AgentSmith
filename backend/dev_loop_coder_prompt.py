@@ -475,6 +475,10 @@ def build_coder_prompt(
                 c_prompt += "- API-Routen als Route Handlers: export async function GET/POST(request) in app/api/*/route.js\n"
                 c_prompt += "- Client-Components mit 'use client' Direktive am Dateianfang\n"
                 c_prompt += "- Verwende next/jest, NICHT @next/jest\n"
+                # AENDERUNG 09.02.2026: Fix 39 — Hydration-Error Praevention
+                c_prompt += "- HYDRATION-SCHUTZ: <html> und <body> in app/layout.js MUESSEN suppressHydrationWarning haben!\n"
+                c_prompt += "- Datums-Formatierung NIEMALS direkt in JSX ({new Date().toLocaleDateString()}) — "
+                c_prompt += "stattdessen useEffect + useState oder ISO-String\n"
                 # AENDERUNG 07.02.2026: SVG Data-URL Verbot (Fix 20)
                 c_prompt += "- KEINE inline SVG Data-URLs in CSS oder JSX! "
                 c_prompt += "Verwende stattdessen: CSS-Gradienten (radial-gradient, linear-gradient), "
@@ -488,6 +492,7 @@ def build_coder_prompt(
             c_prompt += "- VERBOTEN: Erstelle KEINE Dateien unter pages/ (Pages Router ist VERALTET)\n"
             c_prompt += "- Verwende AUSSCHLIESSLICH App Router: app/layout.js, app/page.js, app/api/*/route.js\n"
             c_prompt += "- Wenn pages/ Dateien existieren: IGNORIERE sie, erstelle KEINE neuen\n"
+            c_prompt += "- HYDRATION-SCHUTZ: <html suppressHydrationWarning> und <body suppressHydrationWarning> in layout.js PFLICHT!\n"
 
     # AENDERUNG 07.02.2026: Datei-Blacklist (gilt fuer ALLE Frameworks)
     c_prompt += "\nDIESE DATEIEN NIEMALS GENERIEREN:\n"
