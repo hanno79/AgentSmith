@@ -58,6 +58,33 @@ def validate_content_rules(code_dict: dict, tech_blueprint: dict) -> List[str]:
 
 def _check_esm_compliance(filename: str, content: str, warnings: List[str]) -> None:
     """Prueft ob CommonJS-Patterns (require, module.exports) verwendet werden."""
+    # AENDERUNG 09.02.2026: Fix 38 — Config-Dateien von ESM-Check ausnehmen
+    # ROOT-CAUSE-FIX:
+    # Symptom: next.config.js, postcss.config.js, tailwind.config.js als ESM-Verletzung
+    # Ursache: Diese Config-Dateien MUESSEN CommonJS (module.exports) verwenden
+    # Loesung: Bekannte Config-Dateien + test-Dateien von ESM-Pruefung ausnehmen
+    basename = filename.replace("\\", "/").split("/")[-1].lower()
+    ESM_EXEMPT_FILES = {
+        "next.config.js", "next.config.mjs",
+        "postcss.config.js", "postcss.config.mjs",
+        "tailwind.config.js", "tailwind.config.mjs",
+        "jest.config.js", "jest.config.mjs",
+        "babel.config.js", ".babelrc.js",
+        "eslint.config.js", ".eslintrc.js",
+        "prettier.config.js",
+        "webpack.config.js",
+        "vite.config.js", "vite.config.ts",
+        "tsconfig.json",
+    }
+    if basename in ESM_EXEMPT_FILES:
+        return
+    # Test-Dateien ausnehmen (oft CommonJS fuer jest/mocha)
+    if basename.endswith(('.test.js', '.spec.js', '.test.ts', '.spec.ts')):
+        return
+    normalized = filename.replace("\\", "/")
+    if normalized.startswith("tests/") or "/tests/" in normalized or "/__tests__/" in normalized:
+        return
+
     lines = content.split('\n')
     for line_nr, line in enumerate(lines, 1):
         stripped = line.strip()
