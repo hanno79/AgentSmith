@@ -53,8 +53,6 @@ const AgentRouter = ({
   logs = [],
   activeAgents = {},
   agentData = {},
-  researchTimeoutMinutes,
-  onResearchTimeoutChange,
   setDiscoveryBriefing,
   setGoal
 }) => {
@@ -159,8 +157,7 @@ const AgentRouter = ({
         researchStatus={agentData?.researcher?.status}
         model={agentData?.researcher?.model}
         error={agentData?.researcher?.error}
-        researchTimeoutMinutes={researchTimeoutMinutes}
-        onResearchTimeoutChange={onResearchTimeoutChange}
+        // ÄNDERUNG 08.02.2026: researchTimeoutMinutes entfernt - pro Agent im ModelModal
       />
     );
   }

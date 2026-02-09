@@ -627,14 +627,15 @@ def validate_template_structure(project_path: str, tech_blueprint: Dict[str, Any
     return result
 
 
-# AENDERUNG 07.02.2026: Next.js Pflichtdateien-Pruefung (Fallback fuer Projekte ohne Template)
+# AENDERUNG 08.02.2026: Next.js Pflichtdateien-Pruefung mit App Router Erkennung (Fix 26)
 # ROOT-CAUSE-FIX:
-# Symptom: Generiertes Next.js-Projekt startet nicht / Tailwind wirkt nicht
-# Ursache: Coder vergisst pages/_app.js, styles/globals.css, react-dom
-# Loesung: Dateisystem-Validierung nach Coder-Output mit Feedback fuer naechste Iteration
+# Symptom: Sandbox meldet "pages/_app.js fehlt" obwohl App Router (app/layout.js) genutzt wird
+# Ursache: Validator kannte nur Pages Router, nicht App Router (Fix 22 hat Templates umgestellt)
+# Loesung: App Router erkennen (app/layout.js) und passende Dateien pruefen
 def validate_nextjs_structure(project_path: str, tech_blueprint: Dict[str, Any]) -> ContentValidationResult:
     """
     Prueft ob Next.js-Pflichtdateien vorhanden sind.
+    Erkennt automatisch ob App Router oder Pages Router verwendet wird.
 
     Args:
         project_path: Projektverzeichnis
@@ -650,33 +651,72 @@ def validate_nextjs_structure(project_path: str, tech_blueprint: Dict[str, Any])
     if "next" not in project_type:
         return result
 
-    # 1. pages/_app.js vorhanden?
-    app_extensions = ["_app.js", "_app.jsx", "_app.tsx"]
-    app_found = any(
-        os.path.exists(os.path.join(project_path, "pages", ext))
-        for ext in app_extensions
+    # AENDERUNG 08.02.2026: App Router Erkennung (Fix 26)
+    # App Router = app/layout.js existiert (Next.js 13+)
+    layout_extensions = ["layout.js", "layout.jsx", "layout.tsx"]
+    uses_app_router = any(
+        os.path.exists(os.path.join(project_path, "app", ext))
+        for ext in layout_extensions
     )
-    if not app_found:
-        result.issues.append(
-            "pages/_app.js fehlt - Tailwind CSS und globale Styles funktionieren NICHT ohne _app.js. "
-            "Erstelle pages/_app.js mit: import '../styles/globals.css'"
-        )
 
-    # 2. styles/globals.css vorhanden?
-    css_names = ["globals.css", "global.css"]
-    css_found = any(
-        os.path.exists(os.path.join(project_path, "styles", name))
-        for name in css_names
-    )
-    if not css_found:
-        # AENDERUNG 07.02.2026: Von warnings auf issues geaendert
-        # ROOT-CAUSE-FIX: Als WARNING wurde es vom Coder ignoriert → globals.css nie erstellt
-        result.issues.append(
-            "styles/globals.css fehlt - Tailwind CSS funktioniert NICHT ohne globals.css. "
-            "Erstelle styles/globals.css mit: @tailwind base; @tailwind components; @tailwind utilities;"
+    if uses_app_router:
+        # --- APP ROUTER: app/globals.css pruefen ---
+        css_names = ["globals.css", "global.css"]
+        css_found = any(
+            os.path.exists(os.path.join(project_path, "app", name))
+            for name in css_names
         )
+        if not css_found:
+            result.issues.append(
+                "app/globals.css fehlt - Tailwind CSS funktioniert NICHT ohne globals.css. "
+                "Erstelle app/globals.css mit: @tailwind base; @tailwind components; @tailwind utilities;"
+            )
+        # KEIN pages/_app.js Check bei App Router!
+    else:
+        # --- PAGES ROUTER: bisherige Logik ---
+        # 1. pages/_app.js vorhanden?
+        app_extensions = ["_app.js", "_app.jsx", "_app.tsx"]
+        app_found = any(
+            os.path.exists(os.path.join(project_path, "pages", ext))
+            for ext in app_extensions
+        )
+        if not app_found:
+            result.issues.append(
+                "pages/_app.js fehlt - Tailwind CSS und globale Styles funktionieren NICHT ohne _app.js. "
+                "Erstelle pages/_app.js mit: import '../styles/globals.css'"
+            )
 
-    # 3. package.json: react-dom vorhanden?
+        # 2. styles/globals.css vorhanden?
+        css_names = ["globals.css", "global.css"]
+        css_found = any(
+            os.path.exists(os.path.join(project_path, "styles", name))
+            for name in css_names
+        )
+        if not css_found:
+            result.issues.append(
+                "styles/globals.css fehlt - Tailwind CSS funktioniert NICHT ohne globals.css. "
+                "Erstelle styles/globals.css mit: @tailwind base; @tailwind components; @tailwind utilities;"
+            )
+
+        # Pages Router API-Routen Pattern pruefen
+        api_dir = os.path.join(project_path, "pages", "api")
+        if os.path.isdir(api_dir):
+            for api_file in os.listdir(api_dir):
+                if api_file.endswith(('.js', '.jsx', '.ts', '.tsx')):
+                    api_path = os.path.join(api_dir, api_file)
+                    try:
+                        with open(api_path, "r", encoding="utf-8") as f:
+                            api_content = f.read()
+                        if "exports." in api_content and "export default" not in api_content:
+                            result.issues.append(
+                                f"pages/api/{api_file} verwendet 'exports.get/post' statt Next.js Pattern. "
+                                "MUSS 'export default function handler(req, res)' verwenden mit "
+                                "if (req.method === 'GET') / 'POST' etc."
+                            )
+                    except Exception:
+                        pass
+
+    # 3. package.json: react-dom + @next/jest pruefen (beide Router)
     pkg_path = os.path.join(project_path, "package.json")
     if os.path.exists(pkg_path):
         try:
@@ -688,9 +728,6 @@ def validate_nextjs_structure(project_path: str, tech_blueprint: Dict[str, Any])
                     "react-dom fehlt in package.json - Next.js/React braucht zwingend react-dom. "
                     "Fuege 'react-dom' mit gleicher Version wie 'react' hinzu"
                 )
-            # AENDERUNG 07.02.2026: @next/jest existiert nicht auf npm
-            # ROOT-CAUSE-FIX: Coder deklariert @next/jest als devDependency → npm install schlaegt fehl
-            # Loesung: Validator meldet ERROR damit Coder in naechster Iteration korrigiert
             dev_deps = pkg.get("devDependencies", {})
             if "@next/jest" in dev_deps or "@next/jest" in deps:
                 result.issues.append(
@@ -701,25 +738,6 @@ def validate_nextjs_structure(project_path: str, tech_blueprint: Dict[str, Any])
                 )
         except (json.JSONDecodeError, OSError) as e:
             logger.warning(f"package.json konnte nicht geprueft werden: {e}")
-
-    # AENDERUNG 07.02.2026: API-Routen Pattern pruefen
-    # ROOT-CAUSE-FIX: Coder generiert exports.get/post statt Next.js export default handler
-    api_dir = os.path.join(project_path, "pages", "api")
-    if os.path.isdir(api_dir):
-        for api_file in os.listdir(api_dir):
-            if api_file.endswith(('.js', '.jsx', '.ts', '.tsx')):
-                api_path = os.path.join(api_dir, api_file)
-                try:
-                    with open(api_path, "r", encoding="utf-8") as f:
-                        api_content = f.read()
-                    if "exports." in api_content and "export default" not in api_content:
-                        result.issues.append(
-                            f"pages/api/{api_file} verwendet 'exports.get/post' statt Next.js Pattern. "
-                            "MUSS 'export default function handler(req, res)' verwenden mit "
-                            "if (req.method === 'GET') / 'POST' etc."
-                        )
-                except Exception:
-                    pass
 
     result.is_critical_failure = len(result.issues) > 0
     result.has_visible_content = not result.is_critical_failure
@@ -848,6 +866,82 @@ def validate_no_pages_router(project_path: str, tech_blueprint: Dict[str, Any]) 
             f"Pages-Dateien: {', '.join(pages_files[:5])}. "
             f"Verwende AUSSCHLIESSLICH App Router fuer Next.js 14+. "
             f"Entferne pages/ Dateien und verschiebe Logik nach app/."
+        )
+
+    return result
+
+
+# AENDERUNG 08.02.2026: better-sqlite3 Validator (Fix 24C)
+# ROOT-CAUSE-FIX: Coder verwendet better-sqlite3 trotz Template-Regel
+# Symptom: lib/db.js importiert better-sqlite3, Package nicht in Deps → Runtime-Crash
+# Loesung: Validator erkennt verbotenen Import und gibt konkreten Fix-Vorschlag
+def validate_no_better_sqlite3(project_path: str, tech_blueprint: Dict[str, Any]) -> ContentValidationResult:
+    """
+    Prueft ob JS/TS-Dateien better-sqlite3 verwenden obwohl Template es verbietet.
+
+    Args:
+        project_path: Projektverzeichnis
+        tech_blueprint: Blueprint mit _source_template, language, database
+
+    Returns:
+        ContentValidationResult mit WARNING bei better-sqlite3-Fund
+    """
+    result = ContentValidationResult()
+    result.checks_performed.append("better_sqlite3_check")
+
+    # Nur pruefen wenn: Template vorhanden + JS/TS + database != "none"
+    template_id = tech_blueprint.get("_source_template")
+    language = tech_blueprint.get("language", "").lower()
+    database = tech_blueprint.get("database", "none")
+
+    if not template_id or language not in ("javascript", "typescript") or database == "none":
+        return result
+
+    # Template-Regel pruefen: Verbietet das Template better-sqlite3?
+    try:
+        from techstack_templates.template_loader import get_template_by_id
+        template = get_template_by_id(template_id)
+        if not template:
+            return result
+
+        coder_rules = template.get("coder_rules", [])
+        forbids = any(
+            "better-sqlite3" in rule.lower() and
+            any(w in rule.lower() for w in ("nicht", "niemals", "verboten", "not"))
+            for rule in coder_rules
+        )
+        if not forbids:
+            return result
+    except Exception:
+        return result
+
+    # JS/TS-Dateien nach better-sqlite3 Imports scannen
+    import_pattern = re.compile(
+        r"""(?:import\s+.*?\s+from\s+['"]better-sqlite3['"]|"""
+        r"""require\(\s*['"]better-sqlite3['"]\s*\))"""
+    )
+
+    found_files = []
+    for root_dir, dirs, files in os.walk(project_path):
+        dirs[:] = [d for d in dirs if d not in ("node_modules", ".next", ".git")]
+        for fname in files:
+            if fname.endswith((".js", ".jsx", ".ts", ".tsx", ".mjs")):
+                fpath = os.path.join(root_dir, fname)
+                try:
+                    with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
+                        content = f.read()
+                    if import_pattern.search(content):
+                        rel_path = os.path.relpath(fpath, project_path).replace("\\", "/")
+                        found_files.append(rel_path)
+                except Exception:
+                    pass
+
+    if found_files:
+        result.warnings.append(
+            f"VERBOTENE LIBRARY: better-sqlite3 in {', '.join(found_files[:5])}. "
+            f"Template '{template_id}' verbietet better-sqlite3! "
+            f"Verwende stattdessen: import Database from 'sqlite3' UND import {{ open }} from 'sqlite'. "
+            f"better-sqlite3 hat C++-Build-Abhaengigkeiten die oft fehlen."
         )
 
     return result

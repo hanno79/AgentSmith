@@ -20,8 +20,6 @@ import ModelModal from './components/ModelModal';
 const MainframeHub = ({
   maxRetries: propMaxRetries,
   onMaxRetriesChange,
-  researchTimeout: propResearchTimeout,
-  onResearchTimeoutChange,
   // ÄNDERUNG 25.01.2026: Props für Modellwechsel (Dual-Slider)
   maxModelAttempts: propMaxModelAttempts,
   onMaxModelAttemptsChange
@@ -36,10 +34,7 @@ const MainframeHub = ({
   const [showModelSelector, setShowModelSelector] = useState(false);
   const [serverTime, setServerTime] = useState(new Date());
   const [maxRetries, setMaxRetries] = useState(5);
-  const [researchTimeout, setResearchTimeout] = useState(5);
-  // ÄNDERUNG 30.01.2026: Globaler Agent-Timeout in Sekunden
-  // ÄNDERUNG 02.02.2026: Default von 300s (5 min) auf 900s (15 min) erhöht für langsame Free-Modelle
-  const [agentTimeout, setAgentTimeout] = useState(900);
+  // ÄNDERUNG 08.02.2026: researchTimeout und agentTimeout State entfernt - jetzt pro Agent im ModelModal
   // ÄNDERUNG 07.02.2026: Token-Limits als Dict für alle Agents (statt nur Coder)
   const [tokenLimits, setTokenLimits] = useState({});
   // ÄNDERUNG 07.02.2026: Agent-Timeouts als Dict pro Agent (analog zu tokenLimits)
@@ -60,7 +55,7 @@ const MainframeHub = ({
 
   // Verwende Props wenn vorhanden, sonst lokalen State (für Abwärtskompatibilität)
   const effectiveMaxRetries = propMaxRetries !== undefined ? propMaxRetries : maxRetries;
-  const effectiveResearchTimeout = propResearchTimeout !== undefined ? propResearchTimeout : researchTimeout;
+  // ÄNDERUNG 08.02.2026: effectiveResearchTimeout entfernt - pro Agent im ModelModal
   // ÄNDERUNG 25.01.2026: Effektiver Wert für Modellwechsel
   const effectiveModelAttempts = propMaxModelAttempts !== undefined ? propMaxModelAttempts : maxModelAttempts;
 
@@ -99,10 +94,7 @@ const MainframeHub = ({
       setAvailableModels(modelsRes.data);
       setRouterStatus(routerRes.data);
       setMaxRetries(configRes.data.max_retries || 5);
-      setResearchTimeout(configRes.data.research_timeout_minutes || 5);
-      // ÄNDERUNG 30.01.2026: Globaler Agent-Timeout
-      // ÄNDERUNG 02.02.2026: Fallback von 300s auf 900s (15 min) erhöht
-      setAgentTimeout(configRes.data.agent_timeout_seconds || 900);
+      // ÄNDERUNG 08.02.2026: researchTimeout + agentTimeout entfernt (pro Agent im ModelModal)
       // ÄNDERUNG 07.02.2026: Alle Token-Limits laden (Dict für alle Agents)
       setTokenLimits(configRes.data.token_limits || {});
       // ÄNDERUNG 07.02.2026: Agent-Timeouts pro Agent laden (analog zu tokenLimits)
@@ -214,34 +206,7 @@ const MainframeHub = ({
     }
   };
 
-  const updateResearchTimeout = async (value) => {
-    if (onResearchTimeoutChange) {
-      // Wenn Callback vorhanden, delegiere an Parent (App.jsx)
-      onResearchTimeoutChange(value);
-    } else {
-      // Fallback: Lokaler State + API-Call
-      setResearchTimeout(value);
-      try {
-        await axios.put(`${API_BASE}/config/research-timeout`, { research_timeout_minutes: value });
-      } catch (err) {
-        console.error('Failed to update research timeout:', err);
-      }
-    }
-  };
-
-  // ÄNDERUNG 30.01.2026: Handler für globalen Agent-Timeout
-  const updateAgentTimeout = async (value) => {
-    // ÄNDERUNG [31.01.2026]: Optimistisches Update mit Rollback bei Fehler
-    const previousValue = agentTimeout;
-    setAgentTimeout(value);
-    try {
-      await axios.put(`${API_BASE}/config/agent-timeout`, { agent_timeout_seconds: value });
-    } catch (err) {
-      console.error('Failed to update agent timeout:', err);
-      setAgentTimeout(previousValue);
-      alert('Agent-Timeout konnte nicht gespeichert werden.');
-    }
-  };
+  // ÄNDERUNG 08.02.2026: updateResearchTimeout + updateAgentTimeout entfernt (pro Agent im ModelModal)
 
   // ÄNDERUNG 07.02.2026: Generischer Handler für Token-Limits pro Agent
   const updateTokenLimit = async (agentRole, value) => {
@@ -405,12 +370,8 @@ const MainframeHub = ({
             setMode={setMode}
             effectiveModelAttempts={effectiveModelAttempts}
             effectiveMaxRetries={effectiveMaxRetries}
-            effectiveResearchTimeout={effectiveResearchTimeout}
-            agentTimeout={agentTimeout}
             onModelAttemptsChange={updateModelAttempts}
             onMaxRetriesChange={updateMaxRetries}
-            onResearchTimeoutChange={updateResearchTimeout}
-            onAgentTimeoutChange={updateAgentTimeout}
             dockerEnabled={dockerEnabled}
             onDockerToggle={updateDockerEnabled}
           />

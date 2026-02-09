@@ -12,7 +12,8 @@ import os
 import pytest
 from unittest.mock import MagicMock
 
-from backend.dev_loop_coder import (
+# AENDERUNG 08.02.2026: Refactoring — Utilities in eigenes Modul verschoben
+from backend.dev_loop_coder_utils import (
     _get_current_code_dict,
     rebuild_current_code_from_disk,
     _is_targeted_fix_context,

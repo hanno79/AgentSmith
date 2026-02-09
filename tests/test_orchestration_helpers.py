@@ -281,10 +281,28 @@ class TestIsRateLimitError:
         assert is_rate_limit_error(err) is False
 
     @patch("backend.orchestration_helpers.log_event")
-    def test_upstream_pattern(self, _mock_log):
-        """Upstream-Fehler-Muster wird als Rate-Limit behandelt."""
+    def test_upstream_generic_kein_rate_limit(self, _mock_log):
+        """AENDERUNG 09.02.2026: Fix 36c — Generischer upstream error ist KEIN Rate-Limit mehr."""
         err = Exception("OpenrouterException: upstream error from provider")
+        assert is_rate_limit_error(err) is False
+
+    @patch("backend.orchestration_helpers.log_event")
+    def test_upstream_429_ist_rate_limit(self, _mock_log):
+        """Upstream error mit 429 wird als Rate-Limit erkannt."""
+        err = Exception("upstream error: 429 Too Many Requests")
         assert is_rate_limit_error(err) is True
+
+    @patch("backend.orchestration_helpers.log_event")
+    def test_upstream_quota_ist_rate_limit(self, _mock_log):
+        """Upstream error mit quota exceeded wird als Rate-Limit erkannt."""
+        err = Exception("upstream error: quota exceeded for model")
+        assert is_rate_limit_error(err) is True
+
+    @patch("backend.orchestration_helpers.log_event")
+    def test_upstream_500_kein_rate_limit(self, _mock_log):
+        """Upstream error mit 500 Internal Server Error ist KEIN Rate-Limit."""
+        err = Exception("upstream error: 500 Internal Server Error")
+        assert is_rate_limit_error(err) is False
 
 
 # -- TestIsOpenrouterError --

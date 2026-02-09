@@ -15,11 +15,9 @@ targeted_fix:
   max_files: 7
   prefer_fix_below_files: 5
 enable_file_by_file_mode: true
-research_timeout_minutes: 10
-agent_timeout_seconds: 900
 agent_timeouts:
   default: 750
-  coder: 750
+  coder: 1500
   reviewer: 1200
   tester: 300
   security: 300
@@ -48,7 +46,6 @@ token_limits:
   database_designer: 8192
   techstack_architect: 8192
 security_max_retries: 10
-# AENDERUNG 08.02.2026: Fix 24 - Vier-Augen-Prinzip (Second Opinion Review)
 vier_augen:
   enabled: true
   timeout_factor: 0.5
@@ -58,6 +55,7 @@ dependency_agent:
   auto_install: true
   check_vulnerabilities: true
   cache_inventory: 300
+  max_duration: 300
 models:
   test:
     meta_orchestrator:
@@ -221,9 +219,9 @@ models:
       primary: openrouter/moonshotai/kimi-k2.5
       fallback:
       - openrouter/minimax/minimax-m2.1
-      - openrouter/z-ai/glm-4.7
       - openrouter/qwen/qwen3-coder-next
-      - openrouter/anthropic/claude-haiku-4.5
+      - openrouter/anthropic/claude-sonnet-4.5
+      - openrouter/z-ai/glm-4.7
     tester:
       primary: openrouter/deepseek/deepseek-r1-0528
       fallback:
@@ -246,19 +244,19 @@ models:
       - openrouter/mistralai/mistral-medium-3.1
       - openrouter/google/gemini-2.5-flash
     security:
-      primary: openrouter/google/gemini-2.5-flash
+      primary: openrouter/google/gemini-3-flash-preview
       fallback:
       - openrouter/deepseek/deepseek-r1-0528
       - openrouter/z-ai/glm-4.7
       - openrouter/mistralai/mistral-medium-3.1
       - openrouter/qwen/qwen-3
     reviewer:
-      primary: openrouter/deepseek/deepseek-r1-0528
+      primary: openrouter/deepseek/deepseek-chat-v3.1
       fallback:
+      - openrouter/qwen/qwen3-coder-flash
       - openrouter/mistralai/mistral-medium-3.1
-      - openrouter/z-ai/glm-4.7
-      - openrouter/qwen/qwen-3
-      - openrouter/google/gemini-2.5-flash
+      - openrouter/anthropic/claude-haiku-4.5
+      - openrouter/nvidia/llama-3.1-nemotron-ultra-253b-v1
     techstack_architect:
       primary: openrouter/qwen/qwen3-coder-flash
       fallback:
@@ -516,8 +514,9 @@ external_specialists:
   timeout_seconds: 120
   coderabbit:
     enabled: true
-    mode: advisory
-    cli_path: coderabbit
+    mode: blocking
+    cli_path: /home/hanno/.local/bin/coderabbit-wrapper.sh
+    use_wsl: true
     timeout_seconds: 120
     cooldown_seconds: 300
   exa_search:

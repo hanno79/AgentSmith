@@ -157,6 +157,14 @@ class OrchestrationManager:
                 if augment_cfg.get("auto_activate", False):
                     self.external_bureau.activate_specialist("augment")
                     logger.info("Augment Context auto-aktiviert fuer DevLoop")
+                # AENDERUNG 08.02.2026: Fix 33 - CodeRabbit auto-aktivieren
+                coderabbit_cfg = self.config.get("external_specialists", {}).get("coderabbit", {})
+                if coderabbit_cfg.get("enabled", False):
+                    activate_result = self.external_bureau.activate_specialist("coderabbit")
+                    if activate_result.get("success"):
+                        logger.info("CodeRabbit auto-aktiviert fuer DevLoop")
+                    else:
+                        logger.info(f"CodeRabbit nicht verfuegbar: {activate_result.get('message')}")
             except Exception as e:
                 logger.warning(f"External Bureau nicht verfuegbar: {e}")
                 self.external_bureau = None
@@ -626,10 +634,13 @@ class OrchestrationManager:
         """Dependency-Agent Phase."""
         try:
             from agents.dependency_agent import get_dependency_agent
-            dep_agent = get_dependency_agent(self.config.get("dependency_agent", {}))
+            dep_config = self.config.get("dependency_agent", {})
+            dep_agent = get_dependency_agent(dep_config)
             dep_agent.on_log = self._ui_log
             self._ui_log("DependencyAgent", "Status", "Pruefe und installiere Dependencies...")
-            dep_result = dep_agent.prepare_for_task(self.tech_blueprint, self.project_path)
+            # AENDERUNG 09.02.2026: max_duration aus config.yaml lesen (Default: 300s = 5 Min)
+            dep_max_duration = dep_config.get("max_duration", 300)
+            dep_result = dep_agent.prepare_for_task(self.tech_blueprint, self.project_path, max_duration=dep_max_duration)
             if dep_result.get("status") == "OK":
                 self._ui_log("DependencyAgent", "DependencyStatus", json.dumps({
                     "status": "ready", "health_score": dep_result.get("inventory", {}).get("health_score", 0)

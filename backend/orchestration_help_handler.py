@@ -13,6 +13,9 @@ import json
 import logging
 from typing import Dict, Any, Callable, Optional
 
+# AENDERUNG 09.02.2026: Fix 36 — System-Level Blacklist
+from backend.dev_loop_helpers import is_forbidden_file
+
 logger = logging.getLogger(__name__)
 
 
@@ -202,6 +205,10 @@ def _run_automatic_test_generator(
             test_files = extract_test_files(result_str)
 
             for filepath, content in test_files.items():
+                # AENDERUNG 09.02.2026: Fix 36 — System-Level Blacklist
+                if is_forbidden_file(filepath):
+                    logger.warning("Blacklisted Datei uebersprungen: %s", filepath)
+                    continue
                 full_path = os.path.join(project_path, filepath)
                 dirpath = os.path.dirname(full_path)
                 if not dirpath:

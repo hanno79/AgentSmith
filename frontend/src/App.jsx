@@ -213,11 +213,10 @@ const App = () => {
     dismissHelpRequest,
     clearHelpRequests
   } = useWebSocket(setLogs, activeAgents, setActiveAgents, setAgentData, setStatus);
+  // ÄNDERUNG 08.02.2026: researchTimeoutMinutes + handleResearchTimeoutChange entfernt (pro Agent im ModelModal)
   const {
-    researchTimeoutMinutes,
     maxRetriesConfig,
     maxModelAttempts,
-    handleResearchTimeoutChange,
     handleMaxRetriesChange,
     handleMaxModelAttemptsChange
   } = useConfig(setAgentData);
@@ -407,8 +406,6 @@ const App = () => {
         logs={logs}
         activeAgents={activeAgents}
         agentData={agentData}
-        researchTimeoutMinutes={researchTimeoutMinutes}
-        onResearchTimeoutChange={handleResearchTimeoutChange}
         setDiscoveryBriefing={setDiscoveryBriefing}
         setGoal={setGoal}
       />
@@ -423,7 +420,6 @@ const App = () => {
         <div className="flex-1 overflow-y-auto overflow-x-hidden page-scrollbar">
           {currentRoom === 'mainframe' && (
             <MainframeHub maxRetries={maxRetriesConfig} onMaxRetriesChange={handleMaxRetriesChange}
-              researchTimeout={researchTimeoutMinutes} onResearchTimeoutChange={handleResearchTimeoutChange}
               maxModelAttempts={maxModelAttempts} onMaxModelAttemptsChange={handleMaxModelAttemptsChange} />
           )}
           {currentRoom === 'budget-dashboard' && <BudgetDashboard />}

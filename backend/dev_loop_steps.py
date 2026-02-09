@@ -11,7 +11,9 @@ Beschreibung: DevLoop-Orchestrator - Re-exportiert alle Schritt-Funktionen.
               - dev_loop_helpers.py: Error-Hashing, Truncation-Detection, Sandbox-Checks
               - dev_loop_test_utils.py: Test-Generierung
               - dev_loop_coder.py: Coder-Prompt, Task-Ausführung, Output-Speicherung
-              - dev_loop_validators.py: Sandbox+Tests, Review, Security-Rescan
+              - dev_loop_sandbox.py: Sandbox+Tests (_is_harmless_warning_only, run_sandbox_and_tests)
+              - dev_loop_review.py: Review (run_review)
+              - dev_loop_security.py: Security-Rescan (run_security_rescan)
               - dev_loop_feedback.py: Feedback-Builder, Modellwechsel-Logik
 
               ÄNDERUNG 30.01.2026: HELP_NEEDED Events bei kritischen Security-Issues und fehlenden Tests.
@@ -41,23 +43,22 @@ from .dev_loop_test_utils import (
 )
 
 # =========================================================================
-# Re-exports aus dev_loop_coder.py
+# Re-exports aus dev_loop_coder.py, dev_loop_coder_prompt.py, dev_loop_coder_utils.py
+# AENDERUNG 08.02.2026: Refactoring — Coder in 3 Module aufgeteilt (Regel 1)
 # =========================================================================
 from .dev_loop_coder import (
-    build_coder_prompt,
     run_coder_task,
     save_coder_output,
-    rebuild_current_code_from_disk
 )
+from .dev_loop_coder_prompt import build_coder_prompt
+from .dev_loop_coder_utils import rebuild_current_code_from_disk
 
 # =========================================================================
-# Re-exports aus dev_loop_validators.py
+# AENDERUNG 08.02.2026: Re-exports aus aufgeteilten Validator-Modulen (Regel 1)
 # =========================================================================
-from .dev_loop_validators import (
-    run_sandbox_and_tests,
-    run_review,
-    run_security_rescan
-)
+from .dev_loop_sandbox import run_sandbox_and_tests
+from .dev_loop_review import run_review
+from .dev_loop_security import run_security_rescan
 
 # =========================================================================
 # Re-exports aus dev_loop_feedback.py

@@ -20,6 +20,9 @@ import logging
 from typing import Dict, Any, List, Tuple, Optional
 from crewai import Task, Crew
 
+# AENDERUNG 09.02.2026: Fix 36 — System-Level Blacklist
+from backend.dev_loop_helpers import is_forbidden_file
+
 from agents.planner_agent import (
     create_planner,
     create_planning_task,
@@ -512,6 +515,10 @@ async def run_file_by_file_loop(
             )
 
             if result_path:
+                # AENDERUNG 09.02.2026: Fix 36 — System-Level Blacklist
+                if is_forbidden_file(filepath):
+                    manager._ui_log("FileByFile", "ForbiddenFileBlocked", filepath)
+                    break  # Naechste Datei in der aeusseren Schleife
                 # Speichere Datei
                 full_path = os.path.join(manager.project_path, filepath)
                 os.makedirs(os.path.dirname(full_path), exist_ok=True)

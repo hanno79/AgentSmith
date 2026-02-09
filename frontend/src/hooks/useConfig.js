@@ -16,8 +16,8 @@ import { API_BASE } from '../constants/config';
  * @param {Function} setAgentData - Setter für Agenten-Daten (für maxIterations)
  * @returns {Object} Konfigurationswerte und Handler
  */
+// ÄNDERUNG 08.02.2026: researchTimeoutMinutes entfernt - pro Agent im ModelModal
 const useConfig = (setAgentData) => {
-  const [researchTimeoutMinutes, setResearchTimeoutMinutes] = useState(5);
   const [maxRetriesConfig, setMaxRetriesConfig] = useState(15);
   // ÄNDERUNG 25.01.2026: State für Modellwechsel (Dual-Slider)
   const [maxModelAttempts, setMaxModelAttempts] = useState(3);
@@ -27,7 +27,7 @@ const useConfig = (setAgentData) => {
     const fetchConfig = async () => {
       try {
         const response = await axios.get(`${API_BASE}/config`);
-        setResearchTimeoutMinutes(response.data.research_timeout_minutes || 5);
+        // ÄNDERUNG 08.02.2026: research_timeout_minutes nicht mehr geladen (pro Agent im ModelModal)
 
         // Max Retries initial setzen
         const maxRetries = response.data.max_retries || 15;
@@ -54,18 +54,7 @@ const useConfig = (setAgentData) => {
     fetchConfig();
   }, []);
 
-  /**
-   * Handler für Research Timeout Änderungen.
-   * Synchronisiert MainframeHub und ResearcherOffice.
-   */
-  const handleResearchTimeoutChange = async (value) => {
-    setResearchTimeoutMinutes(value);
-    try {
-      await axios.put(`${API_BASE}/config/research-timeout`, { research_timeout_minutes: value });
-    } catch (err) {
-      console.error('Research Timeout Update fehlgeschlagen:', err);
-    }
-  };
+  // ÄNDERUNG 08.02.2026: handleResearchTimeoutChange entfernt (pro Agent im ModelModal)
 
   /**
    * Handler für Max Retries Änderungen.
@@ -106,10 +95,8 @@ const useConfig = (setAgentData) => {
   };
 
   return {
-    researchTimeoutMinutes,
     maxRetriesConfig,
     maxModelAttempts,
-    handleResearchTimeoutChange,
     handleMaxRetriesChange,
     handleMaxModelAttemptsChange
   };

@@ -17,12 +17,8 @@ const CorePanel = ({
   setMode,
   effectiveModelAttempts,
   effectiveMaxRetries,
-  effectiveResearchTimeout,
-  agentTimeout,
   onModelAttemptsChange,
   onMaxRetriesChange,
-  onResearchTimeoutChange,
-  onAgentTimeoutChange,
   // AENDERUNG 06.02.2026: Docker-Toggle
   dockerEnabled,
   onDockerToggle
@@ -204,12 +200,8 @@ const CorePanel = ({
         <SliderControls
           effectiveModelAttempts={effectiveModelAttempts}
           effectiveMaxRetries={effectiveMaxRetries}
-          effectiveResearchTimeout={effectiveResearchTimeout}
-          agentTimeout={agentTimeout}
           onModelAttemptsChange={onModelAttemptsChange}
           onMaxRetriesChange={onMaxRetriesChange}
-          onResearchTimeoutChange={onResearchTimeoutChange}
-          onAgentTimeoutChange={onAgentTimeoutChange}
         />
       </div>
     </div>

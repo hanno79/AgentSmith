@@ -149,6 +149,17 @@ def install_dependencies(install_command: str, project_path: str = None,
         # Strikte Validierung und sichere Argument-Liste
         parts = validate_install_command(install_command)
 
+        # AENDERUNG 08.02.2026: npm/npx Pfad aufloesen (Fix 28)
+        # ROOT-CAUSE-FIX:
+        # Symptom: [WinError 2] bei subprocess.run(["npm", "install"]) auf Windows
+        # Ursache: Windows findet "npm" nicht ohne Shell oder vollen Pfad
+        # Loesung: shutil.which() wie in install_single_package()
+        if parts[0].lower() in ("npm", "npx"):
+            import shutil as _shutil
+            resolved = _shutil.which(parts[0])
+            if resolved:
+                parts[0] = resolved
+
         # Arbeitsverzeichnis
         cwd = project_path if project_path and os.path.isdir(project_path) else None
 

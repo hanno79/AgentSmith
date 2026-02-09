@@ -2,25 +2,23 @@
  * Author: rahn
  * Datum: 31.01.2026
  * Version: 1.2
- * Beschreibung: Slider-Bereiche für Coder-Konfiguration, Research Timeout, Agent Timeout.
+ * Beschreibung: Slider-Bereiche für Coder-Konfiguration.
  *               Aus MainframeHub.jsx extrahiert (Regel 1).
  *
  * ÄNDERUNG 03.02.2026: Feature 10a - Token-Limit Slider hinzugefügt
  * ÄNDERUNG 07.02.2026: Token-Limit-Slider entfernt - jetzt pro Agent im ModelModal
+ * ÄNDERUNG 08.02.2026: Research/Agent Timeout Slider entfernt - jetzt pro Agent im ModelModal
  */
 
 import React from 'react';
-import { RefreshCw, Clock } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 
+// ÄNDERUNG 08.02.2026: Research/Agent Timeout Slider entfernt - jetzt pro Agent im ModelModal
 const SliderControls = ({
   effectiveModelAttempts,
   effectiveMaxRetries,
-  effectiveResearchTimeout,
-  agentTimeout,
   onModelAttemptsChange,
-  onMaxRetriesChange,
-  onResearchTimeoutChange,
-  onAgentTimeoutChange
+  onMaxRetriesChange
 }) => {
   const effectiveModelAttemptsSafe = Number.isFinite(Number(effectiveModelAttempts)) ? Number(effectiveModelAttempts) : 0;
   const effectiveMaxRetriesSafe = Number.isFinite(Number(effectiveMaxRetries)) ? Number(effectiveMaxRetries) : 1;
@@ -113,67 +111,8 @@ const SliderControls = ({
         </div>
       </div>
 
-      {/* Research Timeout */}
-      <div className="w-full bg-[#0d120f] border-t border-[#28392e] p-4">
-        <div className="flex justify-between items-center mb-3">
-          <h4 className="text-[#9cbaa6] text-xs font-bold uppercase tracking-widest flex items-center gap-2">
-            <Clock size={14} className="text-primary" />
-            Research Timeout
-          </h4>
-          <span className="text-primary font-mono font-bold text-lg">{effectiveResearchTimeout} min</span>
-        </div>
-
-        <div className="bg-[#1b271f] p-3 rounded-lg border border-[#28392e]">
-          <div className="flex items-center gap-4">
-            <span className="text-[10px] text-[#9cbaa6] font-mono w-6">1</span>
-            <input
-              type="range"
-              min="1"
-              max="60"
-              value={effectiveResearchTimeout}
-              onChange={(e) => onResearchTimeoutChange(parseInt(e.target.value))}
-              className="flex-1 mainframe-slider"
-            />
-            <span className="text-[10px] text-[#9cbaa6] font-mono w-8">60</span>
-          </div>
-          <p className="text-[10px] text-[#5c856b] mt-2 text-center">
-            Maximale Zeit für Web-Recherche (in Minuten)
-          </p>
-        </div>
-      </div>
-
-      {/* Agent Timeout */}
-      <div className="w-full bg-[#0d120f] border-t border-[#28392e] p-4">
-        <div className="flex justify-between items-center mb-3">
-          <h4 className="text-[#9cbaa6] text-xs font-bold uppercase tracking-widest flex items-center gap-2">
-            <Clock size={14} className="text-primary" />
-            Agent Timeout
-          </h4>
-          <span className="text-primary font-mono font-bold text-lg">{Math.floor(agentTimeout / 60)} min</span>
-        </div>
-
-        <div className="bg-[#1b271f] p-3 rounded-lg border border-[#28392e]">
-          <div className="flex items-center gap-4">
-            <span className="text-[10px] text-[#9cbaa6] font-mono w-6">1</span>
-            <input
-              type="range"
-              min="60"
-              max="1800"
-              step="30"
-              value={agentTimeout}
-              onChange={(e) => onAgentTimeoutChange(parseInt(e.target.value))}
-              className="flex-1 mainframe-slider"
-            />
-            {/* ÄNDERUNG 02.02.2026: max von 600 (10 min) auf 1800 (30 min) erhöht für langsame Free-Modelle */}
-            <span className="text-[10px] text-[#9cbaa6] font-mono w-8">30</span>
-          </div>
-          <p className="text-[10px] text-[#5c856b] mt-2 text-center">
-            Maximale Zeit pro Agent-Operation (in Minuten)
-          </p>
-        </div>
-      </div>
-
       {/* ÄNDERUNG 07.02.2026: Token-Limit-Slider entfernt - jetzt pro Agent im ModelModal */}
+      {/* ÄNDERUNG 08.02.2026: Research/Agent Timeout Slider entfernt - jetzt pro Agent im ModelModal */}
     </>
   );
 };

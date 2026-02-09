@@ -369,6 +369,19 @@ def extract_vulnerabilities(security_result: str) -> List[Dict[str, Any]]:
                 "type": "SECURITY_ISSUE"
             })
 
+    # AENDERUNG 08.02.2026: Halluzinierte CVEs filtern (Fix 32)
+    # ROOT-CAUSE-FIX:
+    # Symptom: Gemini 2.5 Flash erfindet CVE-Nummern (z.B. CVE-2025-66478)
+    # Ursache: LLM halluziniert plausibel klingende CVE-IDs
+    # Loesung: CVE-basierte Findings auf LOW downgraden (nicht blockierend)
+    cve_pattern = re.compile(r'CVE-\d{4}-\d{4,7}')
+    for vuln in vulnerabilities:
+        desc = vuln.get('description', '')
+        cves_found = cve_pattern.findall(desc)
+        if cves_found and vuln.get('severity') in ('critical', 'high'):
+            vuln['severity'] = 'low'
+            vuln['description'] = desc + ' [CVE nicht verifiziert - Severity auf LOW gesetzt]'
+
     return vulnerabilities[:10]
 
 
@@ -514,17 +527,36 @@ def is_rate_limit_error(error: Exception) -> bool:
 
     is_rate_limit = (status_code in [429, 402]) or bool(re.search(rate_limit_pattern, error_str))
 
-    upstream_patterns = [
-        'upstream error',
-        'openrouterexception'
+    # AENDERUNG 09.02.2026: Fix 36c — Rate-Limit vs. Upstream-Error unterscheiden
+    # ROOT-CAUSE-FIX:
+    # Symptom: Bezahlte Modelle werden faelschlich als "rate-limited" erkannt
+    # Ursache: "upstream error" ist zu generisch — matcht auch 500/502 Server-Fehler
+    # Loesung: Upstream-Errors nur als Rate-Limit wenn sie explizit 429/rate-limit enthalten
+    upstream_rate_limit_patterns = [
+        'upstream error: 429',
+        'upstream error: rate limit',
+        'upstream error: too many requests',
+        'upstream error: quota exceeded',
+        'upstream error: insufficient_quota',
     ]
-    is_upstream = any(pattern in error_str for pattern in upstream_patterns)
+    is_upstream_rate_limit = any(pattern in error_str for pattern in upstream_rate_limit_patterns)
 
-    if is_upstream and not is_rate_limit:
+    # OpenRouterException separat — kann Rate-Limit ODER Server-Error sein
+    is_openrouter_generic = 'openrouterexception' in error_str and not is_rate_limit
+    if is_openrouter_generic:
+        openrouter_rate_indicators = ['429', 'rate', 'quota', 'limit', 'too many']
+        is_openrouter_rate = any(ind in error_str for ind in openrouter_rate_indicators)
+        if not is_openrouter_rate:
+            log_event("System", "Warning",
+                      f"OpenRouter-Fehler erkannt aber KEIN Rate-Limit: {error_str[:200]}")
+        else:
+            is_upstream_rate_limit = True
+
+    if is_upstream_rate_limit and not is_rate_limit:
         log_event("System", "Warning",
-                  "Upstream-Fehler erkannt - wird als Rate-Limit behandelt für Fallback")
+                  "Upstream-Rate-Limit erkannt fuer Fallback")
 
-    return is_rate_limit or is_upstream
+    return is_rate_limit or is_upstream_rate_limit
 
 
 # ÄNDERUNG 02.02.2026: OpenRouter-Fehler Erkennung für sofortigen Modellwechsel
@@ -543,11 +575,16 @@ def is_openrouter_error(error: Exception) -> bool:
         True wenn es ein OpenRouter-spezifischer Fehler ist
     """
     error_str = str(error).lower()
+    # AENDERUNG 09.02.2026: Fix 36c — "upstream error" nicht mehr pauschal als OpenRouter-Error
     openrouter_patterns = [
         'openrouterexception',
         'provider returned error',
-        'upstream error'
     ]
+    # "upstream error" nur wenn es kein generischer Server-Error ist (500/502/503)
+    if 'upstream error' in error_str:
+        server_error_indicators = ['500', '502', '503', 'internal server error', 'bad gateway']
+        if not any(ind in error_str for ind in server_error_indicators):
+            return True
     return any(pattern in error_str for pattern in openrouter_patterns)
 
 

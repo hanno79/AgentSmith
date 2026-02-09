@@ -49,11 +49,9 @@ class MaxModelAttemptsRequest(BaseModel):
     max_model_attempts: int
 
 
-class ResearchTimeoutRequest(BaseModel):
-    research_timeout_minutes: int
+# ÄNDERUNG 08.02.2026: ResearchTimeoutRequest entfernt (pro Agent im ModelModal)
 
-
-# ÄNDERUNG 30.01.2026: Globaler Timeout für Agenten-Operationen
+# ÄNDERUNG 08.02.2026: Globaler AgentTimeoutRequest bleibt fuer Pro-Agent Endpoint
 class AgentTimeoutRequest(BaseModel):
     agent_timeout_seconds: int
 
@@ -75,9 +73,7 @@ def get_config():
         "mode": manager.config.get("mode", "test"),
         "project_type": manager.config.get("project_type", "webapp"),
         "max_retries": manager.config.get("max_retries", DEFAULT_MAX_RETRIES),
-        "research_timeout_minutes": manager.config.get("research_timeout_minutes", 5),
-        # ÄNDERUNG 30.01.2026: Globaler Agent-Timeout
-        "agent_timeout_seconds": manager.config.get("agent_timeout_seconds", 300),
+        # ÄNDERUNG 08.02.2026: research_timeout_minutes + agent_timeout_seconds entfernt (pro Agent im ModelModal)
         "include_designer": manager.config.get("include_designer", True),
         "models": manager.config.get("models", {}),
         "available_modes": ["test", "production", "premium"],
@@ -110,27 +106,8 @@ def set_max_retries(request: MaxRetriesRequest):
     return {"status": "ok", "max_retries": request.max_retries}
 
 
-@router.put("/config/research-timeout")
-def set_research_timeout(request: ResearchTimeoutRequest):
-    """Setzt den Research Timeout in Minuten (1-60)."""
-    if not 1 <= request.research_timeout_minutes <= 60:
-        raise HTTPException(status_code=400, detail="research_timeout_minutes must be between 1 and 60")
-    manager.config["research_timeout_minutes"] = request.research_timeout_minutes
-    _save_config()
-    return {"status": "ok", "research_timeout_minutes": request.research_timeout_minutes}
-
-
-# ÄNDERUNG 30.01.2026: Globaler Timeout für Agenten-Operationen
-# ÄNDERUNG 02.02.2026: Max von 600 auf 1800 (30 min) erhöht für langsame Free-Modelle
-@router.put("/config/agent-timeout")
-def set_agent_timeout(request: AgentTimeoutRequest):
-    """Setzt den globalen Agent Timeout in Sekunden (60-1800)."""
-    if not 60 <= request.agent_timeout_seconds <= 1800:
-        raise HTTPException(status_code=400, detail="agent_timeout_seconds muss zwischen 60 und 1800 liegen")
-    manager.config["agent_timeout_seconds"] = request.agent_timeout_seconds
-    _save_config()
-    return {"status": "ok", "agent_timeout_seconds": request.agent_timeout_seconds}
-
+# ÄNDERUNG 08.02.2026: set_research_timeout + set_agent_timeout (global) entfernt
+# Timeouts werden jetzt pro Agent über /config/agent-timeout/{agent_role} gesetzt
 
 # AENDERUNG 07.02.2026: Pro-Agent Timeout Endpoint
 @router.put("/config/agent-timeout/{agent_role}")
@@ -493,11 +470,7 @@ def _save_config():
                 existing_data["max_retries"] = manager.config["max_retries"]
             if "max_model_attempts" in manager.config:
                 existing_data["max_model_attempts"] = manager.config["max_model_attempts"]
-            if "research_timeout_minutes" in manager.config:
-                existing_data["research_timeout_minutes"] = manager.config["research_timeout_minutes"]
-            # ÄNDERUNG 30.01.2026: Globaler Agent-Timeout speichern
-            if "agent_timeout_seconds" in manager.config:
-                existing_data["agent_timeout_seconds"] = manager.config["agent_timeout_seconds"]
+            # ÄNDERUNG 08.02.2026: research_timeout_minutes + agent_timeout_seconds entfernt
             # AENDERUNG 07.02.2026: Pro-Agent Timeouts persistieren
             if "agent_timeouts" in manager.config:
                 existing_data["agent_timeouts"] = manager.config["agent_timeouts"]

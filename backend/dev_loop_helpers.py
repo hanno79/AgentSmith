@@ -20,6 +20,59 @@ from sandbox_runner import run_sandbox
 
 
 # =========================================================================
+# AENDERUNG 09.02.2026: Fix 36 — Zentrale Blacklist fuer verbotene Dateien
+# ROOT-CAUSE-FIX:
+# Symptom: package-lock.json wird generiert und gespeichert trotz Prompt-Verbot
+# Ursache: Blacklist nur als Prompt-Text, kein System-Filter an Schreibstellen
+# Loesung: Zentrale FORBIDDEN_FILES + is_forbidden_file() an allen Schreibstellen
+# =========================================================================
+
+FORBIDDEN_FILES = {
+    "package-lock.json",
+    "yarn.lock",
+    "pnpm-lock.yaml",
+    "bun.lockb",
+}
+
+FORBIDDEN_DIRS = {
+    "node_modules/",
+    ".next/",
+    "dist/",
+    "build/",
+    ".cache/",
+    "__pycache__/",
+}
+
+
+def is_forbidden_file(filename: str) -> bool:
+    """
+    Prueft ob ein Dateiname auf der System-Blacklist steht.
+    Zentrale Funktion fuer alle Schreibstellen in der Pipeline.
+
+    Args:
+        filename: Relativer Dateipfad (z.B. "package-lock.json" oder "node_modules/foo/bar.js")
+
+    Returns:
+        True wenn die Datei NICHT geschrieben werden darf
+    """
+    if not filename:
+        return False
+    normalized = filename.replace("\\", "/").strip("/")
+    basename = normalized.split("/")[-1]
+
+    # Exakter Dateiname-Match (case-insensitive)
+    if basename.lower() in {f.lower() for f in FORBIDDEN_FILES}:
+        return True
+
+    # Verzeichnis-Praefix-Match
+    for forbidden_dir in FORBIDDEN_DIRS:
+        if normalized.lower().startswith(forbidden_dir.lower()):
+            return True
+
+    return False
+
+
+# =========================================================================
 # AENDERUNG 31.01.2026: Error-Hashing fuer Fehler-Modell-Historie
 # =========================================================================
 
@@ -68,7 +121,128 @@ def hash_error(error_content: str) -> str:
 
 # =========================================================================
 # ÄNDERUNG 31.01.2026: Projekt-Typ-aware Sandbox-Check
+# AENDERUNG 08.02.2026: Pro-Datei Validierung (Fix 31)
 # =========================================================================
+
+
+def _parse_code_to_files(code: str) -> dict:
+    """
+    Parst concatenierten Code-String (### FILENAME: ...) zu Dict {filename: content}.
+
+    AENDERUNG 08.02.2026: Fix 31 — Pro-Datei Sandbox-Validierung
+    ROOT-CAUSE-FIX:
+    Symptom: "Nicht geschlossenes String-Literal (`)" in JEDER Iteration
+    Ursache: _validate_jsx() bekommt ALLE Dateien als einen String, Backticks bluten ueber Dateigrenzen
+    Loesung: Code an ### FILENAME: Markern aufteilen (gleiche Regex wie main.py:save_multi_file_output)
+
+    Args:
+        code: Concatenierter Code-String mit ### FILENAME: Markern
+
+    Returns:
+        Dict {filename: content} oder {} wenn kein Multi-File-Format erkannt
+    """
+    pattern = r"###\s*(?:FILENAME|FILE|PATH|DATEI|PFAD)?:?\s*(.+?):?\s*[\r\n]+"
+    parts = re.split(pattern, code)
+    if len(parts) < 3:
+        return {}
+    code_dict = {}
+    for i in range(1, len(parts), 2):
+        if i + 1 >= len(parts):
+            break
+        filename = parts[i].strip().rstrip(':')
+        content = parts[i + 1].strip()
+        # AENDERUNG 09.02.2026: Fix 36 — Blacklisted Dateien aus Code-Dict filtern
+        if is_forbidden_file(filename):
+            continue
+        if filename and content:
+            code_dict[filename] = content
+    return code_dict
+
+
+def _validate_files_individually(code_dict: dict, tech_blueprint: dict) -> str:
+    """
+    Validiert jede Datei separat und gibt Ergebnis MIT Dateinamen zurueck.
+
+    AENDERUNG 08.02.2026: Fix 31 — Pro-Datei Sandbox-Validierung
+    Jede Datei wird nach Extension validiert:
+    - .py → AST-Parse
+    - .jsx/.tsx (oder .js/.ts bei JSX-Frameworks) → _validate_jsx()
+    - .js/.ts (ohne JSX-Framework) → run_sandbox()
+    - .css → Klammerbalance
+    - .json → JSON-Parse
+
+    Args:
+        code_dict: Dict {filename: content} aus _parse_code_to_files()
+        tech_blueprint: Blueprint mit Projekt-Typ und Sprache
+
+    Returns:
+        Validierungsergebnis als String (✅ oder ❌) mit Dateinamen bei Fehlern
+    """
+    from sandbox_runner import _validate_jsx
+
+    project_type = tech_blueprint.get("project_type", "").lower()
+    framework = tech_blueprint.get("framework", "").lower()
+    jsx_mode = any(fw in framework for fw in ["next.js", "nextjs", "react", "gatsby", "remix", "preact"]) or \
+               any(pt in project_type for pt in ["nextjs", "react", "gatsby", "remix"])
+    errors = []
+
+    for filename, content in code_dict.items():
+        ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
+
+        # Python
+        if ext == 'py':
+            try:
+                ast.parse(content)
+            except SyntaxError as se:
+                errors.append(f"[{filename}] Python-Syntaxfehler Zeile {se.lineno}: {se.msg}")
+
+        # JSX/TSX oder JS/TS bei JSX-Frameworks
+        elif ext in ('jsx', 'tsx') or (ext in ('js', 'ts') and jsx_mode):
+            result = _validate_jsx(content)
+            if result.startswith("❌"):
+                errors.append(f"[{filename}] {result[2:].strip()}")
+
+        # Reines JS (kein JSX-Framework)
+        elif ext in ('js', 'ts'):
+            result = run_sandbox(content)
+            if result.startswith("❌"):
+                errors.append(f"[{filename}] {result[2:].strip()}")
+
+        # CSS — Klammerbalance pruefen
+        elif ext == 'css':
+            open_count = content.count('{')
+            close_count = content.count('}')
+            if open_count != close_count:
+                errors.append(f"[{filename}] CSS: {open_count} oeffnende vs {close_count} schliessende Klammern")
+
+        # JSON — Syntax pruefen
+        elif ext == 'json':
+            try:
+                json.loads(content)
+            except json.JSONDecodeError as je:
+                errors.append(f"[{filename}] JSON-Fehler Zeile {je.lineno}: {je.msg}")
+
+        # HTML, bat, config etc. — keine Pruefung noetig
+
+    # AENDERUNG 09.02.2026: Dreifach-Schutz Content-Regeln (Fix 36 Audit)
+    # Ausgelagert in dev_loop_content_rules.py (Regel 1: Max 500 Zeilen)
+    from .dev_loop_content_rules import validate_content_rules
+    warnings = validate_content_rules(code_dict, tech_blueprint)
+
+    if errors:
+        error_list = "\n".join(errors[:5])  # Max 5 Fehler
+        warning_list = "\n".join(warnings[:3]) if warnings else ""
+        result = f"❌ Validierungsfehler:\n{error_list}"
+        if warning_list:
+            result += f"\n⚠️ Content-Warnungen:\n{warning_list}"
+        return result
+
+    if warnings:
+        warning_list = "\n".join(warnings[:5])
+        return f"⚠️ Alle {len(code_dict)} Dateien syntaktisch OK, aber Content-Warnungen:\n{warning_list}"
+
+    return f"✅ Alle {len(code_dict)} Dateien validiert (Pro-Datei-Pruefung)."
+
 
 def run_sandbox_for_project(code: str, tech_blueprint: dict) -> str:
     """
@@ -77,10 +251,9 @@ def run_sandbox_for_project(code: str, tech_blueprint: dict) -> str:
     WICHTIG: Bei Python-Projekten wird NUR Python-Syntax geprüft.
     JavaScript-Checks werden nur bei JavaScript-Projekten durchgeführt.
 
-    Dies verhindert falsche "JavaScript-Syntaxfehler" bei:
-    - Qt Style Sheets (.qss)
-    - CSS-Dateien
-    - Python-Code mit Braces (z.B. Dict-Literale)
+    AENDERUNG 08.02.2026: Pro-Datei Validierung (Fix 31)
+    Bei Multi-File-Output (### FILENAME: Marker) wird jede Datei SEPARAT validiert.
+    Dies verhindert Backtick-Bleed zwischen Dateien und gibt Fehler MIT Dateinamen zurueck.
 
     Args:
         code: Der zu validierende Code
@@ -96,8 +269,22 @@ def run_sandbox_for_project(code: str, tech_blueprint: dict) -> str:
     if language == "python" or any(pt in project_type for pt in [
         "python", "flask", "fastapi", "django", "tkinter", "pyqt", "pyside", "desktop"
     ]):
+        # AENDERUNG 08.02.2026: Auch Python-Projekte pro Datei validieren (Fix 31)
+        code_dict = _parse_code_to_files(code)
+        if code_dict:
+            py_errors = []
+            for filename, content in code_dict.items():
+                if filename.endswith('.py'):
+                    try:
+                        ast.parse(content)
+                    except SyntaxError as se:
+                        py_errors.append(f"[{filename}] Python-Syntaxfehler Zeile {se.lineno}: {se.msg}")
+            if py_errors:
+                return f"❌ Validierungsfehler:\n" + "\n".join(py_errors[:5])
+            return f"✅ Alle {len(code_dict)} Dateien validiert (Python AST)."
+
+        # Fallback: Einzelner String
         try:
-            # AST-Parsing ist sicher und schnell
             ast.parse(code)
             return "✅ Python-Syntaxprüfung bestanden (AST)."
         except SyntaxError as se:
@@ -105,10 +292,17 @@ def run_sandbox_for_project(code: str, tech_blueprint: dict) -> str:
         except Exception as e:
             return f"❌ Python-Prüfung fehlgeschlagen:\n{str(e)}"
 
+    # AENDERUNG 08.02.2026: Pro-Datei Validierung (Fix 31)
+    # ROOT-CAUSE-FIX:
+    # Symptom: "Nicht geschlossenes String-Literal (`)" in JEDER Iteration
+    # Ursache: _validate_jsx() bekommt ALLE Dateien als einen String, Backticks bluten
+    # Loesung: Code in einzelne Dateien aufteilen, jede separat validieren
+    code_dict = _parse_code_to_files(code)
+    if code_dict:
+        return _validate_files_individually(code_dict, tech_blueprint)
+
+    # Fallback: Kein Multi-File-Format erkannt → bisheriges Verhalten
     # AENDERUNG 06.02.2026: ROOT-CAUSE-FIX - JSX-Frameworks direkt an JSX-Validator
-    # Symptom: "JavaScript-Syntaxfehler" bei jeder Next.js/React Iteration
-    # Ursache: run_sandbox() -> node --check kann JSX-Syntax nicht parsen
-    # Loesung: Bei bekannten JSX-Frameworks direkt _validate_jsx() aufrufen
     framework = tech_blueprint.get("framework", "").lower()
     jsx_frameworks = ["next.js", "nextjs", "react", "gatsby", "remix", "preact"]
     if any(fw in framework for fw in jsx_frameworks) or any(
@@ -290,122 +484,14 @@ def _sanitize_unicode(content: str) -> str:
 
 
 # =========================================================================
-# AENDERUNG 01.02.2026: Dependency-Versions-Loader fuer Coder-Prompt
+# AENDERUNG 08.02.2026: Re-Exports aus dev_loop_dep_helpers.py (Regel 1 Refactoring)
 # =========================================================================
-
-# Häufig verwendete Python-Pakete die in requirements.txt vorkommen
-COMMON_PYTHON_PACKAGES = {
-    # Web Frameworks
-    "flask", "django", "fastapi", "starlette", "tornado", "bottle",
-    # ORM/Database
-    "sqlalchemy", "flask-sqlalchemy", "alembic", "psycopg2", "pymysql", "aiosqlite",
-    # Dependencies von Flask/SQLAlchemy
-    "werkzeug", "jinja2", "itsdangerous", "click", "markupsafe", "greenlet",
-    # Testing
-    "pytest", "pytest-cov", "coverage", "unittest2",
-    # Utils
-    "requests", "httpx", "aiohttp", "pydantic", "python-dotenv",
-    # Security
-    "bcrypt", "cryptography", "pyjwt",
-}
+from .dev_loop_dep_helpers import (  # noqa: F401
+    COMMON_PYTHON_PACKAGES,
+    get_python_dependency_versions,
+    _ensure_test_dependencies
+)
 
 
-def get_python_dependency_versions(
-    dependencies_path: Optional[Path] = None,
-    filter_common: bool = True
-) -> str:
-    """
-    Liest aktuelle Python-Paket-Versionen aus library/dependencies.json
-    und formatiert sie für den Coder-Prompt.
-
-    AENDERUNG 01.02.2026: Verhindert dass LLM veraltete/falsche Versionen
-    in requirements.txt generiert (z.B. greenlet==2.0.7 statt 3.2.3).
-
-    Args:
-        dependencies_path: Pfad zu dependencies.json (default: library/dependencies.json)
-        filter_common: Wenn True, nur häufig verwendete Pakete zurückgeben
-
-    Returns:
-        Formatierter String mit Paket-Versionen für den Prompt, oder "" bei Fehler
-    """
-    if dependencies_path is None:
-        dependencies_path = Path("library/dependencies.json")
-
-    if not dependencies_path.exists():
-        return ""
-
-    try:
-        with open(dependencies_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-
-        # Extrahiere Python-Pakete mit Versionen
-        python_section = data.get("python", {})
-        packages = python_section.get("packages", [])
-
-        if not packages:
-            return ""
-
-        versions = []
-        for pkg in packages:
-            name = pkg.get("name", "").lower()
-            version = pkg.get("version", "")
-
-            if not name or not version:
-                continue
-
-            # Filter: Nur häufig verwendete Pakete
-            if filter_common and name not in COMMON_PYTHON_PACKAGES:
-                continue
-
-            # Format: name==version
-            versions.append(f"{name}=={version}")
-
-        if not versions:
-            return ""
-
-        # Sortieren für konsistente Ausgabe
-        versions.sort()
-
-        header = "AKTUELLE PAKET-VERSIONEN (verwende diese für requirements.txt!):"
-        return header + "\n" + "\n".join(versions)
-
-    except (json.JSONDecodeError, IOError, KeyError) as e:
-        # Fehler still ignorieren - kein Crash wenn Datei fehlt/ungültig
-        return ""
-
-
-# =========================================================================
-# AENDERUNG 02.02.2026: Automatische pytest-Integration fuer Docker-Tests
-# =========================================================================
-
-def _ensure_test_dependencies(requirements_content: str, project_files: list) -> str:
-    """
-    Fuegt pytest hinzu wenn Test-Dateien existieren aber pytest fehlt.
-
-    AENDERUNG 02.02.2026: Fix #9 - Docker-Tests schlagen fehl mit
-    "No module named pytest" weil der Coder test_*.py Dateien erstellt,
-    aber pytest nicht in requirements.txt einfuegt.
-
-    Args:
-        requirements_content: Aktueller Inhalt der requirements.txt
-        project_files: Liste der Dateien im Projekt
-
-    Returns:
-        Aktualisierter requirements.txt Inhalt mit pytest falls noetig
-    """
-    from logger_utils import log_event
-
-    # Pruefe ob Test-Dateien existieren
-    has_tests = any(
-        "test_" in f or "_test.py" in f or f.startswith("tests/")
-        for f in project_files
-    )
-
-    # Pruefe ob pytest bereits vorhanden ist
-    has_pytest = "pytest" in requirements_content.lower()
-
-    if has_tests and not has_pytest:
-        log_event("DevLoop", "AutoFix", "pytest zu requirements.txt hinzugefuegt")
-        return requirements_content.strip() + "\npytest>=8.0.0\n"
-
-    return requirements_content
+# AENDERUNG 09.02.2026: Re-Export aus dev_loop_content_rules.py (Regel 1 Refactoring)
+from .dev_loop_content_rules import extract_filenames_from_feedback  # noqa: F401

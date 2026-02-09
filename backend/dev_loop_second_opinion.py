@@ -16,7 +16,8 @@ from crewai import Task
 
 from .agent_factory import init_agents
 from .heartbeat_utils import run_with_heartbeat
-from .dev_loop_helpers import is_empty_or_invalid_response
+# AENDERUNG 08.02.2026: Korrekter Import-Pfad (war dev_loop_helpers, ist orchestration_helpers)
+from .orchestration_helpers import is_empty_or_invalid_response
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +63,8 @@ def run_second_opinion_review(
 
     # Timeout: Faktor des Primary-Reviewer-Timeouts
     agent_timeouts = manager.config.get("agent_timeouts", {})
-    base_timeout = agent_timeouts.get("reviewer", manager.config.get("agent_timeout_seconds", 300))
+    # AENDERUNG 08.02.2026: Nur noch agent_timeouts Dict (globales agent_timeout_seconds entfernt)
+    base_timeout = agent_timeouts.get("reviewer", 1200)
     second_timeout = max(120, int(base_timeout * timeout_factor))
 
     try:

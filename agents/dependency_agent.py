@@ -227,14 +227,14 @@ class DependencyAgent:
     # =========================================================================
 
     def prepare_for_task(self, tech_blueprint: Dict[str, Any], project_path: str,
-                         max_duration: int = 120) -> Dict[str, Any]:
+                         max_duration: int = 300) -> Dict[str, Any]:
         """
         Bereitet die Umgebung fuer einen Task vor.
 
         Args:
             tech_blueprint: Blueprint vom TechStack-Agent
             project_path: Pfad zum Projektverzeichnis
-            max_duration: Maximale Gesamtdauer in Sekunden (Default: 120)
+            max_duration: Maximale Gesamtdauer in Sekunden (Default: 300, konfigurierbar via config.yaml)
 
         Returns:
             Dict mit status und details
@@ -262,6 +262,14 @@ class DependencyAgent:
 
         # 2. Einzelne Dependencies pruefen (mit Zeitlimit)
         dependencies = tech_blueprint.get("dependencies", [])
+        # AENDERUNG 08.02.2026: Lokale node_modules pruefen statt Global-Check (Fix 29)
+        # ROOT-CAUSE-FIX:
+        # Symptom: framer-motion, react-icons werden nicht installiert
+        # Ursache: check_npm_package() prueft nur global (-g), nicht lokal
+        # Folge: ALLE Pakete als "fehlend" erkannt → Timeout vor letzten Paketen
+        # Loesung: node_modules/<name> direkt pruefen (Filesystem statt npm list -g)
+        node_modules_dir = os.path.join(project_path, "node_modules") if project_path else None
+
         for idx, dep in enumerate(dependencies):
             # Zeitlimit pruefen
             elapsed = time.time() - start_time
@@ -272,12 +280,31 @@ class DependencyAgent:
                 self._log("PrepareTimeout", {"elapsed": int(elapsed), "skipped": remaining})
                 break
 
-            # AENDERUNG 07.02.2026: Blueprint an check_dependency durchreichen
+            # Schneller Filesystem-Check: Paket schon lokal in node_modules?
+            if node_modules_dir and os.path.isdir(os.path.join(node_modules_dir, dep)):
+                continue  # Bereits lokal installiert
+
+            # AENDERUNG 08.02.2026: Fix 29b — npm-Pakete IMMER lokal installieren
+            # ROOT-CAUSE-FIX:
+            # Symptom: react-icons, framer-motion global installiert aber nicht lokal
+            # Ursache: check_npm_package() mit -g findet globale Pakete → "installed: True"
+            # Folge: Lokale Installation uebersprungen → Module not found
+            # Loesung: Fuer npm-Pakete den Global-Check umgehen wenn node_modules existiert
+            pkg_type = self._detect_package_type(dep, tech_blueprint)
+            if pkg_type == "npm" and node_modules_dir:
+                # npm-Paket nicht lokal vorhanden → direkt installieren (Global irrelevant)
+                if self.auto_install:
+                    install = self.install_single_package(dep, pkg_type, project_path=project_path)
+                    if install.get("status") != "OK":
+                        results["warnings"].append(f"Konnte {dep} nicht installieren")
+                else:
+                    results["warnings"].append(f"Dependency nicht installiert: {dep}")
+                continue
+
+            # Fallback fuer Python-Pakete oder wenn kein node_modules_dir
             check = self.check_dependency(dep, blueprint=tech_blueprint)
             if not check.get("installed"):
                 if self.auto_install:
-                    pkg_type = self._detect_package_type(dep, tech_blueprint)
-                    # AENDERUNG 07.02.2026: project_path fuer lokale npm-Installation
                     install = self.install_single_package(dep, pkg_type, project_path=project_path)
                     if install.get("status") != "OK":
                         results["warnings"].append(f"Konnte {dep} nicht installieren")

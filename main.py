@@ -46,6 +46,8 @@ from security_utils import safe_join_path, sanitize_filename, validate_shell_com
 from exceptions import SecurityError
 # ÄNDERUNG 24.01.2026: Import aus zentraler file_utils (REGEL 13 - Single Source of Truth)
 from file_utils import find_html_file
+# AENDERUNG 09.02.2026: Fix 36 — System-Level Blacklist
+from backend.dev_loop_helpers import is_forbidden_file
 
 # ÄNDERUNG 29.01.2026: Discovery Session für strukturierte Projektaufnahme
 from discovery_session import DiscoverySession
@@ -114,6 +116,13 @@ def save_multi_file_output(project_path: str, code_output: str, default_filename
             console.print(f"[yellow]⚠️ Ungültiger Dateiname übersprungen: {raw_filename[:50]}[/yellow]")
             continue
 
+        # AENDERUNG 09.02.2026: Fix 36 — System-Level Blacklist
+        # ROOT-CAUSE-FIX: Prompt-Verbote werden von LLMs ignoriert → harter System-Filter
+        if is_forbidden_file(filename):
+            console.print(f"[red]BLACKLIST: {filename} darf nicht generiert werden - uebersprungen[/red]")
+            log_event("FileSystem", "ForbiddenFileBlocked", f"Blacklisted: {filename}")
+            continue
+
         # ROOT-CAUSE-FIX 06.02.2026:
         # Symptom: Jede generierte Datei hatte Sprach-Marker (js, bat, css) auf Zeile 1
         # Ursache: replace("```", "") entfernte nur Backticks, nicht den Sprach-Hint dahinter
@@ -158,6 +167,26 @@ def save_multi_file_output(project_path: str, code_output: str, default_filename
         if '.' not in os.path.basename(filename):
             console.print(f"[yellow]⚠️ Warnung - Dateiname ohne Extension: {filename}[/yellow]")
 
+        # AENDERUNG 08.02.2026: Template Config-Dateien nicht ueberschreiben (Fix 24B)
+        # ROOT-CAUSE-FIX: Coder ueberschreibt tailwind.config.js, postcss.config.js etc.
+        if _is_protected_config(project_path, filename):
+            console.print(f"[yellow]Ueberspringe Template-Config: {filename} (geschuetzt)[/yellow]")
+            log_event("FileSystem", "SkipProtectedConfig",
+                      f"Template-Config nicht ueberschrieben: {filename}")
+            continue
+
+        # AENDERUNG 08.02.2026: Dependency-Dateien mergen statt ueberschreiben (Fix 24A)
+        # ROOT-CAUSE-FIX: Coder generiert eigene package.json die Template-Dependencies loescht
+        if _is_dependency_file(filename) and os.path.exists(full_path):
+            try:
+                tech_bp = _load_tech_blueprint(project_path)
+                if tech_bp.get("_source_template"):
+                    from dependency_merger import merge_dependency_file
+                    content = merge_dependency_file(full_path, content, tech_bp)
+                    console.print(f"[green]Dependency-Merge: {filename} (Template + Coder)[/green]")
+            except Exception as merge_err:
+                console.print(f"[yellow]Dependency-Merge fehlgeschlagen: {merge_err}[/yellow]")
+
         with open(full_path, "w", encoding="utf-8") as f:
             f.write(content)
 
@@ -182,6 +211,61 @@ def save_multi_file_output(project_path: str, code_output: str, default_filename
         pass
 
     return created_files
+
+
+# AENDERUNG 08.02.2026: Helper-Funktionen fuer Fix 24A+B (Dependency-Merge + Config-Schutz)
+
+def _is_dependency_file(filename: str) -> bool:
+    """Prueft ob eine Datei eine Dependency-Manifest-Datei ist (generisch fuer alle Sprachen)."""
+    base = os.path.basename(filename).lower()
+    return base in ("package.json", "requirements.txt", "pyproject.toml",
+                    "cargo.toml", "go.mod", "build.gradle")
+
+
+def _load_tech_blueprint(project_path: str) -> dict:
+    """Laedt tech_blueprint.json aus dem Projektverzeichnis."""
+    bp_path = os.path.join(project_path, "tech_blueprint.json")
+    if not os.path.exists(bp_path):
+        return {}
+    try:
+        with open(bp_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _is_protected_config(project_path: str, filename: str) -> bool:
+    """
+    Prueft ob eine Datei eine geschuetzte Template-Config-Datei ist.
+    Geschuetzt = kommt aus Template required_files UND ist eine Config-Datei.
+    NICHT geschuetzt: package.json (hat Merge), Code-Dateien (app/page.js etc.)
+    """
+    tech_bp = _load_tech_blueprint(project_path)
+    template_id = tech_bp.get("_source_template")
+    if not template_id:
+        return False
+
+    try:
+        from techstack_templates.template_loader import get_template_by_id
+        template = get_template_by_id(template_id)
+        if not template:
+            return False
+
+        required_files = template.get("required_files", [])
+        # Config-Extensions die geschuetzt werden
+        config_suffixes = (".config.js", ".config.mjs", ".config.ts",
+                           "jsconfig.json", "tsconfig.json")
+
+        filename_norm = filename.replace("\\", "/")
+        for req_file in required_files:
+            # Nur Config-Dateien schuetzen, keine Code-Dateien
+            if any(req_file.endswith(s) for s in config_suffixes):
+                if filename_norm == req_file or filename_norm.endswith("/" + req_file):
+                    return True
+        return False
+    except Exception:
+        return False
+
 
 def main():
     console.print("[bold cyan]🤖 Willkommen zum Multi-Agenten-System v3.2 (Discovery Session & Self-Healing)[/bold cyan]")

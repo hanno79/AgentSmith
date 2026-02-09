@@ -66,17 +66,33 @@ class CodeRabbitSpecialist(BaseSpecialist):
     def icon(self) -> str:
         return "pest_control"  # Bug-Hunter Icon
 
-    def check_available(self) -> bool:
-        """Prueft ob CodeRabbit CLI installiert ist."""
-        cli_path = self.config.get("cli_path", "coderabbit")
+    # AENDERUNG 08.02.2026: Fix 33b - WSL-Support fuer Windows
+    def _to_wsl_path(self, win_path: str) -> str:
+        """Konvertiert Windows-Pfad zu WSL-Pfad. C:\\Temp\\x → /mnt/c/Temp/x"""
+        if not win_path:
+            return win_path
+        path = win_path.replace('\\', '/')
+        # C:/Temp/x → /mnt/c/Temp/x
+        if len(path) >= 2 and path[1] == ':':
+            drive = path[0].lower()
+            path = f"/mnt/{drive}{path[2:]}"
+        return path
 
+    def _build_cmd(self, args: list) -> list:
+        """Baut Command mit optionalem WSL-Prefix."""
+        cli_path = self.config.get("cli_path", "coderabbit")
+        use_wsl = self.config.get("use_wsl", False)
+        if use_wsl:
+            return ["wsl", cli_path] + args
+        return [cli_path] + args
+
+    def check_available(self) -> bool:
+        """Prueft ob CodeRabbit CLI installiert ist (auch via WSL)."""
         try:
-            result = subprocess.run(
-                [cli_path, "--version"],
-                capture_output=True,
-                timeout=10,
-                text=True
-            )
+            # AENDERUNG 08.02.2026: Fix 33b - _build_cmd() fuer WSL-Support
+            cmd = self._build_cmd(["--version"])
+            # Timeout 15s statt 10s wegen moeglichem WSL Cold Start
+            result = subprocess.run(cmd, capture_output=True, timeout=15, text=True)
             if result.returncode == 0:
                 logger.debug(f"CodeRabbit verfuegbar: {result.stdout.strip()}")
                 return True
@@ -95,11 +111,16 @@ class CodeRabbitSpecialist(BaseSpecialist):
         """
         Fuehrt CodeRabbit Review aus.
 
+        AENDERUNG 08.02.2026: Fix 33c - Korrekte CLI-Argumente
+        Symptom: review schlug fehl mit "Unknown error" bei grossem Diff
+        Ursache: CLI akzeptiert keine Dateipfade als Argumente, braucht --cwd + --type
+        Loesung: --cwd fuer Projektverzeichnis, --type uncommitted fuer DevLoop-Aenderungen
+
         Args:
             context: Dict mit:
-                - project_path: Pfad zum Projektverzeichnis
-                - code: Optional - spezifischer Code zu reviewen
-                - files: Optional - Liste von Dateien zu reviewen
+                - project_path: Pfad zum Projektverzeichnis (git repo)
+                - files: Optional - Liste von Dateien (fuer Logging)
+                - code: Optional - Code-Kontext
 
         Returns:
             SpecialistResult mit gefundenen Issues
@@ -109,19 +130,17 @@ class CodeRabbitSpecialist(BaseSpecialist):
 
         try:
             project_path = context.get("project_path", ".")
-            files = context.get("files", [])
             timeout = self.config.get("timeout_seconds", 120)
-            cli_path = self.config.get("cli_path", "coderabbit")
+            use_wsl = self.config.get("use_wsl", False)
 
-            # Command zusammenbauen
-            cmd = [cli_path, "review", "--plain"]
-
-            if files:
-                # Spezifische Dateien reviewen
-                cmd.extend(files)
-            else:
-                # Ganzes Projekt reviewen
-                cmd.append(project_path)
+            # AENDERUNG 08.02.2026: Fix 33c - --cwd + --type statt Dateipfade
+            # CodeRabbit CLI: coderabbit review --plain --type uncommitted --cwd <path>
+            cwd_path = self._to_wsl_path(project_path) if use_wsl else project_path
+            cmd = self._build_cmd([
+                "review", "--plain",
+                "--type", "uncommitted",
+                "--cwd", cwd_path
+            ])
 
             logger.info(f"CodeRabbit: Starte Review in {project_path}")
 
@@ -141,7 +160,12 @@ class CodeRabbitSpecialist(BaseSpecialist):
             self.last_run = datetime.now()
             self.run_count += 1
 
-            if result.returncode == 0:
+            # CodeRabbit gibt RC=0 auch bei erfolgreichen Reviews zurueck
+            # Fehler stehen im stderr mit "REVIEW ERROR" oder "[error]"
+            stderr_lower = (result.stderr or "").lower()
+            has_review_error = "review error" in stderr_lower or "[error]" in stderr_lower
+
+            if not has_review_error:
                 findings = self._parse_output(result.stdout)
                 self.status = SpecialistStatus.READY
                 self.last_result = SpecialistResult(
@@ -156,7 +180,7 @@ class CodeRabbitSpecialist(BaseSpecialist):
 
             else:
                 # Pruefe auf Rate-Limit
-                if "rate limit" in result.stderr.lower():
+                if "rate limit" in stderr_lower:
                     cooldown = self.config.get("cooldown_seconds", 300)
                     self.set_cooldown(cooldown)
                     self.last_result = SpecialistResult(
@@ -169,11 +193,12 @@ class CodeRabbitSpecialist(BaseSpecialist):
                 else:
                     self.status = SpecialistStatus.ERROR
                     self.error_count += 1
+                    error_msg = result.stderr[:500] if result.stderr else "Unbekannter Fehler"
                     self.last_result = SpecialistResult(
                         success=False,
                         findings=[],
                         summary="CodeRabbit Fehler",
-                        error=result.stderr[:500] if result.stderr else "Unbekannter Fehler",
+                        error=error_msg,
                         duration_ms=duration_ms
                     )
 
@@ -208,12 +233,23 @@ class CodeRabbitSpecialist(BaseSpecialist):
             logger.error(f"CodeRabbit Exception: {e}")
             return self.last_result
 
+    # AENDERUNG 08.02.2026: Fix 33c - Parser fuer echtes CodeRabbit Output-Format
     def _parse_output(self, output: str) -> List[SpecialistFinding]:
         """
-        Parst CodeRabbit Output in strukturierte Findings.
+        Parst CodeRabbit --plain Output in strukturierte Findings.
+
+        Echtes Format:
+            ============================================================================
+            File: app.js
+            Line: 10 to 13
+            Type: potential_issue
+
+            Comment:
+            Beschreibung des Problems...
+            ============================================================================
 
         Args:
-            output: Raw Output von CodeRabbit CLI
+            output: Raw Output von CodeRabbit CLI (--plain Modus)
 
         Returns:
             Liste von SpecialistFinding Objekten
@@ -223,57 +259,62 @@ class CodeRabbitSpecialist(BaseSpecialist):
         if not output or not output.strip():
             return findings
 
-        # CodeRabbit Output Patterns (anpassen basierend auf echtem Format)
-        # Beispiel-Pattern: "severity: HIGH | file: app.py:42 | message: ..."
-        finding_pattern = r'(?:severity|level):\s*(\w+)\s*\|\s*(?:file|location):\s*([^|]+)\s*\|\s*(?:message|description):\s*(.+?)(?=\n(?:severity|level):|$)'
+        # Splitte Output an den Trennlinien (====...====)
+        sections = re.split(r'={10,}', output)
 
-        matches = re.findall(finding_pattern, output, re.IGNORECASE | re.DOTALL)
+        for section in sections:
+            section = section.strip()
+            if not section:
+                continue
 
-        for match in matches:
-            severity = match[0].upper()
-            location = match[1].strip()
-            message = match[2].strip()
+            # Extrahiere Felder aus der Section
+            file_match = re.search(r'^File:\s*(.+)$', section, re.MULTILINE)
+            line_match = re.search(r'^Line:\s*(\d+)', section, re.MULTILINE)
+            type_match = re.search(r'^Type:\s*(.+)$', section, re.MULTILINE)
+            comment_match = re.search(r'^Comment:\s*\n(.+?)(?=\n\n|\Z)', section, re.MULTILINE | re.DOTALL)
 
-            # File und Line extrahieren
-            file_name = "unknown"
-            line_num = 0
-            if ':' in location:
-                parts = location.split(':')
-                file_name = parts[0].strip()
-                if len(parts) > 1 and parts[1].isdigit():
-                    line_num = int(parts[1])
-            else:
-                file_name = location
+            if not comment_match:
+                continue
+
+            file_name = file_match.group(1).strip() if file_match else "unknown"
+            line_num = int(line_match.group(1)) if line_match else 0
+            finding_type = type_match.group(1).strip().lower() if type_match else "info"
+            comment = comment_match.group(1).strip()
+
+            # Type zu Severity mappen
+            severity = self._type_to_severity(finding_type, comment)
 
             findings.append(SpecialistFinding(
                 severity=severity,
-                description=message[:500],  # Max 500 Zeichen
+                description=comment[:500],
                 file=file_name,
                 line=line_num,
                 category="code-review"
             ))
 
-        # Fallback: Wenn keine strukturierten Findings gefunden, ganzen Output als INFO
-        if not findings and output.strip():
-            # Versuche einfachere Patterns
-            lines = output.strip().split('\n')
-            for line in lines[:10]:  # Max 10 Findings
-                line = line.strip()
-                if line and len(line) > 10:
-                    # Versuche Severity zu erraten
-                    severity = "INFO"
-                    lower_line = line.lower()
-                    if any(kw in lower_line for kw in ['error', 'critical', 'severe']):
-                        severity = "HIGH"
-                    elif any(kw in lower_line for kw in ['warning', 'warn']):
-                        severity = "MEDIUM"
-                    elif any(kw in lower_line for kw in ['info', 'note', 'suggestion']):
-                        severity = "LOW"
-
-                    findings.append(SpecialistFinding(
-                        severity=severity,
-                        description=line[:300],
-                        category="code-review"
-                    ))
-
         return findings
+
+    def _type_to_severity(self, finding_type: str, comment: str) -> str:
+        """Mappt CodeRabbit Finding-Type auf Severity."""
+        comment_lower = comment.lower()
+
+        # Kritische Security-Findings
+        if any(kw in comment_lower for kw in [
+            'sql injection', 'xss', 'command injection', 'path traversal',
+            'remote code execution', 'rce', 'authentication bypass'
+        ]):
+            return "CRITICAL"
+
+        # Type-basiertes Mapping
+        type_map = {
+            "potential_issue": "HIGH",
+            "bug": "HIGH",
+            "security": "CRITICAL",
+            "error": "HIGH",
+            "refactor_suggestion": "MEDIUM",
+            "improvement": "MEDIUM",
+            "nitpick": "LOW",
+            "style": "LOW",
+            "info": "INFO",
+        }
+        return type_map.get(finding_type, "MEDIUM")

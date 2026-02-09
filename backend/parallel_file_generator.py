@@ -22,7 +22,7 @@ from .file_dependency_graph import (
     get_parallel_batches,
     analyze_parallelization_potential
 )
-from .dev_loop_helpers import _ensure_test_dependencies
+from .dev_loop_helpers import _ensure_test_dependencies, is_forbidden_file
 
 logger = logging.getLogger(__name__)
 
@@ -216,6 +216,11 @@ async def run_parallel_file_generation(
             filename, content, error = result
 
             if content:
+                # AENDERUNG 09.02.2026: Fix 36 — System-Level Blacklist
+                if is_forbidden_file(filename):
+                    manager._ui_log("ParallelGen", "ForbiddenFileBlocked", filename)
+                    continue
+
                 # AENDERUNG 02.02.2026: pytest-Integration fuer Test-Dateien
                 # Fix #9: Fuegt pytest zu requirements.txt hinzu wenn Test-Dateien existieren
                 if filename.endswith("requirements.txt"):

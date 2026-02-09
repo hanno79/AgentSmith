@@ -356,7 +356,8 @@ class TestCopyFileTemplates:
             assert len(copied) > 0, "Keine Dateien kopiert"
             # Pflichtdateien pruefen
             assert "package.json" in copied, "package.json nicht kopiert"
-            assert any("_app.js" in f for f in copied), "pages/_app.js nicht kopiert"
+            # AENDERUNG 08.02.2026: App Router statt Pages Router (Fix 22)
+            assert any("layout.js" in f for f in copied), "app/layout.js nicht kopiert"
             # Datei existiert auch auf Disk
             assert os.path.exists(os.path.join(project_dir, "package.json"))
 

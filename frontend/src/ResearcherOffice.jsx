@@ -38,9 +38,7 @@ const ResearcherOffice = ({
   researchStatus = "",
   model = "",
   error = "",
-  // Research Timeout Configuration
-  researchTimeoutMinutes = 5,
-  onResearchTimeoutChange
+  // ÄNDERUNG 08.02.2026: researchTimeoutMinutes entfernt - pro Agent im ModelModal
 }) => {
   const { logRef, getStatusBadge, formatTime } = useOfficeCommon(logs);
   const knowledgeRef = useRef(null);
@@ -326,7 +324,7 @@ const ResearcherOffice = ({
                 <div className="flex flex-col items-center justify-center h-full text-center">
                   <RefreshCw size={48} className="text-cyan-400 animate-spin mb-4" />
                   <p className="text-slate-400 text-sm">Durchsuche das Web nach relevanten Informationen...</p>
-                  <p className="text-slate-500 text-xs mt-2">Dies kann bis zu {researchTimeoutMinutes} {researchTimeoutMinutes === 1 ? 'Minute' : 'Minuten'} dauern.</p>
+                  <p className="text-slate-500 text-xs mt-2">Dies kann einige Minuten dauern.</p>
                 </div>
               ) : hasError ? (
                 <div className="flex flex-col items-center justify-center h-full text-center">
@@ -462,36 +460,7 @@ const ResearcherOffice = ({
               </div>
             )}
 
-            {/* Research Timeout Configuration */}
-            {onResearchTimeoutChange && (
-              <div className="bg-[#1e293b] rounded-lg p-4 border border-[#334155]">
-                <div className="flex justify-between items-center mb-3">
-                  <h4 className="text-xs font-bold text-slate-300 flex items-center gap-2">
-                    <Clock size={14} className="text-cyan-400" />
-                    Research Timeout
-                  </h4>
-                  <span className="text-cyan-400 font-mono font-bold">{researchTimeoutMinutes} min</span>
-                </div>
-
-                <div className="bg-[#0f172a] p-3 rounded border border-slate-700/50">
-                  <div className="flex items-center gap-3">
-                    <span className="text-[10px] text-slate-500 font-mono">1</span>
-                    <input
-                      type="range"
-                      min="1"
-                      max="60"
-                      value={researchTimeoutMinutes}
-                      onChange={(e) => onResearchTimeoutChange(parseInt(e.target.value))}
-                      className="flex-1 researcher-slider"
-                    />
-                    <span className="text-[10px] text-slate-500 font-mono">60</span>
-                  </div>
-                  <p className="text-[9px] text-slate-500 mt-2 text-center">
-                    Max. Recherche-Zeit in Minuten
-                  </p>
-                </div>
-              </div>
-            )}
+            {/* ÄNDERUNG 08.02.2026: Research Timeout Slider entfernt - pro Agent im ModelModal */}
 
             {/* Error Info */}
             {hasError && error && (
