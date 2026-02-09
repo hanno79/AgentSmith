@@ -318,126 +318,126 @@ models:
       - openrouter/qwen/qwen-3
   premium:
     meta_orchestrator:
-      primary: openrouter/google/gemini-3-pro
+      primary: openrouter/google/gemini-3-pro-preview
       fallback:
-      - openrouter/anthropic/claude-opus-4.5-thinking
+      - openrouter/anthropic/claude-opus-4.5
       - openrouter/openai/gpt-5.1
-      - openrouter/x-ai/grok-4.1-thinking
+      - openrouter/x-ai/grok-4.1-fast
       - openrouter/meta-llama/llama-4-scout
     orchestrator:
-      primary: openrouter/google/gemini-3-pro
+      primary: openrouter/google/gemini-3-pro-preview
       fallback:
-      - openrouter/anthropic/claude-opus-4.5-thinking
+      - openrouter/anthropic/claude-opus-4.5
       - openrouter/openai/gpt-5.1
-      - openrouter/x-ai/grok-4.1-thinking
+      - openrouter/x-ai/grok-4.1-fast
       - openrouter/meta-llama/llama-4-scout
     researcher:
-      primary: openrouter/google/gemini-3-pro
+      primary: openrouter/google/gemini-3-pro-preview
       fallback:
-      - openrouter/x-ai/grok-4.1-thinking
-      - openrouter/anthropic/claude-opus-4.5-thinking
+      - openrouter/x-ai/grok-4.1-fast
+      - openrouter/anthropic/claude-opus-4.5
       - openrouter/openai/gpt-5.1
       - openrouter/meta-llama/llama-4-scout
     coder:
-      primary: openrouter/openai/gpt-5.2-high
+      primary: openrouter/openai/gpt-5.2-pro
       fallback:
       - openrouter/anthropic/claude-opus-4.6
-      - openrouter/google/gemini-3-pro
+      - openrouter/google/gemini-3-pro-preview
       - openrouter/minimax/minimax-m2.1
       - openrouter/z-ai/glm-4.7
     tester:
       primary: openrouter/anthropic/claude-opus-4.6
       fallback:
       - openrouter/openai/gpt-5.1
-      - openrouter/google/gemini-3-pro
-      - openrouter/x-ai/grok-4.1-thinking
-      - openrouter/openai/gpt-5.2-high
+      - openrouter/google/gemini-3-pro-preview
+      - openrouter/x-ai/grok-4.1-fast
+      - openrouter/openai/gpt-5.2-pro
     designer:
-      primary: openrouter/google/gemini-3-pro
+      primary: openrouter/google/gemini-3-pro-preview
       fallback:
       - openrouter/anthropic/claude-opus-4.5
       - openrouter/openai/gpt-5.1
       - openrouter/minimax/minimax-m2.1
       - openrouter/meta-llama/llama-4-scout
     database_designer:
-      primary: openrouter/openai/gpt-5.2-high
+      primary: openrouter/openai/gpt-5.2-pro
       fallback:
       - openrouter/anthropic/claude-haiku-4.5
-      - openrouter/google/gemini-3-pro
+      - openrouter/google/gemini-3-pro-preview
       - openrouter/minimax/minimax-m2.1
       - openrouter/amazon/nova-pro-v1
     security:
-      primary: openrouter/openai/gpt-5.2-high
+      primary: openrouter/openai/gpt-5.2-pro
       fallback:
       - openrouter/anthropic/claude-haiku-4.5
-      - openrouter/google/gemini-3-pro
+      - openrouter/google/gemini-3-pro-preview
       - openrouter/deepseek/deepseek-v3.2-exp
-      - openrouter/x-ai/grok-4.1-thinking
+      - openrouter/x-ai/grok-4.1-fast
     reviewer:
       primary: openrouter/deepseek/deepseek-v3.2
       fallback:
-      - openrouter/google/gemini-3-pro
+      - openrouter/google/gemini-3-pro-preview
       - openrouter/openai/gpt-5.1
-      - openrouter/x-ai/grok-4.1-thinking
-      - openrouter/openai/gpt-5.2-high
+      - openrouter/x-ai/grok-4.1-fast
+      - openrouter/openai/gpt-5.2-pro
     techstack_architect:
-      primary: openrouter/x-ai/grok-4.1-thinking
+      primary: openrouter/x-ai/grok-4.1-fast
       fallback:
-      - openrouter/google/gemini-3-pro
-      - openrouter/anthropic/claude-opus-4.5-thinking
+      - openrouter/google/gemini-3-pro-preview
+      - openrouter/anthropic/claude-opus-4.5
       - openrouter/openai/gpt-5.1
       - openrouter/meta-llama/llama-4-scout
     documentation_manager:
-      primary: openrouter/anthropic/claude-opus-4.5-thinking
+      primary: openrouter/anthropic/claude-opus-4.5
       fallback:
-      - openrouter/google/gemini-3-pro
+      - openrouter/google/gemini-3-pro-preview
       - openrouter/openai/gpt-5.1
-      - openrouter/x-ai/grok-4.1-thinking
+      - openrouter/x-ai/grok-4.1-fast
     test_generator:
-      primary: openrouter/anthropic/claude-opus-4.5-thinking
+      primary: openrouter/anthropic/claude-opus-4.5
       fallback:
-      - openrouter/google/gemini-3-pro
+      - openrouter/google/gemini-3-pro-preview
       - openrouter/openai/gpt-5.1
-      - openrouter/x-ai/grok-4.1-thinking
+      - openrouter/x-ai/grok-4.1-fast
     orchestrator_validator:
-      primary: openrouter/anthropic/claude-opus-4.5-thinking
+      primary: openrouter/anthropic/claude-opus-4.5
       fallback:
       - openrouter/openai/gpt-5.1
-      - openrouter/google/gemini-3-pro
-      - openrouter/x-ai/grok-4.1-thinking
-      - openrouter/openai/gpt-5.2-high
+      - openrouter/google/gemini-3-pro-preview
+      - openrouter/x-ai/grok-4.1-fast
+      - openrouter/openai/gpt-5.2-pro
     validator:
-      primary: openrouter/anthropic/claude-opus-4.5-thinking
+      primary: openrouter/anthropic/claude-opus-4.5
       fallback:
       - openrouter/openai/gpt-5.1
-      - openrouter/google/gemini-3-pro
-      - openrouter/x-ai/grok-4.1-thinking
+      - openrouter/google/gemini-3-pro-preview
+      - openrouter/x-ai/grok-4.1-fast
     reporter:
-      primary: openrouter/anthropic/claude-opus-4.5-thinking
+      primary: openrouter/anthropic/claude-opus-4.5
       fallback:
       - openrouter/openai/gpt-5.1
-      - openrouter/google/gemini-3-pro
-      - openrouter/x-ai/grok-4.1-thinking
+      - openrouter/google/gemini-3-pro-preview
+      - openrouter/x-ai/grok-4.1-fast
     planner:
       primary: openrouter/openai/gpt-5.2-codex
       fallback:
       - openrouter/anthropic/claude-opus-4.6
-      - openrouter/google/gemini-3-pro
-      - openrouter/x-ai/grok-4.1-thinking
+      - openrouter/google/gemini-3-pro-preview
+      - openrouter/x-ai/grok-4.1-fast
       - openrouter/deepseek/deepseek-v3.2-speciale
     fix:
-      primary: openrouter/openai/gpt-5.2-high
+      primary: openrouter/openai/gpt-5.2-pro
       fallback:
       - openrouter/moonshotai/kimi-k2.5
-      - openrouter/google/gemini-3-pro
+      - openrouter/google/gemini-3-pro-preview
       - openrouter/minimax/minimax-m2.1
       - openrouter/anthropic/claude-opus-4.6
     task_deriver:
-      primary: openrouter/anthropic/claude-opus-4.5-thinking
+      primary: openrouter/anthropic/claude-opus-4.5
       fallback:
       - openrouter/openai/gpt-5.1
-      - openrouter/google/gemini-3-pro
-      - openrouter/x-ai/grok-4.1-thinking
+      - openrouter/google/gemini-3-pro-preview
+      - openrouter/x-ai/grok-4.1-fast
 templates:
   cli:
     global:
