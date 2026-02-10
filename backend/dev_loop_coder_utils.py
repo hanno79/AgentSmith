@@ -108,6 +108,16 @@ def _is_targeted_fix_context(feedback: str) -> bool:
             any(ind.lower() in feedback_lower for ind in additive_indicators))
 
 
+# AENDERUNG 10.02.2026: Fix 42c - False-Positive Dateinamen filtern
+# "Next.js" aus "die Next.js Umgebung" matcht als Dateiname, ist aber keiner
+# Ebenso "Node.js", "Vue.js" etc. aus beschreibendem Text
+FALSE_POSITIVE_FILENAMES = {
+    'next.js', 'node.js', 'vue.js', 'react.js', 'express.js',
+    'nuxt.js', 'nest.js', 'ember.js', 'angular.js', 'backbone.js',
+    'three.js', 'p5.js', 'd3.js', 'chart.js', 'socket.js',
+}
+
+
 def _get_affected_files_from_feedback(feedback: str) -> List[str]:
     """
     Extrahiert betroffene Dateinamen aus Feedback.
@@ -122,7 +132,13 @@ def _get_affected_files_from_feedback(feedback: str) -> List[str]:
         return []
 
     # AENDERUNG 06.02.2026: Erweiterte Patterns fuer JavaScript/Next.js Fehler
+    # AENDERUNG 10.02.2026: Fix 41 - [DATEI:xxx] Pattern aus Reviewer/Security-Feedback
+    # ROOT-CAUSE-FIX: Ohne diese Patterns erkennt PatchMode keine Dateien aus
+    # dem Reviewer-Feedback → Fallback auf ALLE Dateien → Context-Overflow
     file_patterns = [
+        # AENDERUNG 10.02.2026: Fix 41b - Dynamic Routes sicher ([id], [slug], [...catchall])
+        r'\[DATEI:(.+?\.[a-z]{1,4})\]',    # [DATEI:app/api/todos/[id]/route.js]
+        r'\[(?:File|Datei):\s*(.+?\.[a-z]{1,4})\]',  # [File: app/api/todos/[id]/route.js]
         r'File "([^"]+\.py)"',           # Python Traceback
         r'in ([a-zA-Z_][a-zA-Z0-9_]*\.py)',  # "in filename.py"
         r'([a-zA-Z_][a-zA-Z0-9_]*\.py):',    # "filename.py:"
@@ -133,6 +149,12 @@ def _get_affected_files_from_feedback(feedback: str) -> List[str]:
         r'Error:\s*([a-zA-Z0-9_/.\\-]+\.(?:js|jsx|ts|tsx))',  # Error: file.js
         r'([a-zA-Z0-9_/.-]+\.(?:js|jsx|ts|tsx))\s+(?:hat|has|contains)',  # datei.js hat Fehler
         r'(?:Datei|File|Syntax)\s+["\'"]?([a-zA-Z0-9_/.-]+\.(?:js|jsx|ts|tsx))',  # Datei "x.js"
+        # AENDERUNG 10.02.2026: Fix 48b — Fallback fuer Reviewer-Markdown-Format
+        # ROOT-CAUSE-FIX: Reviewer gibt "BETROFFENE DATEIEN: - `file.js`" aus,
+        # Parser erkannte nur [DATEI:xxx] → leere affected_files → PatchModeAllFiles
+        r'-\s+`([a-zA-Z0-9_/.\[\]-]+\.(?:js|jsx|ts|tsx|py|json|css|bat))`',  # - `package.json`
+        r'[→>]\s*(?:DATEI|BETROFFENE DATEIEN):\s*`?([a-zA-Z0-9_/.\[\]-]+\.[a-z]{1,4})`?',  # → DATEI: file.js
+        r'BETROFFENE\s+DATEIEN?:.*?`([a-zA-Z0-9_/.\[\]-]+\.[a-z]{1,4})`',  # BETROFFENE DATEIEN: `file.js`
     ]
 
     found_files = []
@@ -142,10 +164,15 @@ def _get_affected_files_from_feedback(feedback: str) -> List[str]:
             # Nur Dateinamen, nicht volle Pfade aus System-Bibliotheken
             if not any(skip in match.lower() for skip in ['site-packages', 'python3', '/usr/', 'venv/']):
                 basename = os.path.basename(match)
+                # AENDERUNG 10.02.2026: Fix 42c - False-Positive Dateinamen filtern
+                # "Next.js" aus beschreibendem Text ist kein echtes Projekt-File
+                if basename.lower() in FALSE_POSITIVE_FILENAMES:
+                    continue
                 if basename not in found_files:
                     found_files.append(basename)
 
-    return found_files[:5]  # Max 5 Dateien
+    # AENDERUNG 10.02.2026: Fix 48b — Max 10 Dateien (Paralleler PatchMode kann mehr verarbeiten)
+    return found_files[:10]
 
 
 # AENDERUNG 07.02.2026: Dynamische Code-Extensions aus qg_constants

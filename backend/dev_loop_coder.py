@@ -203,18 +203,21 @@ def run_coder_task(manager, project_rules: Dict[str, Any], c_prompt: str, agent_
     return current_code, agent_coder
 
 
-def save_coder_output(manager, current_code: str, output_path: str, iteration: int, max_retries: int) -> tuple:
+def save_coder_output(manager, current_code: str, output_path: str, iteration: int,
+                      max_retries: int, is_patch_mode: bool = False) -> tuple:
     """
     Speichert Coder-Output und sendet UI-Events.
     AENDERUNG 31.01.2026: Truncation-Detection fuer abgeschnittene LLM-Outputs.
     AENDERUNG 31.01.2026: Unicode-Sanitization vor Datei-Speicherung.
     AENDERUNG 31.01.2026: Gibt jetzt (created_files, truncated_files) zurueck fuer Modellwechsel-Logik.
+    AENDERUNG 10.02.2026: Fix 44 — is_patch_mode fuer Phantom-Datei-Schutz.
     """
     # AENDERUNG 31.01.2026: Unicode-Sanitization vor Datei-Speicherung
     sanitized_code = _sanitize_unicode(current_code)
 
     def_file = os.path.basename(output_path)
-    created_files = save_multi_file_output(manager.project_path, sanitized_code, def_file)
+    created_files = save_multi_file_output(manager.project_path, sanitized_code, def_file,
+                                           is_patch_mode=is_patch_mode)
     manager._ui_log("Coder", "Files", f"Created: {', '.join(created_files)}")
 
     # AENDERUNG 31.01.2026: Truncation-Detection

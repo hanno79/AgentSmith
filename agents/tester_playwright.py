@@ -139,6 +139,9 @@ def test_web_ui(file_path: str, config: Optional[Dict[str, Any]] = None) -> UITe
 
             if console_errors:
                 result["issues"].append(f"JavaScript-Fehler: {len(console_errors)} Fehler")
+                # AENDERUNG 10.02.2026: Fix 45 — Konkrete Fehlertexte fuer den Coder
+                error_details = "; ".join(e[:200] for e in console_errors[:5])
+                result["issues"].append(f"Console-Details: {error_details}")
 
             # Baseline-Vergleich
             if baseline_path.exists():
@@ -289,6 +292,9 @@ def _test_url(url: str, project_path: str,
 
             if console_errors:
                 result["issues"].append(f"JavaScript-Fehler: {len(console_errors)} Fehler")
+                # AENDERUNG 10.02.2026: Fix 45 — Konkrete Fehlertexte fuer den Coder
+                error_details = "; ".join(e[:200] for e in console_errors[:5])
+                result["issues"].append(f"Console-Details: {error_details}")
 
             # Baseline-Vergleich
             if baseline_path.exists():

@@ -276,12 +276,16 @@ def is_empty_response_error(error: Exception) -> bool:
     return any(pattern in error_str for pattern in empty_patterns)
 
 
-def extract_vulnerabilities(security_result: str) -> List[Dict[str, Any]]:
+def extract_vulnerabilities(security_result: str,
+                            existing_files: List[str] = None) -> List[Dict[str, Any]]:
     """
     Extrahiert Vulnerabilities UND Lösungsvorschläge aus dem Security-Agent Output.
 
+    AENDERUNG 10.02.2026: Fix 44 — existing_files fuer Dateinamen-Validierung.
+
     Args:
         security_result: Rohtext-Ergebnis der Sicherheitsanalyse
+        existing_files: Liste echte Projekt-Dateien fuer Validierung (optional)
 
     Returns:
         Liste von Vulnerability-Dictionaries mit severity, description, fix, type
@@ -305,8 +309,9 @@ def extract_vulnerabilities(security_result: str) -> List[Dict[str, Any]]:
         # Symptom: affected_file=None bei 90% der Security-Findings
         # Ursache: Nur ein Regex-Pattern, erkennt nicht [DATEI:filename] Format
         # Loesung: 4 Patterns in Prioritaetsreihenfolge, nehme ersten Treffer
+        # AENDERUNG 10.02.2026: Fix 41b - Dynamic Routes sicher ([id], [slug])
         file_patterns = [
-            r'\[DATEI:([^\]]+)\]',                                            # [DATEI:filename.js]
+            r'\[DATEI:(.+?\.[a-z]{1,4})\]',                                  # [DATEI:app/api/todos/[id]/route.js]
             r'(?:in|file|datei)\s+["\']?([a-zA-Z0-9_./\\-]+\.[a-z]{2,4})["\']?',  # in filename.js
             r'([a-zA-Z0-9_./\\-]+\.[jt]sx?)\s+(?:Zeile|line|L)\s+\d+',       # file.js Zeile 42
             r'(?:Zeile|line|L)\s+\d+\s+(?:in|von)\s+([a-zA-Z0-9_./\\-]+\.[jt]sx?)',  # Zeile 42 in file.js
@@ -317,6 +322,18 @@ def extract_vulnerabilities(security_result: str) -> List[Dict[str, Any]]:
             if file_match:
                 affected_file = file_match.group(1).strip()
                 break
+
+        # AENDERUNG 10.02.2026: Fix 44 — Validiere affected_file gegen echte Dateien
+        # ROOT-CAUSE-FIX: LLM halluziniert Dateinamen (tasks statt todos)
+        # → Downstream-PatchMode erstellt Phantom-Dateien
+        if affected_file and existing_files:
+            if affected_file not in existing_files:
+                af_base = os.path.basename(affected_file)
+                for ef in existing_files:
+                    if os.path.basename(ef) == af_base:
+                        logger.info(f"Security affected_file korrigiert: {affected_file} → {ef}")
+                        affected_file = ef
+                        break
 
         vulnerabilities.append({
             "severity": severity,
@@ -350,8 +367,9 @@ def extract_vulnerabilities(security_result: str) -> List[Dict[str, Any]]:
 
             # AENDERUNG 07.02.2026: Gleiche erweiterte Datei-Extraktion wie oben (Fix 20)
             affected_file = None
+            # AENDERUNG 10.02.2026: Fix 41b - Dynamic Routes sicher
             for fp in [
-                r'\[DATEI:([^\]]+)\]',
+                r'\[DATEI:(.+?\.[a-z]{1,4})\]',
                 r'(?:in|file|datei)\s+["\']?([a-zA-Z0-9_./\\-]+\.[a-z]{2,4})["\']?',
                 r'([a-zA-Z0-9_./\\-]+\.[jt]sx?)\s+(?:Zeile|line|L)\s+\d+',
                 r'(?:Zeile|line|L)\s+\d+\s+(?:in|von)\s+([a-zA-Z0-9_./\\-]+\.[jt]sx?)',
@@ -360,6 +378,16 @@ def extract_vulnerabilities(security_result: str) -> List[Dict[str, Any]]:
                 if file_match:
                     affected_file = file_match.group(1).strip()
                     break
+
+            # AENDERUNG 10.02.2026: Fix 44 — Validiere affected_file (s.o.)
+            if affected_file and existing_files:
+                if affected_file not in existing_files:
+                    af_base = os.path.basename(affected_file)
+                    for ef in existing_files:
+                        if os.path.basename(ef) == af_base:
+                            logger.info(f"Security affected_file korrigiert: {affected_file} → {ef}")
+                            affected_file = ef
+                            break
 
             vulnerabilities.append({
                 "severity": severity,

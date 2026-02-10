@@ -1,13 +1,16 @@
 /**
  * Author: rahn
  * Datum: 02.02.2026
- * Version: 1.0
+ * Version: 1.1
  * Beschreibung: Planner Office - Detailansicht fuer den Planner-Agenten.
  *               Zeigt File-by-File Plan, geschaetzte Lines und Token-Metriken.
+ * AENDERUNG 10.02.2026: color-Prop aus AGENT_CONFIG (config.js) fuer Status Badge.
+ *               Interne Tailwind-Shade-Klassen (indigo-950 etc.) passend zu AGENT_CONFIG.planner
  */
 
 import React from 'react';
 import { useOfficeCommon } from './hooks/useOfficeCommon';
+import { COLORS } from './constants/config';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft,
@@ -27,9 +30,11 @@ const PlannerOffice = ({
   logs = [],
   status = "Idle",
   planData = {},
-  onBack
+  onBack,
+  color = 'indigo'
 }) => {
   const { logRef, getStatusBadge, formatTime } = useOfficeCommon(logs);
+  const colorDef = COLORS[color] || COLORS.indigo;
 
   // Plan-Daten extrahieren
   const files = planData.files || [];
@@ -43,9 +48,9 @@ const PlannerOffice = ({
   const isPlanning = status === 'Working';
   const isCompleted = fileCount > 0;
 
-  // Status Badge Rendering Helper
+  // AENDERUNG 10.02.2026: Status Badge nutzt zentrale Farb-Klasse
   const renderStatusBadge = () => {
-    const badge = getStatusBadge(status, 'bg-indigo-500/20 text-indigo-300 border-indigo-500/20 font-semibold shadow-[0_0_8px_rgba(99,102,241,0.2)]');
+    const badge = getStatusBadge(status, `${colorDef.bg} ${colorDef.text} ${colorDef.border} font-semibold`);
     return (
       <span className={badge.className}>
         {badge.isActive ? 'Planning Active' : badge.text}

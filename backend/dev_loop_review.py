@@ -2,11 +2,12 @@
 """
 Author: rahn
 Datum: 08.02.2026
-Version: 1.0
+Version: 1.1
 Beschreibung: Review-Funktion fuer DevLoop mit Retry- und Modellwechsel-Logik.
               Extrahiert aus dev_loop_validators.py (Regel 1: Max 500 Zeilen)
               Enthaelt: run_review
               AENDERUNG 08.02.2026: Modul-Extraktion aus dev_loop_validators.py
+              AENDERUNG 10.02.2026: Fix 42 - Reviewer Context-Kompression
 """
 
 import json
@@ -16,6 +17,8 @@ from typing import Dict, Any, Tuple
 from crewai import Task
 
 from .agent_factory import init_agents
+from .context_compressor import compress_context
+from .dev_loop_coder_utils import _get_current_code_dict
 from .orchestration_helpers import (
     is_rate_limit_error,
     is_empty_or_invalid_response,
@@ -26,6 +29,73 @@ from .orchestration_helpers import (
 from .heartbeat_utils import run_with_heartbeat
 
 logger = logging.getLogger(__name__)
+
+
+def _compress_review_code(manager, sandbox_result: str, test_summary: str) -> str:
+    """
+    Komprimiert current_code fuer den Reviewer mit Context-Kompression.
+
+    AENDERUNG 10.02.2026: Fix 42 - Reviewer Context-Overflow Guard
+    ROOT-CAUSE-FIX:
+    Symptom: deepseek-chat-v3.1 context overflow (196,577 > 163,840 tokens)
+    Ursache: Reviewer bekam current_code verbatim ohne Kompression
+    Loesung: compress_context() anwenden (gleiche Logik wie Coder)
+    """
+    code_dict = _get_current_code_dict(manager)
+    if not code_dict:
+        return getattr(manager, 'current_code', '') or ''
+
+    # Feedback = sandbox_result + test_summary (enthaelt Dateinamen der Fehler)
+    review_feedback = ""
+    if sandbox_result:
+        review_feedback += sandbox_result
+    if test_summary:
+        review_feedback += "\n" + test_summary
+
+    cache = getattr(manager, '_reviewer_summary_cache', {})
+
+    compressed = compress_context(
+        code_dict=code_dict,
+        feedback=review_feedback,
+        config=manager.config,
+        cache=cache
+    )
+
+    # Cache persistieren fuer naechste Iteration
+    new_cache = compressed.pop('_cache', {})
+    manager._reviewer_summary_cache = new_cache
+
+    # Dict zurueck in ### FILENAME: Format
+    parts = []
+    for filepath in sorted(compressed.keys()):
+        content = compressed[filepath]
+        # Summary-Marker: Erkenne komprimierte Dateien
+        is_summary = (
+            content.startswith("IMPORTS:") or content.startswith("VORSCHAU:")
+            or content.startswith("SELEKTOREN:") or content.startswith("TOP-KEYS:")
+            or content.startswith("NAME:") or content.startswith("KLASSEN:")
+            or content.startswith("FUNKTIONEN:") or content.startswith("[")
+        )
+        label = " (ZUSAMMENFASSUNG)" if is_summary else ""
+        parts.append(f"### FILENAME: {filepath}{label}\n{content}")
+
+    compressed_code = "\n\n".join(parts)
+    original_len = len(getattr(manager, 'current_code', '') or '')
+
+    # Sicherheits-Limit: Max Zeichen fuer Reviewer-Prompt (Ratio 1:3 Token:Char)
+    max_chars = manager.config.get("max_reviewer_prompt_chars", 400000)
+    if len(compressed_code) > max_chars:
+        logger.warning(
+            "Reviewer-Code ueberschreitet %d Zeichen (%d) - kuerze auf Limit",
+            max_chars, len(compressed_code)
+        )
+        compressed_code = compressed_code[:max_chars] + "\n\n[... GEKUERZT wegen Token-Limit ...]"
+
+    logger.info(
+        "Reviewer-Code komprimiert: %d -> %d Zeichen (%d Dateien)",
+        original_len, len(compressed_code), len(compressed)
+    )
+    return compressed_code
 
 
 def run_review(
@@ -41,14 +111,18 @@ def run_review(
     Fuehrt den Review-Task mit Retry-Logik aus.
     AENDERUNG 29.01.2026: Modellwechsel erst nach 2 gleichen Fehlern mit demselben Modell.
     AENDERUNG 02.02.2026: Erweiterter Prompt fuer spezifische Docker-Fehler-Analyse (Fix #11).
+    AENDERUNG 10.02.2026: Fix 42 - Context-Kompression fuer Reviewer-Input.
     """
-    # AENDERUNG 02.02.2026: Erweiterter Reviewer-Prompt mit Docker-Fehler-Analyse
-    # Problem: Reviewer gab generisches Feedback statt spezifische Fehleranalyse
+    # AENDERUNG 10.02.2026: Fix 42 - Komprimiere Code VOR dem Reviewer-Prompt
+    # ROOT-CAUSE-FIX:
+    # Symptom: deepseek-chat-v3.1 context overflow (196,577 > 163,840 tokens)
+    # Ursache: Reviewer bekam manager.current_code verbatim (31 Dateien = ~590k Zeichen)
+    # Loesung: compress_context() reduziert Nicht-Fehler-Dateien auf Summaries
+    compressed_code = _compress_review_code(manager, sandbox_result or "", test_summary or "")
 
     # AENDERUNG 02.02.2026 v2: Extrahiere spezifische Fehler aus Docker-Output
     docker_error_highlight = ""
     if sandbox_result and sandbox_failed:
-        # Extrahiere relevante Fehlerzeilen
         error_keywords = ["Error", "ImportError", "ModuleNotFoundError", "SyntaxError",
                          "ResolutionImpossible", "conflicting", "in <module>", ".py:"]
         error_lines = []
@@ -59,7 +133,7 @@ def run_review(
             docker_error_highlight = "\n>>> KRITISCHE FEHLER GEFUNDEN <<<\n" + "\n".join(error_lines[:10])
 
     r_prompt = f"""=== CODE ZUM PRUEFEN ===
-{current_code}
+{compressed_code}
 
 === SANDBOX/DOCKER-ERGEBNIS (WICHTIG!) ===
 {sandbox_result if sandbox_result else "Kein Sandbox-Ergebnis vorhanden."}
@@ -73,23 +147,25 @@ ANALYSIERE den EXAKTEN Fehler oben im SANDBOX/DOCKER-ERGEBNIS!
 
 Bei Fehlern MUSST du folgendes liefern:
 1. URSACHE: Die KONKRETE Ursache (NICHT generisch "Docker fehlgeschlagen")
-2. DATEI: Die EXAKTE Datei die geaendert werden muss
+2. BETROFFENE DATEIEN: [DATEI:dateiname.ext] fuer JEDE betroffene Datei
 3. LOESUNG: Konkreter Fix mit Code-Beispiel
+
+WICHTIG: Nenne JEDE betroffene Datei im Format [DATEI:dateiname.ext]!
 
 BEISPIELE fuer korrektes Feedback:
 - "ModuleNotFoundError: No module named 'flask'"
   -> URSACHE: flask fehlt in requirements.txt
-  -> DATEI: requirements.txt
+  -> BETROFFENE DATEIEN: [DATEI:requirements.txt]
   -> LOESUNG: Fuege 'flask' zu requirements.txt hinzu
 
 - "SyntaxError: unexpected indent in line 15"
   -> URSACHE: Einrueckungsfehler in Zeile 15
-  -> DATEI: app.py
+  -> BETROFFENE DATEIEN: [DATEI:app.py]
   -> LOESUNG: Korrigiere die Einrueckung in Zeile 15
 
 - "ImportError: cannot import name 'Config' from 'config'"
   -> URSACHE: Klasse Config existiert nicht in config.py
-  -> DATEI: config.py
+  -> BETROFFENE DATEIEN: [DATEI:config.py]
   -> LOESUNG: Erstelle die Config-Klasse in config.py
 
 VERBOTEN - Niemals solches Feedback geben:

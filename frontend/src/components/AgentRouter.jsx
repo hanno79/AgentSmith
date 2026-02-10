@@ -8,7 +8,8 @@
 
 import React from 'react';
 import axios from 'axios';
-import { API_BASE } from '../constants/config';
+// AENDERUNG 10.02.2026: getAgentColorKey fuer zentrale Farbsteuerung
+import { API_BASE, getAgentColorKey } from '../constants/config';
 import CoderOffice from '../CoderOffice';
 import TesterOffice from '../TesterOffice';
 import DesignerOffice from '../DesignerOffice';
@@ -65,7 +66,7 @@ const AgentRouter = ({
         status={activeAgents?.coder?.status || 'Idle'}
         logs={logs.filter(l => l.agent === 'Coder')}
         onBack={onBackToMission}
-        color="blue"
+        color={getAgentColorKey('coder')}
         code={agentData?.coder?.code}
         files={agentData?.coder?.files}
         iteration={agentData?.coder?.iteration}
@@ -90,7 +91,7 @@ const AgentRouter = ({
         status={activeAgents?.tester?.status || 'Idle'}
         logs={logs.filter(l => l.agent === 'Tester')}
         onBack={onBackToMission}
-        color="orange"
+        color={getAgentColorKey('tester')}
         defects={agentData?.tester?.defects}
         coverage={agentData?.tester?.coverage}
         stability={agentData?.tester?.stability}
@@ -108,7 +109,7 @@ const AgentRouter = ({
         status={activeAgents?.designer?.status || 'Idle'}
         logs={logs.filter(l => l.agent === 'Designer')}
         onBack={onBackToMission}
-        color="pink"
+        color={getAgentColorKey('designer')}
         // ÄNDERUNG 24.01.2026: Echte Daten vom Backend
         colorPalette={agentData?.designer?.colorPalette}
         typography={agentData?.designer?.typography}
@@ -129,7 +130,7 @@ const AgentRouter = ({
         status={activeAgents?.reviewer?.status || 'Idle'}
         logs={logs.filter(l => l.agent === 'Reviewer')}
         onBack={onBackToMission}
-        color="yellow"
+        color={getAgentColorKey('reviewer')}
         // ÄNDERUNG 24.01.2026: Echte Daten vom Backend (erweitert mit humanSummary)
         verdict={agentData?.reviewer?.verdict}
         isApproved={agentData?.reviewer?.isApproved}
@@ -151,7 +152,7 @@ const AgentRouter = ({
         status={activeAgents?.researcher?.status || 'Idle'}
         logs={logs.filter(l => l.agent === 'Researcher')}
         onBack={onBackToMission}
-        color="cyan"
+        color={getAgentColorKey('researcher')}
         query={agentData?.researcher?.query}
         result={agentData?.researcher?.result}
         researchStatus={agentData?.researcher?.status}
@@ -168,7 +169,7 @@ const AgentRouter = ({
         status={activeAgents?.security?.status || 'Idle'}
         logs={logs.filter(l => l.agent === 'Security')}
         onBack={onBackToMission}
-        color="red"
+        color={getAgentColorKey('security')}
         // ÄNDERUNG 24.01.2026: Echte Daten vom Backend
         vulnerabilities={agentData?.security?.vulnerabilities}
         overallStatus={agentData?.security?.overallStatus}
@@ -189,7 +190,7 @@ const AgentRouter = ({
         status={activeAgents?.techarchitect?.status || 'Idle'}
         logs={logs.filter(l => l.agent === 'TechArchitect')}
         onBack={onBackToMission}
-        color="purple"
+        color={getAgentColorKey('techarchitect')}
         // ÄNDERUNG 24.01.2026: Echte Daten vom Backend
         blueprint={agentData?.techstack?.blueprint}
         model={agentData?.techstack?.model}
@@ -206,7 +207,7 @@ const AgentRouter = ({
         status={activeAgents?.dbdesigner?.status || 'Idle'}
         logs={logs.filter(l => l.agent === 'DBDesigner')}
         onBack={onBackToMission}
-        color="green"
+        color={getAgentColorKey('dbdesigner')}
         // ÄNDERUNG 24.01.2026: Echte Daten vom Backend
         schema={agentData?.dbdesigner?.schema}
         model={agentData?.dbdesigner?.model}
@@ -291,6 +292,7 @@ const AgentRouter = ({
         status={activeAgents?.planner?.status || 'Idle'}
         planData={agentData?.planner || {}}
         onBack={onBackToMission}
+        color={getAgentColorKey('planner')}
       />
     );
   }
@@ -303,6 +305,7 @@ const AgentRouter = ({
         status={activeAgents?.fix?.status || 'Idle'}
         fixData={agentData?.fix || {}}
         onBack={onBackToMission}
+        color={getAgentColorKey('fix')}
       />
     );
   }

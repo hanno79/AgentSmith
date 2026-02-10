@@ -10,6 +10,7 @@ Beschreibung: Security-Rescan-Funktion fuer DevLoop mit Retry-Logik.
 """
 
 import json
+import os
 import logging
 from datetime import datetime
 from typing import Dict, Any, List, Tuple
@@ -116,7 +117,21 @@ WICHTIG - CVE-REGELN:
                     heartbeat_interval=15,
                     timeout_seconds=SECURITY_TIMEOUT
                 )
-                security_rescan_vulns = extract_vulnerabilities(security_rescan_result)
+                # AENDERUNG 10.02.2026: Fix 44 — existing_files fuer Dateinamen-Validierung
+                _existing = []
+                if hasattr(manager, 'project_path') and manager.project_path:
+                    _proj = str(manager.project_path)
+                    if os.path.exists(_proj):
+                        _skip = {'node_modules', '.next', '.git', '__pycache__', 'screenshots'}
+                        for _r, _d, _f in os.walk(_proj):
+                            _d[:] = [d for d in _d if d not in _skip]
+                            for fn in _f:
+                                _existing.append(
+                                    os.path.relpath(os.path.join(_r, fn), _proj).replace("\\", "/")
+                                )
+                security_rescan_vulns = extract_vulnerabilities(
+                    security_rescan_result, existing_files=_existing
+                )
                 manager.security_vulnerabilities = security_rescan_vulns
 
                 security_passed = not security_rescan_vulns or all(

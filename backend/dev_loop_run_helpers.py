@@ -12,6 +12,7 @@ import os
 import json
 import logging
 import asyncio
+from typing import Tuple
 from concurrent.futures import ThreadPoolExecutor
 
 from agents.memory_agent import update_memory
@@ -120,6 +121,26 @@ def _run_parallel_generation(loop, manager, project_rules, parallel_config):
     )
     file_list = get_file_list_from_plan(plan)
     file_descriptions = get_file_descriptions_from_plan(plan)
+
+    # AENDERUNG 10.02.2026: Fix 49 — Template-Config-Dateien ueberspringen
+    # ROOT-CAUSE-FIX:
+    # Symptom: tailwind.config.js braucht 197s LLM-Generierung, ueberschreibt dann Template-Version
+    # Ursache: PROTECTED_CONFIGS existierte nur im Default-Plan, nicht im LLM-Planner-Pfad
+    # Loesung: Config-Dateien die bereits vom Template kopiert wurden aus file_list entfernen
+    if hasattr(manager, 'project_path') and manager.project_path:
+        from agents.planner_defaults import PROTECTED_CONFIGS
+        skipped = []
+        for cfg in list(file_list):  # list() fuer sichere Iteration
+            basename = os.path.basename(cfg)
+            if basename in PROTECTED_CONFIGS:
+                full_path = os.path.join(str(manager.project_path), cfg)
+                if os.path.exists(full_path):
+                    file_list.remove(cfg)
+                    file_descriptions.pop(cfg, None)
+                    skipped.append(cfg)
+        if skipped:
+            manager._ui_log("DevLoop", "TemplateSkip",
+                f"{len(skipped)} Template-Config-Dateien uebersprungen: {', '.join(skipped)}")
 
     manager._ui_log("DevLoop", "ParallelPlan", json.dumps({
         "total_files": len(file_list),
@@ -389,10 +410,13 @@ def process_utds_feedback(task_derivation, manager, feedback,
     }
 
     # Security als UTDS-Quelle
+    # AENDERUNG 10.02.2026: Fix 42b - affected_file als [DATEI:xxx] auch fuer UTDS
     if not security_passed and security_rescan_vulns:
         security_feedback = "\n".join([
             f"Security-Vulnerability: {v}" if isinstance(v, str)
-            else f"Security-Vulnerability ({v.get('severity', 'medium')}): {v.get('description', str(v))}"
+            else f"Security-Vulnerability ({v.get('severity', 'medium')}): "
+                 f"{'[DATEI:' + v['affected_file'] + '] ' if v.get('affected_file') else ''}"
+                 f"{v.get('description', str(v))}"
             for v in security_rescan_vulns
         ])
         if task_derivation.should_use_task_derivation(security_feedback, "security", iteration):
@@ -448,3 +472,41 @@ def process_utds_feedback(task_derivation, manager, feedback,
             feedback = f"{feedback}\n\n{td_summary}"
 
     return feedback, _utds_modified_files
+
+
+# AENDERUNG 10.02.2026: Fix 43 - Smoke-Test als blockierende Success-Bedingung
+def run_smoke_test_gate(manager) -> Tuple[bool, str]:
+    """Fuehrt Smoke-Test aus. Returns (passed, feedback_for_coder)."""
+    smoke_config = manager.config.get("smoke_test", {})
+    if not smoke_config.get("enabled", True):
+        return True, ""
+
+    from .dev_loop_smoke_test import run_smoke_test
+    manager._ui_log("SmokeTest", "Start", "Starte Smoke-Test (Server + Browser)...")
+    manager._update_worker_status("tester", "working", "Smoke-Test...",
+        manager.model_router.get_model("tester") if manager.model_router else "")
+
+    try:
+        # AENDERUNG 10.02.2026: Fix 50 - Docker-Container an Smoke-Test durchreichen
+        docker_container = getattr(manager, '_docker_container', None)
+        smoke_result = run_smoke_test(
+            str(manager.project_path), manager.tech_blueprint, manager.config,
+            docker_container=docker_container)
+    except Exception as e:
+        manager._ui_log("SmokeTest", "Error", f"Smoke-Test Fehler: {e}")
+        manager._update_worker_status("tester", "idle")
+        return (True, "") if smoke_config.get("skip_on_error", True) else (False, f"SMOKE-TEST FEHLER: {e}")
+
+    manager._update_worker_status("tester", "idle")
+    manager._ui_log("SmokeTest", "Result", json.dumps({
+        "passed": smoke_result.passed, "server_started": smoke_result.server_started,
+        "page_loaded": smoke_result.page_loaded, "compile_errors": len(smoke_result.compile_errors),
+        "console_errors": len(smoke_result.console_errors),
+        "duration": round(smoke_result.duration_seconds, 1)
+    }, ensure_ascii=False))
+
+    if smoke_result.passed:
+        manager._ui_log("SmokeTest", "Passed", f"Bestanden in {smoke_result.duration_seconds:.1f}s")
+        return True, ""
+    manager._ui_log("SmokeTest", "Failed", "Fehlgeschlagen - Iteration wird wiederholt")
+    return False, smoke_result.feedback_for_coder

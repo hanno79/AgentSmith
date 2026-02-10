@@ -11,6 +11,8 @@ Beschreibung: Budget-Tracking Modul mit LiteLLM Callbacks.
 import logging
 import threading
 
+from model_stats_db import get_model_stats_db
+
 logger = logging.getLogger(__name__)
 
 # =====================================================================
@@ -76,13 +78,31 @@ try:
                 model = kwargs.get('model', 'unknown')
 
                 # Erfasse die Nutzung
-                tracker.record_usage(
+                record = tracker.record_usage(
                     agent=current_agent_name,
                     model=model,
                     prompt_tokens=prompt_tokens,
                     completion_tokens=completion_tokens,
                     project_id=current_project_id
                 )
+
+                # AENDERUNG 09.02.2026: ModelStatsDB - Latenz und Kosten in SQLite erfassen
+                try:
+                    latency_ms = (end_time - start_time).total_seconds() * 1000 if start_time and end_time else 0
+                    stats_db = get_model_stats_db()
+                    stats_db.record_call(
+                        run_id=current_project_id or "unknown",
+                        agent=current_agent_name,
+                        model=model,
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        cost_usd=record.cost_usd if record else 0.0,
+                        latency_ms=latency_ms,
+                        success=True
+                    )
+                except Exception as stats_err:
+                    logger.debug("ModelStatsDB.record_call fehlgeschlagen: %s", stats_err)
+
                 logger.debug(
                     "_budget_tracking_callback: %s - %s+%s Tokens (Modell: %s, Projekt: %s)",
                     current_agent_name,
@@ -94,9 +114,32 @@ try:
         except Exception as e:
             logger.exception("_budget_tracking_callback: Fehler beim Budget-Tracking: %s", e)
 
-    # Registriere den Callback
+    # AENDERUNG 09.02.2026: Failure-Callback fuer fehlgeschlagene API-Calls
+    def _failure_tracking_callback(kwargs, completion_response, start_time, end_time):
+        """LiteLLM failure callback - erfasst fehlgeschlagene API-Calls in ModelStatsDB."""
+        try:
+            current_agent_name, current_project_id = _get_current_tracking_context()
+            model = kwargs.get('model', 'unknown')
+            latency_ms = (end_time - start_time).total_seconds() * 1000 if start_time and end_time else 0
+
+            stats_db = get_model_stats_db()
+            stats_db.record_call(
+                run_id=current_project_id or "unknown",
+                agent=current_agent_name,
+                model=model,
+                prompt_tokens=0,
+                completion_tokens=0,
+                cost_usd=0.0,
+                latency_ms=latency_ms,
+                success=False
+            )
+        except Exception as e:
+            logger.debug("_failure_tracking_callback: Fehler: %s", e)
+
+    # Registriere die Callbacks
     litellm.success_callback = [_budget_tracking_callback]
-    logger.info("litellm.success_callback: Budget-Tracking Callback erfolgreich registriert (Thread-Safe)")
+    litellm.failure_callback = [_failure_tracking_callback]
+    logger.info("litellm callbacks: Budget-Tracking + Failure-Tracking registriert (Thread-Safe)")
 
 except ImportError:
     logger.warning("litellm.success_callback: LiteLLM nicht verfuegbar - Budget-Tracking deaktiviert")

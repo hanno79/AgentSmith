@@ -60,6 +60,8 @@
     "Datenbank-Zugriff ueber 'import sqlite from sqlite' und 'import sqlite3 from sqlite3'",
     "Datenbank-Initialisierung in lib/db.js als wiederverwendbares Modul",
     "API-Routen fuer DB in app/api/ mit GET/POST/PUT/DELETE Route Handlers",
+    "tailwind.config.js und globals.css enthalten bereits Shadcn-kompatible CSS-Custom-Properties (--border, --background etc.) — NICHT ueberschreiben oder duplizieren",
+    "Fuer eigene Farben die vordefinierten Variablen nutzen: bg-background, text-foreground, border-border, bg-primary, bg-muted etc.",
     "next.config.js mit module.exports ist die einzige Ausnahme fuer CommonJS",
     "In app/layout.js: <html> und <body> MUESSEN suppressHydrationWarning haben (verhindert Hydration-Errors durch Browser-Extensions)",
     "Datums-Formatierung NIEMALS direkt in JSX rendern (Hydration-Mismatch!) — stattdessen in useEffect+useState oder als ISO-String"

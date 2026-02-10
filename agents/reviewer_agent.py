@@ -54,11 +54,13 @@ def create_reviewer(config: Dict[str, Any], project_rules: Dict[str, List[str]],
             "- Dateien referenziert werden die nicht im Code enthalten sind\n"
             "- Der Code unvollständig ist\n\n"
             "Antworte NUR mit OK wenn der Code KOMPLETT, LAUFFÄHIG und FEHLERFREI ist.\n\n"
+            # AENDERUNG 10.02.2026: Fix 48b — [DATEI:xxx] Format fuer Parser-Kompatibilitaet
             "ROOT CAUSE FORMAT - Bei Fehlern MUSS dein Feedback dieses Format enthalten:\n"
             "URSACHE: [Warum ist der Fehler aufgetreten - die eigentliche Root Cause]\n"
-            "BETROFFENE DATEIEN: [Welche Dateien müssen geändert werden]\n"
+            "BETROFFENE DATEIEN: [DATEI:datei1.js] [DATEI:datei2.js]\n"
             "LÖSUNG: [Konkrete Schritte zur Behebung]\n\n"
-            "WICHTIG: Analysiere nicht nur WAS falsch ist, sondern WARUM es falsch ist!"
+            "WICHTIG: Nenne JEDE betroffene Datei im Format [DATEI:dateiname.ext]!\n"
+            "Analysiere nicht nur WAS falsch ist, sondern WARUM es falsch ist!"
         ),
         backstory=(
             "Du bist ein strenger, erfahrener Software-Tester und Code-Reviewer. "

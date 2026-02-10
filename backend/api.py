@@ -149,3 +149,6 @@ app.include_router(external_bureau.router)
 app.include_router(dependencies.router)
 app.include_router(session.router)
 app.include_router(discovery.router)
+# AENDERUNG 09.02.2026: Model-Statistiken API-Endpoints (Fix 40)
+from backend.routers import model_stats
+app.include_router(model_stats.router)

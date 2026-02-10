@@ -91,6 +91,21 @@ const COLOR_CLASSES = {
     bg: 'bg-teal-900/30',
     button: 'bg-teal-600 hover:bg-teal-500 text-white',
     check: 'text-teal-400'
+  },
+  // AENDERUNG 10.02.2026: Fehlende Farben fuer Agent-Konsolidierung
+  pink: {
+    text: 'text-pink-400',
+    border: 'border-pink-500',
+    bg: 'bg-pink-900/30',
+    button: 'bg-pink-600 hover:bg-pink-500 text-white',
+    check: 'text-pink-400'
+  },
+  amber: {
+    text: 'text-amber-400',
+    border: 'border-amber-500',
+    bg: 'bg-amber-900/30',
+    button: 'bg-amber-600 hover:bg-amber-500 text-white',
+    check: 'text-amber-400'
   }
 };
 

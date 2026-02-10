@@ -61,7 +61,8 @@ class WorkerPool:
 
     # Standard Worker-Namen pro Office
     WORKER_NAMES = {
-        "coder": ["Alex", "Jordan", "Casey", "Morgan", "Riley"],
+        # AENDERUNG 10.02.2026: Fix 48 — 8 Coder-Worker fuer parallelen PatchMode
+        "coder": ["Alex", "Jordan", "Casey", "Morgan", "Riley", "Reese", "Finley", "Hayden"],
         "tester": ["Sam", "Taylor", "Quinn"],
         "designer": ["Avery", "Blake"],
         "db_designer": ["Dana"],
@@ -328,7 +329,8 @@ class OfficeManager:
 
     # Standard-Konfiguration für Worker pro Office
     DEFAULT_CONFIG = {
-        "coder": {"max_workers": 3},
+        # AENDERUNG 10.02.2026: Fix 48 — 8 Coder-Worker fuer parallelen PatchMode
+        "coder": {"max_workers": 8},
         "tester": {"max_workers": 2},
         "designer": {"max_workers": 1},
         "db_designer": {"max_workers": 1},

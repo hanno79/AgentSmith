@@ -45,7 +45,8 @@ from .dev_loop_run_helpers import (
     run_file_by_file_phase,
     handle_truncation_recovery,
     handle_success_finalization,
-    process_utds_feedback
+    process_utds_feedback,
+    run_smoke_test_gate
 )
 # AENDERUNG 09.02.2026: Fix 35 — Dateinamen-Extraktion fuer Ping-Pong-Erkennung
 from .dev_loop_helpers import extract_filenames_from_feedback
@@ -83,6 +84,13 @@ class DevLoop:
         manager.agent_tester = agent_tester
         manager.agent_security = agent_security
 
+        # AENDERUNG 09.02.2026: Fix 40b - Agent-Kontext VOR paralleler Generierung setzen
+        # ROOT-CAUSE-FIX:
+        # Symptom: Coder-LLM-Aufrufe in Iteration 0 werden als "Designer" getrackt
+        # Ursache: set_current_agent("Designer") aus orchestration_phases.py war noch aktiv
+        # Loesung: Explizit "Coder" setzen bevor der parallele File-Generator startet
+        self.set_current_agent("Coder", project_id)
+
         # AENDERUNG 31.01.2026: File-by-File Modus bei komplexen Projekten
         # AENDERUNG 01.02.2026: Parallele Generierung mit dynamischer Worker-Anzahl
         if should_use_file_by_file(manager.tech_blueprint, manager.config):
@@ -107,6 +115,10 @@ class DevLoop:
         _iteration_history = []           # Feedback-Historie pro Iteration
         _utds_protected_files = []        # UTDS-gefixte Dateien (geschuetzt fuer naechste Iteration)
         _file_feedback_counter = {}       # Ping-Pong Counter pro Datei
+        # AENDERUNG 10.02.2026: Fix 45 — Symptom-basierte Eskalation
+        # ROOT-CAUSE-FIX: Leere Seite ueber 3+ Iterationen → Modellwechsel erzwingen
+        # Unabhaengig vom Error-Hash (der sich jede Iteration aendert)
+        _empty_page_counter = 0
 
         while iteration < max_retries:
             manager.iteration = iteration
@@ -128,13 +140,46 @@ class DevLoop:
                 _utds_protected_files = list(set(_utds_modified_files)) if _utds_modified_files else []
                 _utds_modified_files = []
 
-                c_prompt = build_coder_prompt(
-                    manager, user_goal, feedback, iteration,
-                    utds_protected_files=_utds_protected_files,
-                    iteration_history=_iteration_history
-                )
-                manager.current_code, manager.agent_coder = run_coder_task(manager, project_rules, c_prompt, manager.agent_coder)
-                created_files, truncated_files = save_coder_output(manager, manager.current_code, manager.output_path, iteration, max_retries)
+                # AENDERUNG 10.02.2026: Fix 48 — Paralleler PatchMode
+                # ROOT-CAUSE-FIX:
+                # Symptom: Dateien werden abgeschnitten (z.B. `import { cl;`)
+                # Ursache: EIN LLM-Call fuer ALLE betroffenen Dateien ueberschreitet max_tokens
+                # Loesung: Aufteilen in Gruppen (max 3 Dateien) → parallele Coder-Calls
+                _is_patch = not getattr(manager, 'is_first_run', True)
+                _use_parallel = False
+
+                if _is_patch and feedback:
+                    from .dev_loop_parallel_patch import should_use_parallel_patch, run_parallel_patch
+                    from .dev_loop_coder_utils import _get_affected_files_from_feedback, _get_current_code_dict
+                    _pp_affected = _get_affected_files_from_feedback(feedback)
+                    _pp_code_dict = _get_current_code_dict(manager) if _pp_affected else {}
+                    _pp_config = manager.config.get("parallel_patch", {})
+
+                    if _pp_affected and should_use_parallel_patch(_pp_affected, _pp_code_dict, _pp_config):
+                        _use_parallel = True
+                        manager._ui_log("Coder", "ParallelPatchMode",
+                            f"Paralleler Patch fuer {len(_pp_affected)} Dateien in "
+                            f"{len(_pp_affected) // _pp_config.get('max_files_per_group', 3) + 1} Gruppen")
+                        manager.current_code, created_files = run_parallel_patch(
+                            manager, _pp_affected, _pp_code_dict, feedback, project_rules,
+                            user_goal=user_goal, iteration=iteration,
+                            utds_protected_files=_utds_protected_files,
+                            iteration_history=_iteration_history
+                        )
+                        truncated_files = []  # Truncation wird IN run_parallel_patch behandelt
+
+                if not _use_parallel:
+                    # STANDARD: Einzelner Coder (wie bisher)
+                    c_prompt = build_coder_prompt(
+                        manager, user_goal, feedback, iteration,
+                        utds_protected_files=_utds_protected_files,
+                        iteration_history=_iteration_history
+                    )
+                    manager.current_code, manager.agent_coder = run_coder_task(manager, project_rules, c_prompt, manager.agent_coder)
+                    created_files, truncated_files = save_coder_output(
+                        manager, manager.current_code, manager.output_path,
+                        iteration, max_retries, is_patch_mode=_is_patch
+                    )
 
                 # AENDERUNG 07.02.2026: Version-Normalisierung direkt nach Code-Speicherung
                 if manager.output_path and os.path.exists(str(manager.output_path)):
@@ -304,6 +349,20 @@ class DevLoop:
 
             if review_says_ok and not sandbox_failed and security_passed and has_minimum_files:
 
+                # AENDERUNG 10.02.2026: Fix 43 - Smoke-Test als blockierende Success-Bedingung
+                # ROOT-CAUSE-FIX:
+                # Symptom: DevLoop deklariert Success obwohl Projekt nicht im Browser startet
+                # Ursache: Kein echter Server-Start + Browser-Verify vor Success
+                # Loesung: Smoke-Test BLOCKIERT Success wenn App nicht startet/rendert
+                smoke_passed, smoke_feedback = run_smoke_test_gate(manager)
+                if not smoke_passed:
+                    feedback = smoke_feedback
+                    sandbox_failed = True
+                    sandbox_result = f"{sandbox_result}\n\n{smoke_feedback}" if sandbox_result else smoke_feedback
+                    iteration += 1
+                    manager._current_iteration = iteration
+                    continue
+
                 # AENDERUNG 08.02.2026: Fix 24 - Vier-Augen-Prinzip (Second Opinion Review)
                 vier_augen_enabled = manager.config.get("vier_augen", {}).get("enabled", False)
                 if vier_augen_enabled and review_verdict == "OK":
@@ -357,94 +416,59 @@ class DevLoop:
                 manager._current_iteration = iteration
                 continue
 
-            # AENDERUNG 01.02.2026: OrchestratorValidator prueft Review-Output
+            # AENDERUNG 01.02.2026: OrchestratorValidator (Fix 30: None-Filter)
             current_files = {}
-            # AENDERUNG 08.02.2026: None-Eintraege filtern (Fix 30)
-            for filepath in (created_files or []):
-                if not filepath:
-                    continue
-                full_path = os.path.join(manager.project_path, filepath)
-                if os.path.exists(full_path):
+            for fp in filter(None, created_files or []):
+                full_p = os.path.join(manager.project_path, fp)
+                if os.path.exists(full_p):
                     try:
-                        with open(full_path, "r", encoding="utf-8") as f:
-                            current_files[filepath] = f.read()
+                        with open(full_p, "r", encoding="utf-8") as f:
+                            current_files[fp] = f.read()
                     except Exception:
                         pass
 
             validator_decision = self._orchestrator_validator.validate_review_output(
-                review_output=review_output,
-                review_verdict=review_verdict,
-                sandbox_result=sandbox_result,
-                sandbox_failed=sandbox_failed,
-                current_code=manager.current_code,
-                current_files=current_files,
-                current_model=current_coder_model
-            )
+                review_output=review_output, review_verdict=review_verdict,
+                sandbox_result=sandbox_result, sandbox_failed=sandbox_failed,
+                current_code=manager.current_code, current_files=current_files,
+                current_model=current_coder_model)
 
             manager._ui_log("Orchestrator", "ValidationDecision", json.dumps({
-                "action": validator_decision.action.value,
-                "target_agent": validator_decision.target_agent,
-                "model_switch_recommended": validator_decision.model_switch_recommended,
-                "has_root_cause": validator_decision.root_cause is not None,
-                "error_hash": validator_decision.error_hash[:8] if validator_decision.error_hash else None
-            }, ensure_ascii=False))
+                "action": validator_decision.action.value, "target": validator_decision.target_agent,
+                "model_switch": validator_decision.model_switch_recommended,
+                "root_cause": validator_decision.root_cause is not None,
+                "error_hash": validator_decision.error_hash[:8] if validator_decision.error_hash else None}, ensure_ascii=False))
 
-            # AENDERUNG 01.02.2026: Documenter-Integration
             if hasattr(manager, 'doc_service') and manager.doc_service:
                 manager.doc_service.collect_orchestrator_decision(
-                    iteration=iteration + 1,
-                    action=validator_decision.action.value,
-                    target_agent=validator_decision.target_agent,
-                    root_cause=validator_decision.root_cause,
-                    model_switch=validator_decision.model_switch_recommended,
-                    error_hash=validator_decision.error_hash
-                )
+                    iteration=iteration + 1, action=validator_decision.action.value,
+                    target_agent=validator_decision.target_agent, root_cause=validator_decision.root_cause,
+                    model_switch=validator_decision.model_switch_recommended, error_hash=validator_decision.error_hash)
 
-            # AENDERUNG 01.02.2026: Memory-Agent-Integration - Root Cause aufzeichnen
             if validator_decision.root_cause:
                 try:
-                    memory_path = os.path.join(manager.base_dir, "memory", "global_memory.json")
-                    with ThreadPoolExecutor(max_workers=1) as executor:
-                        executor.submit(
-                            update_memory, memory_path,
-                            f"Orchestrator Root Cause (Iteration {iteration + 1}): {validator_decision.root_cause[:500]}",
-                            f"Action: {validator_decision.action.value}, Target: {validator_decision.target_agent}",
-                            sandbox_result[:500] if sandbox_result else ""
-                        )
-                    manager._ui_log("Memory", "OrchestratorDecision",
-                                   f"Root Cause Analyse aufgezeichnet (Iteration {iteration + 1})")
-                except Exception as mem_err:
-                    manager._ui_log("Memory", "Warning",
-                                   f"Memory-Aufzeichnung fehlgeschlagen: {mem_err}")
+                    mem_path = os.path.join(manager.base_dir, "memory", "global_memory.json")
+                    ThreadPoolExecutor(max_workers=1).submit(update_memory, mem_path,
+                        f"Root Cause (Iter {iteration+1}): {validator_decision.root_cause[:500]}",
+                        f"Action: {validator_decision.action.value}", sandbox_result[:500] if sandbox_result else "")
+                    manager._ui_log("Memory", "OrchestratorDecision", f"Root Cause aufgezeichnet (Iter {iteration+1})")
+                except Exception as e:
+                    manager._ui_log("Memory", "Warning", f"Memory-Aufzeichnung fehlgeschlagen: {e}")
 
-            # Nutze Validator-Feedback wenn Root Cause Analyse durchgefuehrt wurde
             if validator_decision.root_cause:
                 feedback = validator_decision.feedback
-                manager._ui_log("Orchestrator", "RootCauseEnhanced",
-                               "Orchestrator hat Root Cause Analyse zum Feedback hinzugefuegt")
+                manager._ui_log("Orchestrator", "RootCauseEnhanced", "Root Cause Analyse im Feedback")
             else:
-                feedback = build_feedback(
-                    manager,
-                    review_output,
-                    review_verdict,
-                    sandbox_failed,
-                    sandbox_result,
-                    test_summary,
-                    test_result,
-                    security_passed,
-                    security_rescan_vulns
-                )
+                feedback = build_feedback(manager, review_output, review_verdict, sandbox_failed,
+                    sandbox_result, test_summary, test_result, security_passed, security_rescan_vulns)
             manager._ui_log("Reviewer", "Feedback", feedback)
 
-            # AENDERUNG 31.01.2026: HELP_NEEDED Handler aufrufen
             if hasattr(manager, '_handle_help_needed_events'):
                 help_result = manager._handle_help_needed_events(iteration)
                 if help_result.get("actions"):
-                    manager._ui_log("HelpHandler", "Summary",
-                                   f"Aktionen: {len(help_result['actions'])} durchgefuehrt")
-                    for action in help_result.get("actions", []):
-                        if action.get("action") == "test_generator" and action.get("success"):
-                            feedback += "\n\nHINWEIS: Unit-Tests wurden automatisch generiert."
+                    manager._ui_log("HelpHandler", "Summary", f"Aktionen: {len(help_result['actions'])}")
+                    if any(a.get("action") == "test_generator" and a.get("success") for a in help_result["actions"]):
+                        feedback += "\n\nHINWEIS: Unit-Tests wurden automatisch generiert."
 
             # AENDERUNG 01.02.2026: UTDS Feedback Processing
             feedback, new_utds_files = process_utds_feedback(
@@ -468,60 +492,56 @@ class DevLoop:
             for _fname in list(_file_feedback_counter.keys()):
                 if _fname not in _feedback_files:
                     _file_feedback_counter[_fname] = 0
-            # Warnung bei Ping-Pong (>=3 aufeinanderfolgende Iterationen)
             _pp_files = [f for f, c in _file_feedback_counter.items() if c >= 3]
             if _pp_files:
-                manager._ui_log("Orchestrator", "PingPongDetected", json.dumps({
-                    "files": _pp_files,
-                    "counts": {f: _file_feedback_counter[f] for f in _pp_files}
-                }, ensure_ascii=False))
+                manager._ui_log("Orchestrator", "PingPongDetected", json.dumps(
+                    {"files": _pp_files, "counts": {f: _file_feedback_counter[f] for f in _pp_files}}, ensure_ascii=False))
 
-            # Sammle fehlgeschlagene Iterations-Daten fuer Dokumentation
             if hasattr(manager, 'doc_service') and manager.doc_service:
-                status = "partial" if not sandbox_failed else "failed"
                 manager.doc_service.collect_iteration(
-                    iteration=iteration + 1,
-                    changes=feedback[:300] if feedback else "Keine Aenderungen",
-                    status=status,
+                    iteration=iteration + 1, changes=feedback[:300] if feedback else "Keine",
+                    status="partial" if not sandbox_failed else "failed",
                     review_summary=review_output[:200] if review_output else "",
-                    test_result=test_summary[:100] if test_summary else ""
-                )
+                    test_result=test_summary[:100] if test_summary else "")
             try:
-                memory_path = os.path.join(manager.base_dir, "memory", "global_memory.json")
-                with ThreadPoolExecutor(max_workers=1) as executor:
-                    executor.submit(update_memory, memory_path, manager.current_code, review_output, sandbox_result)
-            except Exception as mem_err:
-                manager._ui_log("Memory", "Error", f"Memory-Operation fehlgeschlagen: {mem_err}")
+                ThreadPoolExecutor(max_workers=1).submit(update_memory, os.path.join(
+                    manager.base_dir, "memory", "global_memory.json"),
+                    manager.current_code, review_output, sandbox_result)
+            except Exception as e:
+                manager._ui_log("Memory", "Error", f"Memory fehlgeschlagen: {e}")
+
+            # AENDERUNG 10.02.2026: Fix 45 — Symptom-basierte Eskalation
+            # ROOT-CAUSE-FIX: Error-Hash aendert sich jede Iteration → kein automatischer Modellwechsel
+            # obwohl Symptom "leere Seite" seit 3+ Iterationen identisch ist
+            _combined_result = str(sandbox_result or "") + str(ui_result or "")
+            _combined_lower = _combined_result.lower()
+            if ("leere seite" in _combined_lower or "__next" in _combined_lower
+                    or "kein sichtbarer inhalt" in _combined_lower
+                    or "empty page" in _combined_lower):
+                _empty_page_counter += 1
+                if _empty_page_counter >= 3:
+                    manager._ui_log("Orchestrator", "SymptomEscalation",
+                        f"Leere Seite seit {_empty_page_counter} Iterationen - erzwinge Modellwechsel")
+                    model_attempt = max_model_attempts  # Trigger Modellwechsel
+                    _empty_page_counter = 0
+            else:
+                _empty_page_counter = 0
 
             model_attempt += 1
-            failed_attempts_history.append({
-                "model": current_coder_model,
-                "attempt": model_attempt,
-                "iteration": iteration + 1,
-                "feedback": feedback[:500] if feedback else "",
-                "sandbox_error": sandbox_result[:300] if sandbox_failed else ""
-            })
+            failed_attempts_history.append({"model": current_coder_model, "attempt": model_attempt,
+                "iteration": iteration + 1, "feedback": feedback[:500] if feedback else "",
+                "sandbox_error": sandbox_result[:300] if sandbox_failed else ""})
 
-            # AENDERUNG 01.02.2026: OrchestratorValidator kann Modellwechsel erzwingen
             if validator_decision.model_switch_recommended and validator_decision.error_hash:
                 manager.model_router.mark_error_tried(validator_decision.error_hash, current_coder_model)
                 manager._ui_log("Orchestrator", "ForceModelSwitch",
-                               f"Orchestrator erzwingt Modellwechsel fuer Fehler {validator_decision.error_hash[:8]}")
+                    f"Erzwingt Modellwechsel fuer Fehler {validator_decision.error_hash[:8]}")
                 model_attempt = max_model_attempts
 
             current_coder_model, model_attempt, models_used, feedback = handle_model_switch(
-                manager,
-                project_rules,
-                current_coder_model,
-                models_used,
-                failed_attempts_history,
-                model_attempt,
-                max_model_attempts,
-                feedback,
-                iteration,
-                sandbox_result=sandbox_result if sandbox_failed else "",
-                sandbox_failed=sandbox_failed
-            )
+                manager, project_rules, current_coder_model, models_used, failed_attempts_history,
+                model_attempt, max_model_attempts, feedback, iteration,
+                sandbox_result=sandbox_result if sandbox_failed else "", sandbox_failed=sandbox_failed)
 
             iteration += 1
             manager._current_iteration = iteration

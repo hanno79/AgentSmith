@@ -1,14 +1,17 @@
 /**
  * Author: rahn
  * Datum: 07.02.2026
- * Version: 1.0
+ * Version: 1.1
  * Beschreibung: Fix Office - Detailansicht fuer den Fix-Agenten.
  *               Zeigt Fix-Aktivitaet, modifizierte Dateien und Metriken.
  *               AENDERUNG 07.02.2026: Neue Komponente (Fix 14)
+ * AENDERUNG 10.02.2026: color-Prop aus AGENT_CONFIG (config.js) fuer Status Badge.
+ *               Interne Tailwind-Shade-Klassen (amber-950 etc.) passend zu AGENT_CONFIG.fix
  */
 
 import React from 'react';
 import { useOfficeCommon } from './hooks/useOfficeCommon';
+import { COLORS } from './constants/config';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft,
@@ -28,9 +31,11 @@ const FixOffice = ({
   logs = [],
   status = "Idle",
   fixData = {},
-  onBack
+  onBack,
+  color = 'amber'
 }) => {
   const { logRef, getStatusBadge, formatTime } = useOfficeCommon(logs);
+  const colorDef = COLORS[color] || COLORS.amber;
 
   // Fix-Daten extrahieren
   const fixCount = fixData.fixCount || 0;
@@ -48,9 +53,9 @@ const FixOffice = ({
   // Einzigartige modifizierte Dateien (Set)
   const uniqueFiles = [...new Set(modifiedFiles)];
 
-  // Status Badge
+  // AENDERUNG 10.02.2026: Status Badge nutzt zentrale Farb-Klasse
   const renderStatusBadge = () => {
-    const badge = getStatusBadge(status, 'bg-amber-500/20 text-amber-300 border-amber-500/20 font-semibold shadow-[0_0_8px_rgba(245,158,11,0.2)]');
+    const badge = getStatusBadge(status, `${colorDef.bg} ${colorDef.text} ${colorDef.border} font-semibold`);
     return (
       <span className={badge.className}>
         {badge.isActive ? 'Fixing Active' : badge.text}

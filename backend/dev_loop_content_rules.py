@@ -221,7 +221,8 @@ def extract_filenames_from_feedback(feedback: str) -> List[str]:
             filenames.add(fname.replace("\\", "/"))
 
     # Muster 2: [DATEI:xxx] Format aus Security-Feedback
-    datei_pattern = r'\[DATEI:([^\]]+)\]'
+    # AENDERUNG 10.02.2026: Fix 41b - Dynamic Routes sicher ([id], [slug])
+    datei_pattern = r'\[DATEI:(.+?\.[a-z]{1,4})\]'
     for match in re.finditer(datei_pattern, feedback):
         filenames.add(match.group(1).strip().replace("\\", "/"))
 

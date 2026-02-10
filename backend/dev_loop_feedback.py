@@ -38,8 +38,15 @@ def build_feedback(
     """
     feedback = ""
     if not security_passed and security_rescan_vulns:
+        # AENDERUNG 10.02.2026: Fix 42b - affected_file als [DATEI:xxx] einfuegen
+        # ROOT-CAUSE-FIX:
+        # Symptom: PatchMode erkennt keine Dateien aus Security-Feedback
+        # Ursache: affected_file aus extract_vulnerabilities() wurde nicht ins Feedback geschrieben
+        # Loesung: [DATEI:xxx] explizit voranstellen wenn affected_file vorhanden
         security_feedback = "\n".join([
-            f"- [{v.get('severity', 'unknown').upper()}] {v.get('description', '')}\n"
+            f"- [{v.get('severity', 'unknown').upper()}] "
+            f"{'[DATEI:' + v['affected_file'] + '] ' if v.get('affected_file') and '[DATEI:' not in v.get('description', '') else ''}"
+            f"{v.get('description', '')}\n"
             f"  → LÖSUNG: {v.get('fix', 'Bitte beheben')}"
             for v in security_rescan_vulns
         ])

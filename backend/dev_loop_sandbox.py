@@ -230,93 +230,103 @@ def run_sandbox_and_tests(
 
     if use_docker:
         try:
-            executor = create_docker_executor(
-                project_path=manager.project_path,
-                tech_blueprint=manager.tech_blueprint,
-                docker_config=docker_config
-            )
+            # AENDERUNG 10.02.2026: Fix 50 - Persistenten Container bevorzugen
+            container = getattr(manager, '_docker_container', None)
+            _using_persistent_container = False
 
-            if executor.is_docker_available():
-                manager._ui_log("Docker", "Status", "Docker-Isolation aktiviert")
+            if container and container.is_healthy():
+                manager._ui_log("Docker", "Status",
+                    "Persistenter Docker-Container aktiv (Fix 50)")
+                _using_persistent_container = True
+                # Install + Test via exec im bestehenden Container
+                manager._ui_log("Docker", "Info",
+                    "Installiere Dependencies im persistenten Container...")
+                install_result = container.install_deps()
+                if install_result.success or _is_harmless_warning_only(
+                        install_result.stderr, install_result.stdout):
+                    manager._ui_log("Docker", "Info", "Fuehre Tests im Container aus...")
+                    test_result = container.run_tests()
+                    # Konvertiere zu DockerResult-kompatiblem Format
+                    combined_result = type('DockerResult', (), {
+                        'success': test_result.success or _is_harmless_warning_only(
+                            test_result.stderr, test_result.stdout),
+                        'stdout': install_result.stdout + "\n" + test_result.stdout,
+                        'stderr': install_result.stderr + "\n" + test_result.stderr,
+                        'duration_seconds': install_result.duration_seconds + test_result.duration_seconds
+                    })()
+                else:
+                    combined_result = install_result
+            else:
+                # Fallback: Einmal-Container (bestehende Logik)
+                executor = create_docker_executor(
+                    project_path=manager.project_path,
+                    tech_blueprint=manager.tech_blueprint,
+                    docker_config=docker_config
+                )
+
+                if not executor.is_docker_available():
+                    raise RuntimeError("Docker nicht verfuegbar")
+
+                manager._ui_log("Docker", "Status", "Docker-Isolation aktiviert (Einmal-Container)")
 
                 # AENDERUNG 01.02.2026: Install + Test in EINEM Container
                 # Vorher: getrennte Aufrufe fuehrten zu "No module named pytest"
                 manager._ui_log("Docker", "Info", "Installiere Dependencies und fuehre Tests aus...")
                 combined_result = executor.install_and_test()
 
-                if combined_result.success:
-                    manager._ui_log("Docker", "Result",
-                        f"Docker Install+Test erfolgreich in {combined_result.duration_seconds:.1f}s")
-                    docker_ran_and_succeeded = True
-                # AENDERUNG 02.02.2026: Harmlose Warnungen (pip root, npm warn) nicht als Fehler behandeln
-                # Problem: pip gibt immer "Running as root" Warnung in Docker aus -> endloser Loop
-                # Loesung: Pruefe ob Output NUR Warnungen enthaelt, keine echten Fehler
-                elif _is_harmless_warning_only(combined_result.stderr, combined_result.stdout):
-                    manager._ui_log("Docker", "Info",
-                        f"Docker Install+Test OK (mit Warnungen) in {combined_result.duration_seconds:.1f}s")
-                    manager._ui_log("Docker", "Warning",
-                        f"Harmlose Warnung ignoriert:\n{combined_result.stderr[:200]}...")
-                    docker_ran_and_succeeded = True
-                else:
-                    # AENDERUNG 02.02.2026 v1.4: stdout + stderr kombinieren fuer vollstaendige Fehleranalyse
-                    # Problem: pytest-Fehler sind in stdout, pip-Warnungen in stderr
-                    # Reviewer sah nur stderr und konnte echte Fehler nicht diagnostizieren
-                    # AENDERUNG 02.02.2026 v1.5: pytest-Fehler separat extrahieren - sie werden oft
-                    # durch pip-Download-Logs abgeschnitten und der Reviewer sieht nur pip-Warnungen
-                    combined_error = ""
-                    stdout_content = combined_result.stdout.strip()
-                    stderr_content = combined_result.stderr.strip()
+            # Ab hier: combined_result aus BEIDEN Pfaden (persistent ODER Einmal-Container)
+            if combined_result.success:
+                manager._ui_log("Docker", "Result",
+                    f"Docker Install+Test erfolgreich in {combined_result.duration_seconds:.1f}s")
+                docker_ran_and_succeeded = True
+            # AENDERUNG 02.02.2026: Harmlose Warnungen (pip root, npm warn) nicht als Fehler behandeln
+            elif _is_harmless_warning_only(combined_result.stderr, combined_result.stdout):
+                manager._ui_log("Docker", "Info",
+                    f"Docker Install+Test OK (mit Warnungen) in {combined_result.duration_seconds:.1f}s")
+                docker_ran_and_succeeded = True
+            else:
+                # AENDERUNG 02.02.2026 v1.4: stdout + stderr kombinieren
+                combined_error = ""
+                stdout_content = combined_result.stdout.strip()
+                stderr_content = combined_result.stderr.strip()
 
-                    # v1.5: Extrahiere pytest-Ergebnisse separat (am Ende des Outputs)
-                    pytest_section = ""
-                    if stdout_content:
-                        # Suche nach pytest-Output Markern
-                        pytest_markers = ["= FAILURES =", "= ERRORS =", "= short test summary",
-                                          "FAILED", "ERROR", "passed", "failed"]
-                        stdout_lines = stdout_content.split('\n')
-                        pytest_start_idx = -1
-                        for idx, line in enumerate(stdout_lines):
-                            if any(marker in line for marker in pytest_markers):
-                                pytest_start_idx = idx
-                                break
+                pytest_section = ""
+                if stdout_content:
+                    pytest_markers = ["= FAILURES =", "= ERRORS =", "= short test summary",
+                                      "FAILED", "ERROR", "passed", "failed"]
+                    stdout_lines = stdout_content.split('\n')
+                    pytest_start_idx = -1
+                    for idx, line in enumerate(stdout_lines):
+                        if any(marker in line for marker in pytest_markers):
+                            pytest_start_idx = idx
+                            break
 
-                        if pytest_start_idx >= 0:
-                            pytest_section = "\n".join(stdout_lines[pytest_start_idx:])[:1000]
-                            combined_error += f"=== PYTEST-ERGEBNISSE (WICHTIG!) ===\n{pytest_section}\n\n"
+                    if pytest_start_idx >= 0:
+                        pytest_section = "\n".join(stdout_lines[pytest_start_idx:])[:1000]
+                        combined_error += f"=== PYTEST-ERGEBNISSE (WICHTIG!) ===\n{pytest_section}\n\n"
 
-                        # Zeige auch den pip-Teil (gekuerzt)
-                        pip_part = "\n".join(stdout_lines[:min(15, pytest_start_idx if pytest_start_idx >= 0 else len(stdout_lines))])
-                        combined_error += f"=== STDOUT (pip install) ===\n{pip_part[:500]}\n"
+                    pip_part = "\n".join(stdout_lines[:min(15, pytest_start_idx if pytest_start_idx >= 0 else len(stdout_lines))])
+                    combined_error += f"=== STDOUT (pip install) ===\n{pip_part[:500]}\n"
 
-                    if stderr_content:
-                        combined_error += f"=== STDERR (Warnungen) ===\n{stderr_content[:500]}"
+                if stderr_content:
+                    combined_error += f"=== STDERR (Warnungen) ===\n{stderr_content[:500]}"
 
-                    if not combined_error:
-                        combined_error = "Keine Output-Details verfuegbar"
+                if not combined_error:
+                    combined_error = "Keine Output-Details verfuegbar"
 
-                    manager._ui_log("Docker", "Warning",
-                        f"Docker Install+Test fehlgeschlagen:\n{combined_error[:1500]}")
-                    docker_fail_result = {
-                        "unit_tests": {"status": "FAIL", "summary": combined_error[:800], "passed": 0, "failed_count": 0, "details": combined_result.stdout},
-                        "ui_tests": {"status": "SKIP", "issues": [], "screenshot": None, "has_visible_content": True},
-                        "overall_status": "FAIL"
-                    }
+                manager._ui_log("Docker", "Warning",
+                    f"Docker Install+Test fehlgeschlagen:\n{combined_error[:1500]}")
+                docker_fail_result = {
+                    "unit_tests": {"status": "FAIL", "summary": combined_error[:800], "passed": 0, "failed_count": 0, "details": combined_result.stdout},
+                    "ui_tests": {"status": "SKIP", "issues": [], "screenshot": None, "has_visible_content": True},
+                    "overall_status": "FAIL"
+                }
+                if executor:
                     try:
                         executor.cleanup()
                     except Exception as cleanup_err:
                         logger.warning("Docker-Cleanup nach Test-Fehler fehlgeschlagen: %s", cleanup_err)
-                    # AENDERUNG 02.02.2026 v1.4: stderr UND stdout kombiniert zurueckgeben
-                    return (combined_error[:1500], True, docker_fail_result, {"status": "FAIL", "issues": [combined_error[:500]], "screenshot": None}, "Docker-Tests fehlgeschlagen")
-            else:
-                if docker_config.get("fallback_to_host", True):
-                    manager._ui_log("Docker", "Warning",
-                        "Docker nicht verfuegbar - Fallback auf Host-Ausfuehrung")
-                else:
-                    manager._ui_log("Docker", "Error",
-                        "Docker nicht verfuegbar und Fallback deaktiviert")
-                    return ("Docker nicht verfuegbar", True,
-                            {"unit_tests": {"status": "ERROR"}, "ui_tests": {"status": "ERROR"}},
-                            {"status": "ERROR"}, "Docker nicht verfuegbar")
+                return (combined_error[:1500], True, docker_fail_result, {"status": "FAIL", "issues": [combined_error[:500]], "screenshot": None}, "Docker-Tests fehlgeschlagen")
         except Exception as docker_err:
             manager._ui_log("Docker", "Error", f"Docker-Fehler: {docker_err}")
             if not docker_config.get("fallback_to_host", True):
@@ -405,12 +415,31 @@ def run_sandbox_and_tests(
     manager._ui_log("Tester", "Status", f"Starte Tests fuer Projekt-Typ '{project_type}'...")
     manager._update_worker_status("tester", "working", f"Teste {project_type}...", manager.model_router.get_model("tester") if manager.model_router else "")
     ui_result = {"status": "SKIP", "issues": [], "screenshot": None}
+    # AENDERUNG 10.02.2026: Fix 43 - Docker-Erfolg ueberspringt UI-Tests NICHT MEHR
+    # bei Server-Projekten. Docker prueft nur npm install + npm test, NICHT ob
+    # die App tatsaechlich im Browser startet und funktioniert.
+    # ROOT-CAUSE-FIX:
+    # Symptom: Projekte werden als "Success" deklariert obwohl sie nicht starten
+    # Ursache: docker_ran_and_succeeded skippt test_project() komplett
+    # Loesung: UI-Tests IMMER ausfuehren wenn Projekt einen Server braucht
+    _needs_server_test = False
     if docker_ran_and_succeeded:
-        ui_result = {"status": "OK", "issues": [], "screenshot": None}
-        test_summary = "Docker-Tests erfolgreich - Host UI-Tests uebersprungen."
+        try:
+            from server_runner import requires_server
+            _needs_server_test = requires_server(manager.tech_blueprint)
+        except ImportError:
+            pass
+        if not _needs_server_test:
+            ui_result = {"status": "OK", "issues": [], "screenshot": None}
+            test_summary = "Docker-Tests erfolgreich - kein Server noetig."
+        else:
+            manager._ui_log("Tester", "Info",
+                "Docker OK - fuehre trotzdem Server+Browser-Test durch")
 
+    # UI-Test immer ausfuehren AUSSER bei Nicht-Server-Projekten mit Docker-Erfolg
+    skip_ui_test = docker_ran_and_succeeded and not _needs_server_test
     try:
-        if not docker_ran_and_succeeded:
+        if not skip_ui_test:
             ui_result = test_project(manager.project_path, manager.tech_blueprint, manager.config)
             test_summary = summarize_ui_result(ui_result)
         manager._ui_log("Tester", "Result", test_summary)

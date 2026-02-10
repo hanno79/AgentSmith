@@ -27,14 +27,28 @@ import RightPanel from './components/RightPanel';
 import AgentRouter, { isAgentRoute } from './components/AgentRouter';
 import useWebSocket from './hooks/useWebSocket';
 import useConfig from './hooks/useConfig';
-import { API_BASE } from './constants/config';
+import { API_BASE, COLORS } from './constants/config';
+
+// AENDERUNG 10.02.2026: CSS Custom Properties aus COLORS generieren (fuer Scrollbar-Farben)
+const injectColorCssVars = () => {
+  Object.entries(COLORS).forEach(([key, val]) => {
+    if (val.rgb) {
+      document.documentElement.style.setProperty(`--color-${key}-rgb`, val.rgb);
+    }
+  });
+};
 
 const App = () => {
+  // AENDERUNG 10.02.2026: Farb-CSS-Variablen einmalig auf :root setzen
+  useEffect(() => { injectColorCssVars(); }, []);
+
   // Navigation State
   const [currentRoom, setCurrentRoom] = useState('mission-control');
 
   // Mission Control State
   const [goal, setGoal] = useState('');
+  // AENDERUNG 09.02.2026: Benutzerdefinierter Projektname
+  const [projectName, setProjectName] = useState('');
   // ÄNDERUNG 29.01.2026: Discovery Briefing für Agent-Kontext speichern
   const [discoveryBriefing, setDiscoveryBriefing] = useState(null);
   const [logs, setLogs] = useState([]);
@@ -274,7 +288,7 @@ const App = () => {
       try {
         const saved = localStorage.getItem('agent_office_state');
         if (saved) {
-          const { goal: savedGoal, status: savedStatus, logs: savedLogs, timestamp } = JSON.parse(saved);
+          const { goal: savedGoal, projectName: savedProjectName, status: savedStatus, logs: savedLogs, timestamp } = JSON.parse(saved);
 
           // Nur wiederherstellen wenn nicht älter als 24 Stunden
           const age = Date.now() - (timestamp || 0);
@@ -283,6 +297,8 @@ const App = () => {
           if (age < maxAge) {
             console.log('[Session] localStorage-State wiederhergestellt');
             if (savedGoal) setGoal(savedGoal);
+            // AENDERUNG 09.02.2026: Projektname wiederherstellen
+            if (savedProjectName) setProjectName(savedProjectName);
             // ÄNDERUNG 28.01.2026: Status wiederherstellen für Reset-Button
             if (savedStatus && savedStatus !== 'Idle') setStatus(savedStatus);
             if (savedLogs?.length > 0) setLogs(savedLogs.slice(-100));
@@ -306,6 +322,7 @@ const App = () => {
     if (goal || logs.length > 0) {
       const stateToSave = {
         goal,
+        projectName, // AENDERUNG 09.02.2026: Projektname mitspeichern
         status, // ÄNDERUNG 28.01.2026: Status mitspeichern für Reset-Button
         logs: logs.slice(-200), // Max 200 Logs speichern
         timestamp: Date.now()
@@ -320,12 +337,17 @@ const App = () => {
   }, [goal, logs, status]);
 
   // Deploy-Handler: Startet die Agenten-Pipeline
+  // AENDERUNG 09.02.2026: project_name im POST-Body mitschicken
   const handleDeploy = async () => {
     if (!goal) return;
     setStatus('Working');
     setLogs([]);
     try {
-      await axios.post(`${API_BASE}/run`, { goal });
+      const payload = { goal };
+      if (projectName.trim()) {
+        payload.project_name = projectName.trim();
+      }
+      await axios.post(`${API_BASE}/run`, payload);
     } catch (err) {
       console.error("Backend-Verbindung fehlgeschlagen:", err);
       setLogs(prev => [...prev, { agent: 'System', event: 'Error', message: 'Keine Verbindung zum Backend.' }]);
@@ -352,6 +374,7 @@ const App = () => {
 
       // Frontend States zurücksetzen
       setGoal('');
+      setProjectName('');
       setLogs([]);
       setStatus('Idle');
       setOutputMode('user');
@@ -437,6 +460,8 @@ const App = () => {
         <MissionControl
           goal={goal}
           onGoalChange={setGoal}
+          projectName={projectName}
+          onProjectNameChange={setProjectName}
           onDeploy={handleDeploy}
           onReset={handleReset}
           status={status}

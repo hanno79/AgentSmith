@@ -10,6 +10,13 @@ Beschreibung: Planner Default-Plan Logik - Template-basierte und generische Fall
 
 from typing import Any, Dict, List, Optional
 
+# AENDERUNG 10.02.2026: Fix 49 — Auf Modul-Ebene fuer Import aus anderen Modulen
+# Template-Config-Dateien die bereits vom Template kopiert wurden und NICHT regeneriert werden sollen
+PROTECTED_CONFIGS = {
+    "tailwind.config.js", "postcss.config.js", "next.config.js",
+    "jsconfig.json", "tsconfig.json", "vite.config.js"
+}
+
 
 def _create_template_based_plan(blueprint: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
     """
@@ -40,12 +47,6 @@ def _create_template_based_plan(blueprint: Dict[str, Any]) -> Optional[List[Dict
 
     project_type = blueprint.get("project_type", "")
     db_type = blueprint.get("database", "none")
-
-    # Template-Config-Dateien die bereits vom Template kopiert wurden
-    PROTECTED_CONFIGS = {
-        "tailwind.config.js", "postcss.config.js", "next.config.js",
-        "jsconfig.json", "tsconfig.json", "vite.config.js"
-    }
 
     files = []
 

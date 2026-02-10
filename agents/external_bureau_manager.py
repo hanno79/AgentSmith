@@ -26,6 +26,9 @@ from external_specialists.base_specialist import (
 from external_specialists.coderabbit_specialist import CodeRabbitSpecialist
 from external_specialists.exa_specialist import EXASpecialist
 from external_specialists.augment_specialist import AugmentSpecialist
+# AENDERUNG 10.02.2026: Fix 47b — Context7 + Ref.tools Specialists
+from external_specialists.context7_specialist import Context7Specialist
+from external_specialists.reftools_specialist import ReftoolsSpecialist
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +92,24 @@ class ExternalBureauManager:
                 logger.info("External Bureau: Augment Context Specialist geladen")
             except Exception as e:
                 logger.error(f"Augment Context Initialisierung fehlgeschlagen: {e}")
+
+        # AENDERUNG 10.02.2026: Fix 47b — Context7 Doc-Enrichment
+        context7_config = self.config.get("context7_docs", {})
+        if context7_config.get("enabled", False):
+            try:
+                self.specialists["context7"] = Context7Specialist(context7_config)
+                logger.info("External Bureau: Context7 Docs Specialist geladen")
+            except Exception as e:
+                logger.error(f"Context7 Initialisierung fehlgeschlagen: {e}")
+
+        # AENDERUNG 10.02.2026: Fix 47b — Ref.tools Doc-Enrichment
+        reftools_config = self.config.get("reftools_docs", {})
+        if reftools_config.get("enabled", False):
+            try:
+                self.specialists["reftools"] = ReftoolsSpecialist(reftools_config)
+                logger.info("External Bureau: Ref.tools Docs Specialist geladen")
+            except Exception as e:
+                logger.error(f"Ref.tools Initialisierung fehlgeschlagen: {e}")
 
         logger.info(f"External Bureau: {len(self.specialists)} Specialist(s) initialisiert")
 

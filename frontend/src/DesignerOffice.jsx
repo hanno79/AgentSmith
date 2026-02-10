@@ -8,6 +8,8 @@
 
 import React from 'react';
 import { useOfficeCommon } from './hooks/useOfficeCommon';
+// AENDERUNG 10.02.2026: Zentrale Farben fuer Status Badge
+import { COLORS } from './constants/config';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft,
@@ -44,10 +46,11 @@ const DesignerOffice = ({
   model = ''
 }) => {
   const { logRef, getStatusBadge, formatTime } = useOfficeCommon(logs);
+  const colorDef = COLORS[color] || COLORS.pink;
 
-  // Status Badge Rendering Helper
+  // AENDERUNG 10.02.2026: Status Badge nutzt zentrale Farb-Klasse
   const renderStatusBadge = () => {
-    const badge = getStatusBadge(status, 'bg-pink-500/20 text-pink-400 border-pink-500/20');
+    const badge = getStatusBadge(status, `${colorDef.bg} ${colorDef.text} ${colorDef.border}`);
     return (
       <span className={badge.className}>
         {badge.isActive ? 'Creative Mode' : badge.text}

@@ -47,7 +47,8 @@ from exceptions import SecurityError
 # ÄNDERUNG 24.01.2026: Import aus zentraler file_utils (REGEL 13 - Single Source of Truth)
 from file_utils import find_html_file
 # AENDERUNG 09.02.2026: Fix 36 — System-Level Blacklist
-from backend.dev_loop_helpers import is_forbidden_file
+# AENDERUNG 10.02.2026: Fix 48 — validate_before_write fuer Truncation-Guard
+from backend.dev_loop_helpers import is_forbidden_file, validate_before_write
 
 # ÄNDERUNG 29.01.2026: Discovery Session für strukturierte Projektaufnahme
 from discovery_session import DiscoverySession
@@ -64,11 +65,48 @@ def load_config():
         return yaml.safe_load(f)
 
 
-def save_multi_file_output(project_path: str, code_output: str, default_filename: str):
+def _get_existing_files(project_path: str) -> list:
+    """Listet alle Projekt-Dateien relativ zum project_path (Fix 44)."""
+    files = []
+    skip_dirs = {'node_modules', '.next', '.git', '__pycache__', 'screenshots', 'data'}
+    for root, dirs, filenames in os.walk(project_path):
+        dirs[:] = [d for d in dirs if d not in skip_dirs]
+        for fn in filenames:
+            rel = os.path.relpath(os.path.join(root, fn), project_path)
+            files.append(rel.replace("\\", "/"))
+    return files
+
+
+def _find_similar_file(new_filename: str, existing_files: list):
+    """
+    AENDERUNG 10.02.2026: Fix 44 — Phantom-Datei-Erkennung.
+    Prueft ob neue Datei einer existierenden aehnlich ist (gleicher Basename, aehnlicher Pfad).
+    Returns: Pfad der existierenden Datei oder None.
+    """
+    new_norm = new_filename.replace("\\", "/")
+    new_base = os.path.basename(new_norm)
+    new_parts = os.path.dirname(new_norm).split("/")
+    for existing in existing_files:
+        ex_norm = existing.replace("\\", "/")
+        if ex_norm == new_norm:
+            continue  # Exakt gleich = kein Phantom
+        if os.path.basename(ex_norm) != new_base:
+            continue  # Anderer Basename = kein Phantom
+        ex_parts = os.path.dirname(ex_norm).split("/")
+        if len(new_parts) == len(ex_parts):
+            diffs = sum(1 for a, b in zip(new_parts, ex_parts) if a != b)
+            if diffs <= 1:
+                return existing
+    return None
+
+
+def save_multi_file_output(project_path: str, code_output: str,
+                           default_filename: str, is_patch_mode: bool = False):
     """
     Parst den Output des Coders und speichert mehrere Dateien,
     wenn das Format ### FILENAME: ... gefunden wird.
     Sonst Fallback auf default_filename.
+    AENDERUNG 10.02.2026: Fix 44 — is_patch_mode Parameter fuer Phantom-Datei-Schutz.
     """
     import re
     # Pattern: ### [KEYWORD:] Pfad/zur/Datei.ext
@@ -163,6 +201,20 @@ def save_multi_file_output(project_path: str, code_output: str, default_filename
             log_event("FileSystem", "SkipDirectory", f"Versuch, Verzeichnis als Datei zu öffnen: {filename}")
             continue
 
+        # AENDERUNG 10.02.2026: Fix 44 — Phantom-Datei-Schutz im PatchMode
+        # ROOT-CAUSE-FIX: Coder erstellt neue Dateien statt existierende zu patchen
+        # z.B. app/api/tasks/route.js statt app/api/todos/route.js
+        # Symptom: Zwei fast identische Route-Dateien, Security-Findings beziehen sich auf Original
+        if not os.path.exists(full_path) and is_patch_mode:
+            existing_project_files = _get_existing_files(project_path)
+            similar = _find_similar_file(filename, existing_project_files)
+            if similar:
+                console.print(f"[yellow]PHANTOM-DATEI ERKANNT: {filename} aehnelt {similar}[/yellow]")
+                console.print(f"[yellow]→ Leite Inhalt an existierende Datei um: {similar}[/yellow]")
+                log_event("FileSystem", "PhantomFileRedirect", f"{filename} → {similar}")
+                full_path = safe_join_path(project_path, similar)
+                filename = similar
+
         # Warnung wenn Dateiname keine Extension hat (potentieller LLM-Fehler)
         if '.' not in os.path.basename(filename):
             console.print(f"[yellow]⚠️ Warnung - Dateiname ohne Extension: {filename}[/yellow]")
@@ -186,6 +238,24 @@ def save_multi_file_output(project_path: str, code_output: str, default_filename
                     console.print(f"[green]Dependency-Merge: {filename} (Template + Coder)[/green]")
             except Exception as merge_err:
                 console.print(f"[yellow]Dependency-Merge fehlgeschlagen: {merge_err}[/yellow]")
+
+        # AENDERUNG 10.02.2026: Fix 48 — Truncation-Guard vor Datei-Schreibung
+        # ROOT-CAUSE-FIX: Abgeschnittene Dateien (z.B. `import { cl;`) werden auf Disk geschrieben
+        # und bleiben dort ueber mehrere Iterationen bestehen → Endlosschleife
+        # Loesung: Valide pruefen VOR dem Schreiben, alte Version behalten bei Truncation
+        if is_patch_mode:
+            old_content = ""
+            if os.path.exists(full_path):
+                try:
+                    with open(full_path, "r", encoding="utf-8", errors="replace") as f_old:
+                        old_content = f_old.read()
+                except Exception:
+                    pass
+            is_valid, reason = validate_before_write(filename, content, old_content)
+            if not is_valid:
+                console.print(f"[yellow]TRUNCATION-GUARD: {filename} nicht geschrieben - {reason}[/yellow]")
+                log_event("FileSystem", "TruncationBlocked", f"{filename}: {reason}")
+                continue  # Datei NICHT schreiben, alte Version behalten
 
         with open(full_path, "w", encoding="utf-8") as f:
             f.write(content)

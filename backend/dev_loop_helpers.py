@@ -416,6 +416,98 @@ def _check_for_truncation(files_dict: Dict[str, str]) -> List[Tuple[str, str]]:
 
 
 # =========================================================================
+# AENDERUNG 10.02.2026: Fix 48 — Truncation-Guard VOR Datei-Schreibung
+# ROOT-CAUSE-FIX:
+# Symptom: Abgeschnittene JS-Dateien werden auf Disk geschrieben (z.B. `import { cl;`)
+# Ursache: _is_python_file_complete() prueft NUR .py-Dateien, JS/JSX wird ignoriert
+# Loesung: validate_before_write() mit JS-Klammer-Balancierung + Schrumpf-Erkennung
+# =========================================================================
+
+def _is_js_file_complete(content: str) -> Tuple[bool, str]:
+    """
+    Prueft ob eine JS/JSX/TS-Datei strukturell vollstaendig ist.
+
+    Checks:
+    - Balancierte Klammern {}, [], ()
+    - Ungeschlossene String-Literale
+    - Abruptes Ende (endet mit offenem Konstrukt)
+
+    Returns:
+        Tuple (is_complete, reason)
+    """
+    if not content or not content.strip():
+        return False, "Datei ist leer"
+
+    # Entferne Kommentare und Strings fuer Klammer-Zaehlung
+    # Einfach: Zaehle nur oeffnende/schliessende Klammern
+    open_braces = content.count('{')
+    close_braces = content.count('}')
+    open_parens = content.count('(')
+    close_parens = content.count(')')
+    open_brackets = content.count('[')
+    close_brackets = content.count(']')
+
+    # Signifikante Imbalance = Truncation (kleine Diff koennte Template-Literal sein)
+    brace_diff = open_braces - close_braces
+    if brace_diff > 2:
+        return False, f"Unbalancierte Klammern: {open_braces} oeffnend, {close_braces} schliessend (Diff: {brace_diff})"
+
+    paren_diff = open_parens - close_parens
+    if paren_diff > 2:
+        return False, f"Unbalancierte Parenthesen: {open_parens} oeffnend, {close_parens} schliessend (Diff: {paren_diff})"
+
+    bracket_diff = open_brackets - close_brackets
+    if bracket_diff > 2:
+        return False, f"Unbalancierte Brackets: {open_brackets} oeffnend, {close_brackets} schliessend (Diff: {bracket_diff})"
+
+    # Pruefe auf abruptes Ende
+    content_stripped = content.rstrip()
+    truncation_endings = ('{', '(', '[', ',', ':', '=', '=>', '&&', '||', '+', 'import ', 'from ')
+    if any(content_stripped.endswith(ending) for ending in truncation_endings):
+        return False, f"Endet mit offenem Konstrukt: ...{content_stripped[-40:]}"
+
+    # Pruefe auf abgeschnittenen Import (wie `import { cl;`)
+    import_pattern = re.compile(r'import\s*\{[^}]*;\s*$', re.MULTILINE)
+    if import_pattern.search(content):
+        return False, "Abgeschnittener Import-Statement erkannt"
+
+    return True, "Strukturell OK"
+
+
+def validate_before_write(filename: str, content: str, old_content: str = None) -> Tuple[bool, str]:
+    """
+    Prueft ob Datei-Inhalt valide ist VOR dem Schreiben.
+    Bei Truncation: Return (False, reason) → alte Version behalten.
+
+    Prueft:
+    - Python-Dateien: ast.parse() via _is_python_file_complete()
+    - JS/JSX/TS-Dateien: Klammer-Balancierung via _is_js_file_complete()
+    - Alle Dateien: Schrumpf-Erkennung (>70% kuerzer als Original)
+
+    Returns: (is_valid, reason)
+    """
+    # Python-Check
+    if filename.endswith('.py'):
+        is_complete, reason = _is_python_file_complete(content, filename)
+        if not is_complete:
+            return False, f"Truncation erkannt: {reason}"
+
+    # JS/JSX/TS-Check
+    js_extensions = ('.js', '.jsx', '.ts', '.tsx', '.mjs')
+    if any(filename.endswith(ext) for ext in js_extensions):
+        is_complete, reason = _is_js_file_complete(content)
+        if not is_complete:
+            return False, f"Truncation erkannt: {reason}"
+
+    # Schrumpf-Erkennung: Neuer Inhalt deutlich kuerzer als alter
+    if old_content and len(old_content) > 50 and len(content) < len(old_content) * 0.3:
+        shrink_pct = 100 - int(len(content) / len(old_content) * 100)
+        return False, f"Inhalt um {shrink_pct}% geschrumpft ({len(content)} vs {len(old_content)} Zeichen)"
+
+    return True, "OK"
+
+
+# =========================================================================
 # ÄNDERUNG 31.01.2026: Unicode-Sanitization gegen Free-Tier LLM Emoji-Output
 # =========================================================================
 

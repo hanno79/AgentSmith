@@ -28,14 +28,10 @@ import {
   RefreshCw,
   ArrowLeft  // ÄNDERUNG 30.01.2026: Zurück-Button
 } from 'lucide-react';
+// AENDERUNG 10.02.2026: Lokale PLATINUM-Kopie entfernt → zentral aus config.js
+import { COLORS } from './constants/config';
 
-// Platinum Farben
-const PLATINUM = {
-  border: 'border-white/30',
-  text: 'text-white',
-  bg: 'bg-white/10',
-  glow: '0 0 30px rgba(255, 255, 255, 0.8), 0 0 15px rgba(255, 255, 255, 0.5), 0 0 5px rgba(255, 255, 255, 0.3)',
-};
+const PLATINUM = COLORS.platinum;
 
 /**
  * DocumentationOffice Komponente

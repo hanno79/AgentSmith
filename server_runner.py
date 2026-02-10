@@ -2,12 +2,13 @@
 """
 Author: rahn
 Datum: 29.01.2026
-Version: 1.2
+Version: 1.3
 Beschreibung: Server Runner - Startet Projekt-Server und wartet auf Verfügbarkeit.
               Ermöglicht stabile Tests gegen laufende Server.
               ÄNDERUNG 29.01.2026: app_type-basierte Server-Erkennung (Desktop/CLI brauchen keinen Server)
               ÄNDERUNG 06.02.2026: Pre-Server Dependency-Installation, Framework-aware Timeouts,
                                    App-Readiness-Check nach Port-Bind (Root-Cause-Fix für Next.js-Fehler)
+              AENDERUNG 10.02.2026: Fix 50 - Docker Project Container Modus (Server+Deps in Docker)
 """
 
 import os
@@ -66,6 +67,10 @@ class ServerInfo:
     port: int
     url: str
     project_path: str
+    # AENDERUNG 10.02.2026: Fix 43 - Startup-Output fuer Compile-Error-Erkennung
+    startup_output: str = ""
+    # AENDERUNG 10.02.2026: Fix 50 - Optional Docker-Container-Referenz
+    _docker_container: Any = None
 
 
 def is_port_available(port: int, host: str = "localhost") -> bool:
@@ -377,15 +382,68 @@ def _wait_for_app_ready(url: str, timeout: int = 15) -> bool:
     return False
 
 
-def start_server(project_path: str, tech_blueprint: Dict[str, Any],
-                 timeout: int = DEFAULT_STARTUP_TIMEOUT) -> Optional[ServerInfo]:
+# AENDERUNG 10.02.2026: Fix 50 - Run-Command-Erkennung fuer Docker
+def _detect_run_command(project_path: str, tech_blueprint: Dict[str, Any]) -> str:
     """
-    Startet den Projekt-Server via run.bat/run_command.
+    Erkennt den Server-Start-Befehl fuer Docker-Container.
+    Kann kein run.bat nutzen (Windows-only), daher wird der eigentliche
+    Shell-Befehl extrahiert.
+
+    Returns:
+        Shell-Befehl als String (z.B. "npm run dev", "python src/app.py")
+    """
+    # 1. Explizites run_command aus Blueprint
+    run_cmd = tech_blueprint.get("run_command", "")
+    if run_cmd:
+        return run_cmd
+
+    # 2. run.bat parsen (npm run dev aus dem Batch extrahieren)
+    run_bat = os.path.join(project_path, "run.bat")
+    if os.path.exists(run_bat):
+        try:
+            with open(run_bat, 'r', encoding='utf-8', errors='ignore') as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("npm ") or line.startswith("node ") or \
+                       line.startswith("python ") or line.startswith("flask ") or \
+                       line.startswith("uvicorn "):
+                        return line
+        except Exception:
+            pass
+
+    # 3. Framework-basierter Default
+    framework = tech_blueprint.get("framework", "").lower()
+    project_type = tech_blueprint.get("project_type", "").lower()
+    language = tech_blueprint.get("language", "").lower()
+
+    if any(fw in framework or fw in project_type
+           for fw in ["next", "react", "vue", "angular", "vite"]):
+        return "npm run dev"
+    if "express" in framework or "express" in project_type:
+        return "npm start"
+    if "flask" in framework or "flask" in project_type:
+        return "flask run --host=0.0.0.0"
+    if "fastapi" in framework or "fastapi" in project_type:
+        return "uvicorn src.app:app --host=0.0.0.0 --port=8000"
+    if language in ("javascript", "typescript"):
+        return "npm run dev"
+    if language == "python":
+        return "python src/main.py"
+
+    return "npm run dev"
+
+
+def start_server(project_path: str, tech_blueprint: Dict[str, Any],
+                 timeout: int = DEFAULT_STARTUP_TIMEOUT,
+                 docker_container=None) -> Optional[ServerInfo]:
+    """
+    Startet den Projekt-Server via run.bat/run_command oder Docker-Container.
 
     Args:
         project_path: Pfad zum Projektverzeichnis
         tech_blueprint: Projekt-Blueprint
         timeout: Startup-Timeout in Sekunden
+        docker_container: Optional ProjectContainerManager (Fix 50)
 
     Returns:
         ServerInfo mit Prozess und URL, oder None bei Fehler
@@ -394,13 +452,44 @@ def start_server(project_path: str, tech_blueprint: Dict[str, Any],
         logger.info("Projekt benötigt keinen Server")
         return None
 
+    port = detect_server_port(tech_blueprint)
+    url = detect_test_url(tech_blueprint, port)
+
+    # AENDERUNG 10.02.2026: Fix 50 - Docker Project Container Modus
+    # Wenn ein persistenter Docker-Container verfuegbar ist, Server dort starten
+    if docker_container and getattr(docker_container, 'is_running', False):
+        logger.info("Starte Server im Docker-Container (Fix 50)")
+        # Dependencies im Container installieren
+        install_result = docker_container.install_deps()
+        if not install_result.success:
+            # Prüfe ob nur harmlose Warnungen
+            stderr = install_result.stderr or ""
+            if not any(kw in stderr for kw in ["Error:", "FAIL", "error:"]):
+                logger.info("Docker install mit Warnungen OK: %s", stderr[:200])
+            else:
+                logger.error("Docker install fehlgeschlagen: %s", stderr[:500])
+                return None
+        # Run-Command bestimmen
+        run_cmd = _detect_run_command(project_path, tech_blueprint)
+        # Server im Container starten
+        if docker_container.start_server(run_cmd, timeout=timeout):
+            _wait_for_app_ready(url, timeout=15)
+            logger.info("Server im Docker-Container gestartet auf %s", url)
+            return ServerInfo(
+                process=None,
+                port=port,
+                url=url,
+                project_path=project_path,
+                _docker_container=docker_container
+            )
+        else:
+            logger.warning("Docker-Server-Start fehlgeschlagen - versuche Host-Fallback")
+            # Fallthrough zum Host-Start
+
     # ÄNDERUNG 06.02.2026: Dependencies vor Server-Start installieren
     if not _install_dependencies(project_path, tech_blueprint):
         logger.error("Dependency-Installation fehlgeschlagen - Server-Start abgebrochen")
         return None
-
-    port = detect_server_port(tech_blueprint)
-    url = detect_test_url(tech_blueprint, port)
 
     # Prüfe ob Port bereits belegt
     if is_port_available(port):
@@ -499,6 +588,11 @@ def stop_server(server_info: ServerInfo) -> bool:
     Returns:
         True wenn erfolgreich gestoppt
     """
+    # AENDERUNG 10.02.2026: Fix 50 - Docker-Container-Server stoppen
+    if server_info is not None and getattr(server_info, '_docker_container', None):
+        logger.info("Stoppe Server im Docker-Container")
+        return server_info._docker_container.stop_server()
+
     if server_info is None or server_info.process is None:
         return True
 
@@ -531,7 +625,8 @@ def stop_server(server_info: ServerInfo) -> bool:
 
 @contextmanager
 def managed_server(project_path: str, tech_blueprint: Dict[str, Any],
-                   timeout: int = DEFAULT_STARTUP_TIMEOUT):
+                   timeout: int = DEFAULT_STARTUP_TIMEOUT,
+                   docker_container=None):
     """
     Context Manager für sauberes Server-Lifecycle-Management.
 
@@ -548,13 +643,15 @@ def managed_server(project_path: str, tech_blueprint: Dict[str, Any],
         project_path: Pfad zum Projektverzeichnis
         tech_blueprint: Projekt-Blueprint
         timeout: Startup-Timeout
+        docker_container: Optional ProjectContainerManager (Fix 50)
 
     Yields:
         ServerInfo oder None
     """
     server = None
     try:
-        server = start_server(project_path, tech_blueprint, timeout)
+        server = start_server(project_path, tech_blueprint, timeout,
+                              docker_container=docker_container)
         yield server
     finally:
         if server:

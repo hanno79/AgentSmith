@@ -10,6 +10,7 @@ Beschreibung: Prompt-Builder-Funktionen fuer den DevLoop Coder.
 """
 
 import os
+import re
 import json
 import logging
 from typing import Dict, Any, List
@@ -23,6 +24,7 @@ from .dev_loop_coder_utils import (
     _get_affected_files_from_feedback,
     _get_current_code_dict,
 )
+from .context_compressor import compress_context
 
 logger = logging.getLogger(__name__)
 
@@ -93,14 +95,25 @@ def _build_patch_prompt(current_code, affected_files: List[str], feedback: str) 
                     break
 
         if content:
-            prompt += f"--- {matched_path} (AKTUELLER CODE) ---\n"
-            prompt += f"```\n{content}\n```\n\n"
+            # AENDERUNG 10.02.2026: Fix 41 — Summary-Marker fuer komprimierte Dateien
+            if content.startswith("IMPORTS:") or content.startswith("[") or content.startswith("VORSCHAU:"):
+                prompt += f"--- {matched_path} (ZUSAMMENFASSUNG) ---\n{content}\n\n"
+            else:
+                prompt += f"--- {matched_path} (AKTUELLER CODE) ---\n"
+                prompt += f"```\n{content}\n```\n\n"
             files_found += 1
             matched_paths.append(matched_path)
 
     if files_found == 0 and len(affected_files) > 0:
         logger.warning(f"PatchMode: 0/{len(affected_files)} Dateien gematched! "
                       f"Gesucht: {affected_files[:3]}, Vorhanden: {list(current_code.keys())[:5]}")
+        # AENDERUNG 10.02.2026: Fix 44 — Vorhandene Dateien als Orientierung auflisten
+        # ROOT-CAUSE-FIX: Ohne Dateiliste erfindet Coder neue Dateinamen (Phantom-Dateien)
+        prompt += "\n⚠️ WARNUNG: Die referenzierten Dateien wurden nicht gefunden.\n"
+        prompt += "Verfuegbare Dateien im Projekt:\n"
+        for cf in list(current_code.keys())[:20]:
+            prompt += f"  - {cf}\n"
+        prompt += "\nERSTELLE KEINE NEUEN DATEIEN. Patche NUR existierende Dateien aus der Liste oben.\n\n"
 
     prompt += f"🔧 FEHLER ZU BEHEBEN:\n{feedback}\n\n"
 
@@ -157,7 +170,8 @@ def build_coder_prompt(
     utds_tasks: list = None,
     files_to_patch: list = None,
     utds_protected_files: list = None,
-    iteration_history: list = None
+    iteration_history: list = None,
+    override_code_dict: dict = None
 ) -> str:
     """
     Baut den Coder-Prompt basierend auf Kontext, Feedback, UTDS-Tasks und File-Status.
@@ -233,7 +247,8 @@ def build_coder_prompt(
 
     # AENDERUNG 06.02.2026: ROOT-CAUSE-FIX PatchModeFallback
     if use_patch_mode:
-        code_dict = _get_current_code_dict(manager)
+        # AENDERUNG 10.02.2026: Fix 48 — override_code_dict fuer parallelen PatchMode
+        code_dict = override_code_dict if override_code_dict else _get_current_code_dict(manager)
 
         if utds_tasks or files_to_patch:
             affected_files = files_to_patch or _get_affected_files_from_feedback(feedback)
@@ -279,9 +294,19 @@ def build_coder_prompt(
                 c_prompt += _build_patch_prompt(code_dict, affected_files, feedback)
             else:
                 if code_dict and feedback:
+                    # AENDERUNG 10.02.2026: Fix 41 — Context-Kompression statt alle Dateien voll
+                    compressed = compress_context(
+                        code_dict, feedback,
+                        getattr(manager, 'model_router', None),
+                        getattr(manager, 'config', {}),
+                        cache=getattr(manager, '_file_summaries_cache', None)
+                    )
+                    # Cache fuer naechste Iteration persistieren
+                    cache_data = compressed.pop('_cache', {})
+                    manager._file_summaries_cache = cache_data
                     manager._ui_log("Coder", "PatchModeAllFiles",
-                        f"Keine spezifischen Dateien erkannt - nutze alle {len(code_dict)} Dateien als Kontext")
-                    c_prompt += _build_patch_prompt(code_dict, list(code_dict.keys()), feedback)
+                        f"Keine spezifischen Dateien erkannt - {len(code_dict)} Dateien mit Kompression")
+                    c_prompt += _build_patch_prompt(compressed, list(compressed.keys()), feedback)
                 else:
                     fallback_reason = "Kein code_dict" if not code_dict else "Keine Dateien im Feedback"
                     manager._ui_log("Coder", "PatchModeFallback", fallback_reason)
@@ -292,9 +317,18 @@ def build_coder_prompt(
         # ROOT-CAUSE-FIX 06.02.2026 (v2): Strukturierter Multi-File-Kontext statt roher String
         code_dict = _get_current_code_dict(manager)
         if code_dict and feedback:
+            # AENDERUNG 10.02.2026: Fix 41 — Context-Kompression auch im StructuredPatchMode
+            compressed = compress_context(
+                code_dict, feedback,
+                getattr(manager, 'model_router', None),
+                getattr(manager, 'config', {}),
+                cache=getattr(manager, '_file_summaries_cache', None)
+            )
+            cache_data = compressed.pop('_cache', {})
+            manager._file_summaries_cache = cache_data
             manager._ui_log("Coder", "StructuredPatchMode",
-                f"Strukturierter Patch-Kontext ({len(code_dict)} Dateien) mit Feedback")
-            c_prompt += _build_patch_prompt(code_dict, list(code_dict.keys()), feedback)
+                f"Strukturierter Patch-Kontext ({len(code_dict)} Dateien, komprimiert) mit Feedback")
+            c_prompt += _build_patch_prompt(compressed, list(compressed.keys()), feedback)
         else:
             manager._ui_log("Coder", "FullMode",
                 f"Kein gezielter Fehler-Kontext erkannt - vollstaendige Regenerierung ({patch_mode_reason or 'Standard'})")
@@ -402,6 +436,18 @@ def build_coder_prompt(
         c_prompt += "\n".join(task_prompt_lines)
         c_prompt += "\n\nWICHTIG: Bearbeite die Tasks in der angegebenen Reihenfolge! Implementiere die LÖSUNG für jeden Task!\n"
 
+    # AENDERUNG 10.02.2026: Fix 47 — Doc-Enrichment Pipeline
+    # Injiziert aktuelle Bibliotheks-Dokumentation in Coder-Prompt
+    try:
+        from .doc_enrichment import get_doc_enrichment_section
+        doc_section = get_doc_enrichment_section(manager)
+        if doc_section:
+            c_prompt += doc_section
+            manager._ui_log("DocEnrichment", "Injected",
+                f"Bibliotheks-Docs eingefuegt ({len(doc_section)} Zeichen)")
+    except Exception as doc_err:
+        logger.debug("Doc-Enrichment uebersprungen: %s", doc_err)
+
     c_prompt += "\n\n🧪 UNIT-TEST REQUIREMENT:\n"
     c_prompt += "- Erstelle IMMER Unit-Tests für alle neuen Funktionen/Klassen\n"
     c_prompt += "- Test-Dateien: tests/test_<modulname>.py oder tests/<modulname>.test.js\n"
@@ -507,4 +553,172 @@ def build_coder_prompt(
     c_prompt += "- Verwende moderne, saubere Farben die zum Thema passen.\n"
 
     c_prompt += "\nFormat: ### FILENAME: path/to/file.ext"
+
+    # AENDERUNG 10.02.2026: Fix 40d-Nachbesserung - Token-Budget-Guard
+    max_prompt_tokens = 80000  # Default, kimi-k2.5 sicher bei 80k (262k - 131k Output - 20k CrewAI)
+    if hasattr(manager, 'config') and manager.config:
+        max_prompt_tokens = manager.config.get("max_prompt_tokens", 80000)
+    c_prompt = _truncate_prompt_if_needed(c_prompt, max_prompt_tokens)
+
     return c_prompt
+
+
+def _truncate_prompt_if_needed(prompt: str, max_tokens: int) -> str:
+    """
+    AENDERUNG 09.02.2026: Fix 40d - Token-Budget-Guard gegen Context-Window-Overflow.
+    Progressive Kuerzung: Wenig-kritische Sektionen zuerst, Datei-Inhalte danach.
+    """
+    # AENDERUNG 09.02.2026: Fix 40d-Nachbesserung - Ratio 1:3 statt 1:4
+    # Fuer Code/Multilingual ist 1 Token ca. 3 Zeichen (statt 4)
+    # Vorher: * 4 fuehrte dazu, dass 190k-Token-Prompts nicht erkannt wurden
+    max_chars = max_tokens * 3
+    if len(prompt) <= max_chars:
+        return prompt
+
+    original = len(prompt)
+    logger.warning(
+        "Coder-Prompt zu gross: ~%d Tokens (Budget: %d) - starte progressive Kuerzung",
+        original // 3, max_tokens
+    )
+
+    # Stufe 1: Wenig-kritische Sektionen entfernen (Lessons + Env-Constraints)
+    removable_markers = [
+        "\U0001f4da LESSONS LEARNED",       # 📚
+        "\u26a0\ufe0f UMGEBUNGS-EINSCHR\u00c4NKUNGEN",  # ⚠️
+    ]
+    # Naechste-Sektion-Marker zum Finden des Sektions-Endes
+    next_section_markers = [
+        "\n\n\U0001f4e6",    # 📦
+        "\n\n\U0001f9ea",    # 🧪
+        "\n\n\U0001f4c1",    # 📁
+        "\n\n\u26a0\ufe0f SECURITY",  # ⚠️ SECURITY
+        "\n\nFormat:",
+    ]
+    for marker in removable_markers:
+        if len(prompt) <= max_chars:
+            break
+        idx = prompt.find(marker)
+        if idx == -1:
+            continue
+        start = max(prompt.rfind("\n\n", 0, idx), 0)
+        end = len(prompt)
+        for nxt in next_section_markers:
+            p = prompt.find(nxt, idx + 5)
+            if 0 < p < end:
+                end = p
+        prompt = prompt[:start] + prompt[end:]
+        logger.info("Token-Guard: Sektion '%s' entfernt", marker[:30])
+
+    # Stufe 2: Datei-Inhalte im Patch-Mode auf max 150 Zeilen kuerzen
+    if len(prompt) > max_chars:
+        MAX_LINES = 150
+        chunks = prompt.split("--- ")
+        result = chunks[0]
+        truncated_count = 0
+        for chunk in chunks[1:]:
+            if "(AKTUELLER CODE) ---" in chunk:
+                code_start = chunk.find("```\n")
+                if code_start != -1:
+                    code_start += 4
+                    code_end = chunk.find("\n```\n\n", code_start)
+                    if code_end > code_start:
+                        lines = chunk[code_start:code_end].split("\n")
+                        if len(lines) > MAX_LINES:
+                            truncated = "\n".join(lines[:MAX_LINES])
+                            truncated += f"\n[...{len(lines) - MAX_LINES} Zeilen gekuerzt wegen Token-Limit]"
+                            chunk = chunk[:code_start] + truncated + chunk[code_end:]
+                            truncated_count += 1
+            result += "--- " + chunk
+        prompt = result
+        if truncated_count > 0:
+            logger.info("Token-Guard: %d Datei(en) auf max %d Zeilen gekuerzt", truncated_count, MAX_LINES)
+
+    # Stufe 3: Feedback kuerzen (letzter Ausweg)
+    if len(prompt) > max_chars:
+        fb_marker = "\U0001f527 FEHLER ZU BEHEBEN:\n"  # 🔧
+        fb_idx = prompt.find(fb_marker)
+        if fb_idx != -1:
+            fb_start = fb_idx + len(fb_marker)
+            fb_end = prompt.find("\n\n\U0001f4cb", fb_start)  # 📋
+            if fb_end > fb_start and (fb_end - fb_start) > 3000:
+                prompt = prompt[:fb_start] + "...\n" + prompt[fb_end - 3000:fb_end] + prompt[fb_end:]
+                logger.info("Token-Guard: Feedback auf 3000 Zeichen gekuerzt")
+
+    # Stufe 4 (Notfall): Datei-Inhalte komplett entfernen, nur Dateinamen behalten
+    # AENDERUNG 09.02.2026: Fix 40d-Nachbesserung - bei 32+ Dateien reichen Stufe 1-3 nicht
+    if len(prompt) > max_chars:
+        chunks = prompt.split("--- ")
+        result = chunks[0]
+        files_removed = 0
+        for chunk in chunks[1:]:
+            if "(AKTUELLER CODE) ---" in chunk:
+                # Nur Dateinamen behalten, Code entfernen
+                fname_end = chunk.find(" (AKTUELLER CODE)")
+                if fname_end > 0:
+                    fname = chunk[:fname_end]
+                    result += f"--- {fname} (AKTUELLER CODE) ---\n[Inhalt entfernt wegen Token-Limit]\n\n"
+                    files_removed += 1
+                    continue
+            result += "--- " + chunk
+        prompt = result
+        if files_removed > 0:
+            logger.warning("Token-Guard NOTFALL: %d Datei-Inhalte komplett entfernt!", files_removed)
+
+    logger.info(
+        "Token-Guard: %d -> %d Tokens (%.0f%% reduziert)",
+        original // 3, len(prompt) // 3, (1 - len(prompt) / original) * 100
+    )
+    return prompt
+
+
+# =========================================================================
+# AENDERUNG 10.02.2026: Fix 48 — Feedback-Filterung fuer Parallel PatchMode
+# =========================================================================
+
+def filter_feedback_for_files(feedback: str, target_files: list) -> str:
+    """
+    Filtert Feedback auf Abschnitte die fuer die Zieldateien relevant sind.
+
+    Fuer den parallelen PatchMode: Jede Coder-Gruppe soll nur das Feedback
+    sehen das ihre Dateien betrifft, nicht das gesamte Feedback aller Dateien.
+
+    Erkennt:
+    - "## FEHLER N:" Abschnitte mit Dateireferenzen
+    - "[DATEI:xxx]" Marker
+    - "BETROFFENE DATEIEN:" Bloecke
+    - "--- Datei: xxx ---" Trennlinien
+
+    Args:
+        feedback: Vollstaendiges Reviewer/Test-Feedback
+        target_files: Dateinamen fuer die gefiltert werden soll
+
+    Returns:
+        Gefiltertes Feedback (nur relevante Abschnitte)
+    """
+    if not feedback or not target_files:
+        return feedback or ""
+
+    basenames = {os.path.basename(f) for f in target_files}
+
+    # Teile Feedback in Abschnitte (## FEHLER / --- / ### DATEI)
+    sections = re.split(r'(?=## FEHLER|## ERROR|\n---|\n### )', feedback)
+    relevant = []
+    header = ""
+
+    for i, section in enumerate(sections):
+        # Erster Abschnitt ist immer der Header (allg. Kontext)
+        if i == 0:
+            header = section
+            continue
+
+        # Pruefe ob ein Zieldatei-Name vorkommt
+        for basename in basenames:
+            if basename in section:
+                relevant.append(section)
+                break
+
+    if not relevant:
+        # Fallback: Gesamtes Feedback (wenn nichts zugeordnet werden kann)
+        return feedback
+
+    return header + "\n".join(relevant)

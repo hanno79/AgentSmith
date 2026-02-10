@@ -87,6 +87,9 @@ from .heartbeat_utils import run_with_heartbeat
 from file_utils import find_html_file, find_python_entry
 from crewai import Task
 
+# AENDERUNG 09.02.2026: ModelStatsDB fuer Run-Tracking (Fix 40)
+from model_stats_db import get_model_stats_db
+
 # ÄNDERUNG 31.01.2026: Imports aus ausgelagerten Modulen
 from .orchestration_budget import set_current_agent
 from .orchestration_utils import run_with_timeout
@@ -302,16 +305,46 @@ class OrchestrationManager:
     def _update_worker_status(self, office: str, worker_status: str, task_description: str = None, model: str = None):
         update_worker_status(self.office_manager, office, worker_status, self._ui_log, task_description, model)
 
-    def run_task(self, user_goal: str):
+    def _sanitize_project_name(self, name: str) -> str:
+        """
+        Bereinigt benutzerdefinierten Projektnamen.
+        Entfernt Sonderzeichen, ersetzt Leerzeichen durch Unterstrich, max 50 Zeichen.
+        AENDERUNG 09.02.2026: Neue Methode fuer benutzerdefinierte Projektnamen.
+        """
+        if not name or not name.strip():
+            return None
+        sanitized = re.sub(r'[^\w\s-]', '', name.strip())
+        sanitized = re.sub(r'[\s]+', '_', sanitized)
+        return sanitized[:50] if sanitized else None
+
+    # AENDERUNG 09.02.2026: project_name Parameter fuer benutzerdefinierte Projektnamen
+    def run_task(self, user_goal: str, project_name: str = None):
         try:
             self._ui_log("System", "Task Start", f"Goal: {user_goal}")
+            # AENDERUNG 10.02.2026: Fix 47 — User-Goal fuer Doc-Enrichment Keyword-Erkennung
+            self._current_user_goal = user_goal
             project_id = None
+
+            # AENDERUNG 09.02.2026: Benutzerdefinierter Projektname sanitisieren
+            sanitized_name = self._sanitize_project_name(project_name) if project_name else None
+            self._custom_project_name = sanitized_name
+
             try:
                 library = get_library_manager()
-                project_name = user_goal[:50] if len(user_goal) > 50 else user_goal
-                library.start_project(name=project_name, goal=user_goal, briefing=self.discovery_briefing)
+                display_name = sanitized_name or (user_goal[:50] if len(user_goal) > 50 else user_goal)
+                library.start_project(name=display_name, goal=user_goal, briefing=self.discovery_briefing)
                 project_id = library.current_project.get('project_id')
                 self._ui_log("Library", "ProjectStart", f"Protokollierung gestartet: {project_id}")
+
+                # AENDERUNG 09.02.2026: ModelStatsDB Run starten (Fix 40)
+                # AENDERUNG 09.02.2026: Fix 40c - _stats_run_id HIER speichern (Library-ID, BEVOR Overwrites)
+                self._stats_run_id = project_id
+                try:
+                    stats_db = get_model_stats_db()
+                    stats_db.start_run(project_id, goal=user_goal)
+                except Exception as stats_err:
+                    logger.warning("ModelStatsDB.start_run: %s", stats_err)
+
             except Exception as lib_err:
                 self._ui_log("Library", "Warning", f"Library-Start fehlgeschlagen: {lib_err}")
 
@@ -324,6 +357,9 @@ class OrchestrationManager:
 
             if self.project_path:
                 project_id = os.path.basename(self.project_path)
+
+            # AENDERUNG 09.02.2026: Fix 40c - Konsistente Stats-ID (Library-ID statt ueberschriebener project_id)
+            self._stats_project_id = getattr(self, '_stats_run_id', project_id)
 
             # AENDERUNG 08.02.2026: Globales agent_timeout_seconds entfernt, Pro-Agent-Timeouts aus agent_timeouts Dict
             agent_timeouts = self.config.get("agent_timeouts", {})
@@ -394,7 +430,7 @@ class OrchestrationManager:
 
                     try:
                         self._ui_log("Researcher", "Status", f"Sucht Kontext... (max. {RESEARCH_TIMEOUT_SECONDS}s, Versuch {researcher_attempt + 1}/{MAX_RESEARCHER_RETRIES})")
-                        set_current_agent("Researcher", project_id)
+                        set_current_agent("Researcher", getattr(self, '_stats_run_id', project_id))
                         self._update_worker_status("researcher", "working", f"Recherche: {research_query[:50]}...", research_model)
                         res_agent = create_researcher(self.config, self.config.get("templates", {}).get("webapp", {}), router=self.model_router)
                         res_task = Task(description=research_query, expected_output="Zusammenfassung.", agent=res_agent)
@@ -447,7 +483,7 @@ class OrchestrationManager:
                 current_meta_model = self.model_router.get_model("meta_orchestrator") if self.model_router else "unknown"
                 try:
                     self._ui_log("Orchestrator", "Status", f"Analysiere Intent (Versuch {meta_attempt + 1}/{MAX_META_RETRIES})...")
-                    set_current_agent("Meta-Orchestrator", project_id)
+                    set_current_agent("Meta-Orchestrator", getattr(self, '_stats_run_id', project_id))
                     meta_orchestrator = MetaOrchestratorV2()
                     plan_data = meta_orchestrator.orchestrate(user_goal + start_context)
                     self._ui_log("Orchestrator", "Analysis", json.dumps(plan_data["analysis"], ensure_ascii=False))
@@ -467,23 +503,27 @@ class OrchestrationManager:
                     action_required="clarify_requirements")
                 raise RuntimeError("Meta-Orchestrator konnte keinen Plan erstellen nach allen Versuchen")
 
-            # 📦 PROJEKTSTRUKTUR
+            # PROJEKTSTRUKTUR
             if self.is_first_run:
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                project_name = f"project_{timestamp}"
-                self.project_path = os.path.join(self.base_dir, "projects", project_name)
+                # AENDERUNG 09.02.2026: Benutzerdefinierter Ordnername wenn Projektname gesetzt
+                if sanitized_name:
+                    folder_name = f"{sanitized_name}_{timestamp}"
+                else:
+                    folder_name = f"project_{timestamp}"
+                self.project_path = os.path.join(self.base_dir, "projects", folder_name)
                 os.makedirs(self.project_path, exist_ok=True)
                 STANDARD_PROJECT_DIRS = ["tests", "docs", "src", "assets"]
                 for dir_name in STANDARD_PROJECT_DIRS:
                     os.makedirs(os.path.join(self.project_path, dir_name), exist_ok=True)
                 self._ui_log("System", "ProjectStructure", f"Standard-Ordner erstellt: {', '.join(STANDARD_PROJECT_DIRS)}")
-                project_id = project_name
-                set_current_agent("System", project_id)
+                project_id = folder_name
+                set_current_agent("System", getattr(self, '_stats_run_id', project_id))
 
                 # 🛠️ TECHSTACK
                 base_project_rules = self.config.get("templates", {}).get("webapp", {})
                 if "techstack_architect" in plan_data["plan"]:
-                    self._run_techstack_phase(user_goal, base_project_rules, project_id, agent_timeouts.get("techstack_architect", 750))
+                    self._run_techstack_phase(user_goal, base_project_rules, getattr(self, '_stats_run_id', project_id), agent_timeouts.get("techstack_architect", 750))
 
                 self.doc_service = DocumentationService(self.project_path)
                 self.doc_service.collect_goal(user_goal)
@@ -502,6 +542,33 @@ class OrchestrationManager:
                 self._create_run_bat()
                 self._run_dependency_phase()
 
+                # AENDERUNG 10.02.2026: Fix 50 - Docker Project Container erstellen
+                # Persistenter Container fuer Server + Dependencies im gesamten DevLoop
+                self._docker_container = None
+                pc_config = self.config.get("docker", {}).get("project_container", {})
+                if pc_config.get("enabled", False):
+                    try:
+                        from .docker_project_container import ProjectContainerManager
+                        self._docker_container = ProjectContainerManager(
+                            self.project_path, self.tech_blueprint, self.config
+                        )
+                        if self._docker_container.is_docker_available():
+                            if self._docker_container.create():
+                                self._ui_log("Docker", "Container",
+                                    f"Persistenter Container erstellt: {self._docker_container.container_name}")
+                            else:
+                                self._ui_log("Docker", "Warning",
+                                    "Container-Erstellung fehlgeschlagen - Host-Fallback")
+                                self._docker_container = None
+                        else:
+                            self._ui_log("Docker", "Warning",
+                                "Docker nicht verfuegbar - Host-Fallback aktiv")
+                            self._docker_container = None
+                    except Exception as dc_err:
+                        self._ui_log("Docker", "Warning",
+                            f"Docker-Container-Setup fehlgeschlagen: {dc_err}")
+                        self._docker_container = None
+
             # 🧩 AGENTEN INITIALISIERUNG
             project_type = self.tech_blueprint.get("project_type", "webapp")
             self.project_rules = self.config.get("templates", {}).get(project_type, {})
@@ -515,9 +582,13 @@ class OrchestrationManager:
             # Design & DB
             if self.is_first_run:
                 if "database_designer" in plan_data["plan"]:
-                    self._run_db_designer_phase(user_goal, self.project_rules, project_id, agent_timeouts.get("database_designer", 750))
+                    self._run_db_designer_phase(user_goal, self.project_rules, getattr(self, '_stats_run_id', project_id), agent_timeouts.get("database_designer", 750))
                 if "designer" in plan_data["plan"]:
-                    self._run_designer_phase(user_goal, self.project_rules, project_id, agent_timeouts.get("designer", 300))
+                    # AENDERUNG 09.02.2026: Projektnamen in Designer-Kontext einbauen
+                    designer_goal = user_goal
+                    if self._custom_project_name:
+                        designer_goal = f"Projektname: {self._custom_project_name}\n\n{user_goal}"
+                    self._run_designer_phase(designer_goal, self.project_rules, getattr(self, '_stats_run_id', project_id), agent_timeouts.get("designer", 300))
                 self._ui_log("Security", "Status", "Security-Scan wird nach Code-Generierung durchgeführt...")
 
             # 🔄 DEV LOOP
@@ -525,7 +596,7 @@ class OrchestrationManager:
             success, feedback = dev_loop.run(
                 user_goal=user_goal, project_rules=self.project_rules,
                 agent_coder=agent_coder, agent_reviewer=agent_reviewer,
-                agent_tester=agent_tester, agent_security=agent_security, project_id=project_id
+                agent_tester=agent_tester, agent_security=agent_security, project_id=getattr(self, '_stats_run_id', project_id)
             )
 
             # ÄNDERUNG 03.02.2026: Entfernt - wird jetzt in dev_loop.py nach erster Iteration gesetzt (Fix 6)
@@ -566,6 +637,16 @@ class OrchestrationManager:
             self._ui_log("System", "Error", err)
             self._finalize_error()
             raise e
+        finally:
+            # AENDERUNG 10.02.2026: Fix 50 - Docker-Container aufräumen
+            if getattr(self, '_docker_container', None):
+                try:
+                    self._docker_container.cleanup()
+                    self._ui_log("Docker", "Cleanup",
+                        f"Container {self._docker_container.container_name} entfernt")
+                except Exception as dc_cleanup_err:
+                    logger.warning("Docker-Container-Cleanup: %s", dc_cleanup_err)
+                self._docker_container = None
 
     def _run_techstack_phase(self, user_goal: str, base_project_rules: dict, project_id: str, agent_timeout: int):
         """TechStack-Analyse Phase (Wrapper für ausgelagerte Funktion)."""
@@ -656,6 +737,18 @@ class OrchestrationManager:
 
     def _finalize_success(self, project_id: str):
         """Finalisierung bei Erfolg."""
+        # AENDERUNG 09.02.2026: ModelStatsDB Run abschliessen (Fix 40)
+        try:
+            stats_db = get_model_stats_db()
+            iterations = getattr(self, '_current_iteration', 0)
+            stats_db.finish_run(
+                run_id=project_id or getattr(self, '_stats_project_id', 'unknown'),
+                iterations=iterations,
+                status="success"
+            )
+        except Exception as stats_err:
+            logger.warning("ModelStatsDB.finish_run (success): %s", stats_err)
+
         try:
             if hasattr(self, 'doc_service') and self.doc_service:
                 self._ui_log("DocumentationManager", "Status", "Generiere Projekt-Dokumentation...")
@@ -687,6 +780,16 @@ class OrchestrationManager:
 
     def _finalize_failure(self, feedback: str):
         """Finalisierung bei Fehlschlag."""
+        # AENDERUNG 09.02.2026: ModelStatsDB Run als failed markieren (Fix 40)
+        try:
+            stats_db = get_model_stats_db()
+            stats_project_id = getattr(self, '_stats_project_id', None)
+            if stats_project_id:
+                iterations = getattr(self, '_current_iteration', 0)
+                stats_db.finish_run(run_id=stats_project_id, iterations=iterations, status="failed")
+        except Exception as stats_err:
+            logger.warning("ModelStatsDB.finish_run (failed): %s", stats_err)
+
         try:
             library = get_library_manager()
             library.complete_project(status="failed")
@@ -711,6 +814,16 @@ class OrchestrationManager:
 
     def _finalize_error(self):
         """Finalisierung bei Fehler."""
+        # AENDERUNG 09.02.2026: Fix 40c - iterations Parameter hinzugefuegt (war immer 0)
+        try:
+            stats_db = get_model_stats_db()
+            stats_project_id = getattr(self, '_stats_project_id', None)
+            if stats_project_id:
+                iterations = getattr(self, '_current_iteration', 0)
+                stats_db.finish_run(run_id=stats_project_id, iterations=iterations, status="error")
+        except Exception as stats_err:
+            logger.warning("ModelStatsDB.finish_run (error): %s", stats_err)
+
         try:
             library = get_library_manager()
             library.complete_project(status="error")

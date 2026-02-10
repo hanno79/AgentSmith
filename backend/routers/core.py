@@ -10,6 +10,7 @@ Beschreibung: Core-API Endpunkte (Run, Status, WebSocket, Reset, Agents).
 import asyncio
 import json
 from datetime import datetime
+from typing import Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, BackgroundTasks, HTTPException, Request
 from pydantic import BaseModel
 from ..app_state import manager, ws_manager, limiter, WS_RECEIVE_TIMEOUT, WS_MAX_TIMEOUTS
@@ -18,8 +19,10 @@ from ..api_logging import log_event
 router = APIRouter()
 
 
+# AENDERUNG 09.02.2026: project_name fuer benutzerdefinierte Projektnamen
 class TaskRequest(BaseModel):
     goal: str
+    project_name: Optional[str] = None
 
 
 @router.post("/run")
@@ -40,7 +43,8 @@ async def run_agent_task(request: Request, task_request: TaskRequest, background
             asyncio.run_coroutine_threadsafe(ws_manager.broadcast(json.dumps(payload, ensure_ascii=False)), loop)
 
         manager.on_log = ui_callback
-        background_tasks.add_task(manager.run_task, task_request.goal)
+        # AENDERUNG 09.02.2026: project_name an run_task durchreichen
+        background_tasks.add_task(manager.run_task, task_request.goal, task_request.project_name)
         print("Task added to background.")
         return {"status": "started", "goal": task_request.goal}
     except Exception as e:

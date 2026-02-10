@@ -1,10 +1,10 @@
 {
   "nextjs_tailwind": {
-    "total_uses": 25,
-    "successes": 25,
+    "total_uses": 28,
+    "successes": 28,
     "failures": 0,
     "success_rate": 1.0,
-    "last_used": "2026-02-09T18:04:23.658257",
+    "last_used": "2026-02-09T19:40:26.508918",
     "projects": [
       {
         "project_id": "proj_no_extra",
@@ -130,6 +130,40 @@
         "project_id": "proj_no_extra",
         "success": true,
         "timestamp": "2026-02-09T18:04:23.658257"
+      },
+      {
+        "project_id": "proj_no_extra",
+        "success": true,
+        "timestamp": "2026-02-09T18:28:15.439420"
+      },
+      {
+        "project_id": "proj_no_extra",
+        "success": true,
+        "timestamp": "2026-02-09T18:32:36.700538"
+      },
+      {
+        "project_id": "proj_no_extra",
+        "success": true,
+        "timestamp": "2026-02-09T19:40:26.508918"
+      }
+    ]
+  },
+  "nextjs_sqlite": {
+    "total_uses": 2,
+    "successes": 2,
+    "failures": 0,
+    "success_rate": 1.0,
+    "last_used": "2026-02-10T14:29:00.358159",
+    "projects": [
+      {
+        "project_id": "proj_2026-02-09_18-43-51_d60eda",
+        "success": true,
+        "timestamp": "2026-02-09T19:25:26.592241"
+      },
+      {
+        "project_id": "proj_2026-02-10_13-59-10_526f85",
+        "success": true,
+        "timestamp": "2026-02-10T14:29:00.358159"
       }
     ]
   }

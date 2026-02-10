@@ -28,10 +28,15 @@ import {
   Wrench   // AENDERUNG 07.02.2026: Icon fuer Fix-Agent (Fix 14)
 } from 'lucide-react';
 import AgentCard from './AgentCard';
+// AENDERUNG 10.02.2026: Zentrale Agent-Farben aus config.js
+import { getAgentColorKey } from '../constants/config';
 
+// AENDERUNG 09.02.2026: projectName + onProjectNameChange Props fuer benutzerdefinierte Projektnamen
 const MissionControl = ({
   goal = '',
   onGoalChange,
+  projectName = '',
+  onProjectNameChange,
   onDeploy,
   onReset,
   status = 'Idle',
@@ -43,6 +48,12 @@ const MissionControl = ({
   const handleGoalChange = (event) => {
     if (typeof onGoalChange === 'function') {
       onGoalChange(event.target.value);
+    }
+  };
+
+  const handleProjectNameChange = (event) => {
+    if (typeof onProjectNameChange === 'function') {
+      onProjectNameChange(event.target.value);
     }
   };
 
@@ -68,6 +79,18 @@ const MissionControl = ({
             <BarChart3 size={16} className="text-primary" />
             <span className="text-sm text-slate-300 font-mono">Status: {status}</span>
           </div>
+        </div>
+
+        {/* AENDERUNG 09.02.2026: Benutzerdefinierter Projektname */}
+        <div className="w-full">
+          <input
+            value={projectName}
+            onChange={handleProjectNameChange}
+            placeholder="Projektname (optional)"
+            className="w-full bg-[#1c2127] border border-border-dark rounded-lg px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:ring-1 focus:ring-primary focus:border-primary focus:outline-none"
+            disabled={status === 'Working'}
+            maxLength={50}
+          />
         </div>
 
         {/* ÄNDERUNG 25.01.2026: Command Input - Prominent über dem Orchestrator */}
@@ -139,7 +162,7 @@ const MissionControl = ({
           <AgentCard
             name="Researcher"
             icon={<Search size={24} />}
-            color="cyan"
+            color={getAgentColorKey('researcher')}
             status={activeAgents?.researcher?.status || 'Idle'}
             logs={logs.filter(l => l.agent === 'Researcher')}
             onOpenOffice={() => handleOpenOffice('agent-researcher')}
@@ -148,7 +171,7 @@ const MissionControl = ({
           <AgentCard
             name="Coder"
             icon={<Code2 size={24} />}
-            color="blue"
+            color={getAgentColorKey('coder')}
             status={activeAgents?.coder?.status || 'Idle'}
             logs={logs.filter(l => l.agent === 'Coder')}
             onOpenOffice={() => handleOpenOffice('agent-coder')}
@@ -157,7 +180,7 @@ const MissionControl = ({
           <AgentCard
             name="Designer"
             icon={<Palette size={24} />}
-            color="pink"
+            color={getAgentColorKey('designer')}
             status={activeAgents?.designer?.status || 'Idle'}
             logs={logs.filter(l => l.agent === 'Designer')}
             onOpenOffice={() => handleOpenOffice('agent-designer')}
@@ -166,7 +189,7 @@ const MissionControl = ({
           <AgentCard
             name="Reviewer"
             icon={<ShieldCheck size={24} />}
-            color="yellow"
+            color={getAgentColorKey('reviewer')}
             status={activeAgents?.reviewer?.status || 'Idle'}
             logs={logs.filter(l => l.agent === 'Reviewer')}
             onOpenOffice={() => handleOpenOffice('agent-reviewer')}
@@ -175,7 +198,7 @@ const MissionControl = ({
           <AgentCard
             name="Tester"
             icon={<Bug size={24} />}
-            color="orange"
+            color={getAgentColorKey('tester')}
             status={activeAgents?.tester?.status || 'Idle'}
             logs={logs.filter(l => l.agent === 'Tester')}
             onOpenOffice={() => handleOpenOffice('agent-tester')}
@@ -184,7 +207,7 @@ const MissionControl = ({
           <AgentCard
             name="Tech Architect"
             icon={<Cpu size={24} />}
-            color="purple"
+            color={getAgentColorKey('techarchitect')}
             status={activeAgents?.techarchitect?.status || 'Idle'}
             logs={logs.filter(l => l.agent === 'TechArchitect')}
             onOpenOffice={() => handleOpenOffice('agent-techstack')}
@@ -193,7 +216,7 @@ const MissionControl = ({
           <AgentCard
             name="DB Designer"
             icon={<Database size={24} />}
-            color="green"
+            color={getAgentColorKey('dbdesigner')}
             status={activeAgents?.dbdesigner?.status || 'Idle'}
             logs={logs.filter(l => l.agent === 'DBDesigner')}
             onOpenOffice={() => handleOpenOffice('agent-dbdesigner')}
@@ -202,7 +225,7 @@ const MissionControl = ({
           <AgentCard
             name="Security"
             icon={<Lock size={24} />}
-            color="red"
+            color={getAgentColorKey('security')}
             status={activeAgents?.security?.status || 'Idle'}
             logs={logs.filter(l => l.agent === 'Security')}
             onOpenOffice={() => handleOpenOffice('agent-security')}
@@ -212,7 +235,7 @@ const MissionControl = ({
           <AgentCard
             name="Documentation"
             icon={<FileText size={24} />}
-            color="platinum"
+            color={getAgentColorKey('documentation')}
             status={activeAgents?.documentationmanager?.status || 'Idle'}
             logs={logs.filter(l => l.agent === 'DocumentationManager' || l.agent === 'QualityGate')}
             onOpenOffice={() => handleOpenOffice('agent-documentation')}
@@ -222,7 +245,7 @@ const MissionControl = ({
           <AgentCard
             name="Planner"
             icon={<Layers size={24} />}
-            color="indigo"
+            color={getAgentColorKey('planner')}
             status={activeAgents?.planner?.status || 'Idle'}
             logs={logs.filter(l => l.agent === 'Planner')}
             onOpenOffice={() => handleOpenOffice('agent-planner')}
@@ -232,7 +255,7 @@ const MissionControl = ({
           <AgentCard
             name="Fix Agent"
             icon={<Wrench size={24} />}
-            color="amber"
+            color={getAgentColorKey('fix')}
             status={activeAgents?.fix?.status || 'Idle'}
             logs={logs.filter(l => l.agent === 'Fix')}
             onOpenOffice={() => handleOpenOffice('agent-fix')}
