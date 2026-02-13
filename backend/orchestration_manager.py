@@ -151,6 +151,10 @@ class OrchestrationManager:
         )
         self.on_log: Optional[Callable[[str, str, str], None]] = None
 
+        # AENDERUNG 13.02.2026: Feature-Tracking DB initialisieren
+        self._feature_id_map = {}  # Mapping file_path → feature_id (gesetzt nach Planner)
+        self._feature_tracking_db = None  # Lazy-Init bei erstem Zugriff
+
         # AENDERUNG 01.02.2026: External Bureau fuer Augment Context
         self.external_bureau = None
         if EXTERNAL_BUREAU_AVAILABLE:

@@ -25,6 +25,8 @@ import HelpPanel from './components/HelpPanel';
 import MissionControl from './components/MissionControl';
 import RightPanel from './components/RightPanel';
 import AgentRouter, { isAgentRoute } from './components/AgentRouter';
+// AENDERUNG 13.02.2026: Kanban-Board Import
+import KanbanBoard from './components/KanbanBoard';
 import useWebSocket from './hooks/useWebSocket';
 import useConfig from './hooks/useConfig';
 import { API_BASE, COLORS } from './constants/config';
@@ -187,6 +189,10 @@ const App = () => {
     }
   });
 
+  // AENDERUNG 13.02.2026: Feature-Tracking State fuer Kanban-Board
+  const [featureData, setFeatureData] = useState([]);
+  const [currentRunId, setCurrentRunId] = useState(null);
+
   // ÄNDERUNG 24.01.2026: Resizable Panel State für rechte Sidebar
   const [previewHeight, setPreviewHeight] = useState(60); // 60% für Preview
   const [isDragging, setIsDragging] = useState(false);
@@ -336,6 +342,52 @@ const App = () => {
     }
   }, [goal, logs, status]);
 
+  // AENDERUNG 13.02.2026: Feature-Events aus dem Log-Stream extrahieren
+  useEffect(() => {
+    if (logs.length === 0) return;
+    const latest = logs[logs.length - 1];
+    if (latest?.agent !== 'System') return;
+
+    if (latest.event === 'FeaturesCreated' || latest.event === 'FeatureStats') {
+      // Stats-Update — run_id aus dem vorherigen ProjectStart Event ermitteln
+      try {
+        const statsData = JSON.parse(latest.message);
+        if (statsData.total > 0 && currentRunId) {
+          // Features vom Backend neu laden
+          fetch(`${API_BASE}/features/${currentRunId}`)
+            .then(res => res.json())
+            .then(data => {
+              if (data.status === 'ok' && Array.isArray(data.features)) {
+                setFeatureData(data.features);
+              }
+            })
+            .catch(() => {});
+        }
+      } catch {
+        // JSON-Parse fehlgeschlagen - ignorieren
+      }
+    }
+
+    if (latest.event === 'FeatureUpdate') {
+      try {
+        const update = JSON.parse(latest.message);
+        setFeatureData(prev => prev.map(f =>
+          f.id === update.id ? { ...f, status: update.status, ...update } : f
+        ));
+      } catch {
+        // JSON-Parse fehlgeschlagen - ignorieren
+      }
+    }
+
+    // Run-ID aus Library ProjectStart Event extrahieren
+    if (latest.agent === 'Library' && latest.event === 'ProjectStart') {
+      const match = latest.message?.match(/Protokollierung gestartet:\s*(\S+)/);
+      if (match) {
+        setCurrentRunId(match[1]);
+      }
+    }
+  }, [logs, currentRunId]);
+
   // Deploy-Handler: Startet die Agenten-Pipeline
   // AENDERUNG 09.02.2026: project_name im POST-Body mitschicken
   const handleDeploy = async () => {
@@ -378,6 +430,9 @@ const App = () => {
       setLogs([]);
       setStatus('Idle');
       setOutputMode('user');
+      // AENDERUNG 13.02.2026: Feature-Daten zuruecksetzen
+      setFeatureData([]);
+      setCurrentRunId(null);
 
       // Alle Agenten auf Idle setzen
       setActiveAgents({
@@ -435,6 +490,22 @@ const App = () => {
     );
   }
 
+  // AENDERUNG 13.02.2026: Render Kanban-Board
+  if (currentRoom === 'kanban') {
+    return (
+      <div className="bg-background-dark text-white font-sans overflow-hidden h-screen flex flex-col">
+        <NavigationHeader currentRoom={currentRoom} setCurrentRoom={setCurrentRoom} />
+        <div className="flex-1 overflow-y-auto overflow-x-hidden page-scrollbar">
+          <KanbanBoard
+            runId={currentRunId}
+            featureData={featureData}
+            onFeatureDataChange={setFeatureData}
+          />
+        </div>
+      </div>
+    );
+  }
+
   // Render Mainframe Hub oder Budget Dashboard
   if (currentRoom === 'mainframe' || currentRoom === 'budget-dashboard') {
     return (
@@ -469,6 +540,13 @@ const App = () => {
           activeAgents={activeAgents}
           agentData={agentData}
           onOpenOffice={setCurrentRoom}
+          featureStats={featureData.length > 0 ? (() => {
+            const s = { pending: 0, in_progress: 0, review: 0, done: 0, failed: 0, total: featureData.length, percentage: 0 };
+            featureData.forEach(f => { const st = f.status || 'pending'; if (s[st] !== undefined) s[st]++; });
+            s.percentage = s.total > 0 ? Math.round((s.done / s.total) * 100) : 0;
+            return s;
+          })() : null}
+          onOpenKanban={() => setCurrentRoom('kanban')}
         />
         <RightPanel
           agentData={agentData}

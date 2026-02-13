@@ -32,6 +32,7 @@ import AgentCard from './AgentCard';
 import { getAgentColorKey } from '../constants/config';
 
 // AENDERUNG 09.02.2026: projectName + onProjectNameChange Props fuer benutzerdefinierte Projektnamen
+// AENDERUNG 13.02.2026: featureStats + onOpenKanban Props fuer Feature-Tracking
 const MissionControl = ({
   goal = '',
   onGoalChange,
@@ -43,7 +44,9 @@ const MissionControl = ({
   logs = [],
   activeAgents = {},
   agentData = {},
-  onOpenOffice
+  onOpenOffice,
+  featureStats = null,
+  onOpenKanban
 }) => {
   const handleGoalChange = (event) => {
     if (typeof onGoalChange === 'function') {
@@ -156,6 +159,35 @@ const MissionControl = ({
             )}
           </div>
         </motion.div>
+
+        {/* AENDERUNG 13.02.2026: Feature-Tracking Stats-Leiste */}
+        {featureStats && featureStats.total > 0 && (
+          <button
+            onClick={onOpenKanban}
+            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl border border-cyan-500/20 bg-cyan-900/10 hover:bg-cyan-900/20 transition-all cursor-pointer group"
+          >
+            <BarChart3 size={16} className="text-cyan-400" />
+            <div className="flex items-center gap-2 text-xs flex-1">
+              <span className="px-2 py-0.5 rounded bg-gray-700/50 text-gray-400">{featureStats.pending} Offen</span>
+              <span className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-400">{featureStats.in_progress} Aktiv</span>
+              <span className="px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-400">{featureStats.review} Review</span>
+              <span className="px-2 py-0.5 rounded bg-green-500/20 text-green-400">{featureStats.done} Fertig</span>
+              {featureStats.failed > 0 && (
+                <span className="px-2 py-0.5 rounded bg-red-500/20 text-red-400">{featureStats.failed} Fehler</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-20 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-cyan-500 to-green-500 rounded-full transition-all duration-500"
+                  style={{ width: `${featureStats.percentage || 0}%` }}
+                />
+              </div>
+              <span className="text-xs font-mono text-gray-400">{featureStats.percentage || 0}%</span>
+            </div>
+            <span className="text-xs text-cyan-400/60 group-hover:text-cyan-400 transition-colors">Kanban &rarr;</span>
+          </button>
+        )}
 
         {/* Agent Grid - ÄNDERUNG 25.01.2026: Worker-Daten hinzugefügt */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

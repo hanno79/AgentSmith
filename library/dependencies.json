@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-02-10T20:59:27.200366",
+  "last_updated": "2026-02-13T21:27:26.458377",
   "python": {
     "version": "3.12.9",
     "packages": [
@@ -1819,6 +1819,11 @@
     "version": "11.6.2",
     "packages": [
       {
+        "name": "@anthropic-ai/claude-code",
+        "version": "2.1.39",
+        "status": "installed"
+      },
+      {
         "name": "@augmentcode/auggie",
         "version": "0.15.0",
         "status": "installed"
@@ -1986,6 +1991,11 @@
       {
         "name": "pg",
         "version": "8.17.2",
+        "status": "installed"
+      },
+      {
+        "name": "playwright",
+        "version": "1.58.2",
         "status": "installed"
       },
       {

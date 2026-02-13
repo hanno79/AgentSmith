@@ -178,7 +178,7 @@ def _validate_files_individually(code_dict: dict, tech_blueprint: dict) -> str:
     Returns:
         Validierungsergebnis als String (✅ oder ❌) mit Dateinamen bei Fehlern
     """
-    from sandbox_runner import _validate_jsx
+    from sandbox_runner import _validate_jsx, _contains_jsx_syntax
 
     project_type = tech_blueprint.get("project_type", "").lower()
     framework = tech_blueprint.get("framework", "").lower()
@@ -196,8 +196,12 @@ def _validate_files_individually(code_dict: dict, tech_blueprint: dict) -> str:
             except SyntaxError as se:
                 errors.append(f"[{filename}] Python-Syntaxfehler Zeile {se.lineno}: {se.msg}")
 
-        # JSX/TSX oder JS/TS bei JSX-Frameworks
-        elif ext in ('jsx', 'tsx') or (ext in ('js', 'ts') and jsx_mode):
+        # AENDERUNG 13.02.2026: Fix 56a — Pure-JS in JSX-Frameworks nicht durch JSX-Validator
+        # ROOT-CAUSE-FIX:
+        # Symptom: validators.js "JSX-Strukturfehler" obwohl KEIN JSX enthalten
+        # Ursache: jsx_mode=True routet ALLE .js zu _validate_jsx(), auch pure JS
+        # Loesung: _contains_jsx_syntax() als Gate — nur echte JSX-Dateien validieren
+        elif ext in ('jsx', 'tsx') or (ext in ('js', 'ts') and jsx_mode and _contains_jsx_syntax(content)):
             result = _validate_jsx(content)
             if result.startswith("❌"):
                 errors.append(f"[{filename}] {result[2:].strip()}")

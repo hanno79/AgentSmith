@@ -58,7 +58,7 @@ async def generate_single_file_async(
     existing_files: Dict[str, str],
     user_goal: str,
     project_rules: Dict[str, Any],
-    timeout_seconds: int = 300  # AENDERUNG 02.02.2026: Default von 120 auf 300 erhoeht
+    timeout_seconds: int = 750
 ) -> Tuple[str, Optional[str], Optional[str]]:
     """
     Generiert eine einzelne Datei asynchron.
@@ -72,7 +72,7 @@ async def generate_single_file_async(
         existing_files: Bereits generierte Dateien als Kontext
         user_goal: Benutzer-Anforderung
         project_rules: Projekt-Regeln
-        timeout_seconds: Timeout pro Datei
+        timeout_seconds: Timeout pro Datei (Default = agent_timeouts.coder Fallback)
 
     Returns:
         Tuple (filename, content, error) - error ist None bei Erfolg
@@ -125,8 +125,8 @@ async def run_parallel_file_generation(
     user_goal: str,
     project_rules: Dict[str, Any],
     max_workers: Optional[int] = None,
-    timeout_per_file: int = 300,  # AENDERUNG 02.02.2026: Default von 120 auf 300 erhoeht
-    batch_timeout: int = 600  # AENDERUNG 02.02.2026: Default von 300 auf 600 erhoeht
+    timeout_per_file: int = 750,
+    batch_timeout: int = 1500
 ) -> Tuple[Dict[str, str], List[Tuple[str, str]]]:
     """
     Generiert Dateien parallel basierend auf Dependency-Graph.
@@ -264,7 +264,7 @@ async def run_parallel_fixes(
     user_goal: str,
     project_rules: Dict[str, Any],
     max_workers: Optional[int] = None,
-    timeout_per_file: int = 300  # AENDERUNG 02.02.2026: Default von 120 auf 300 erhoeht
+    timeout_per_file: int = 750
 ) -> Tuple[Dict[str, str], List[Tuple[str, str]]]:
     """
     Fuehrt parallele Fixes fuer mehrere Dateien durch.

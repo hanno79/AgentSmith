@@ -152,3 +152,6 @@ app.include_router(discovery.router)
 # AENDERUNG 09.02.2026: Model-Statistiken API-Endpoints (Fix 40)
 from backend.routers import model_stats
 app.include_router(model_stats.router)
+# AENDERUNG 13.02.2026: Feature-Tracking API-Endpoints (Kanban-Board)
+from backend.routers import features
+app.include_router(features.router)

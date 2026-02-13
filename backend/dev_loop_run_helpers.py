@@ -91,6 +91,9 @@ def run_file_by_file_phase(manager, user_goal, project_rules):
                     with open(full_path, "r", encoding="utf-8") as f:
                         all_code += f"\n### FILENAME: {filepath}\n{f.read()}\n"
             manager.current_code = all_code
+            # AENDERUNG 13.02.2026: Fix 55 — created_files fuer Iteration-0-Skip speichern
+            # ROOT-CAUSE-FIX: Ohne dies regeneriert Iteration 0 alle Dateien im FullMode (30 Min)
+            manager._fbf_created_files = list(created_files)
             manager._ui_log("DevLoop", "Info",
                            "File-by-File abgeschlossen, starte Tests und Review...")
             # AENDERUNG 03.02.2026: is_first_run auch bei File-by-File setzen (Fix 6b)
@@ -163,12 +166,13 @@ def _run_parallel_generation(loop, manager, project_rules, parallel_config):
     }, ensure_ascii=False))
 
     # Schritt 2: Parallele Generierung
-    # AENDERUNG 08.02.2026: Pro-Agent Timeout statt globalem agent_timeout_seconds
+    # AENDERUNG 13.02.2026: Fix 53c — Single Source of Truth: agent_timeouts.coder
+    # File-by-File Coder SIND Coder-Agenten → selber Timeout wie run_coder_task()
+    # Vorher: parallel_config.timeout_per_file=750 ueberschrieb agent_timeouts.coder=1800!
     max_workers = parallel_config.get("max_workers", None)
     agent_timeouts = manager.config.get("agent_timeouts", {})
-    agent_timeout = agent_timeouts.get("coder", 750)
-    timeout_per_file = parallel_config.get("timeout_per_file", agent_timeout)
-    batch_timeout = parallel_config.get("batch_timeout", agent_timeout * 2)
+    timeout_per_file = agent_timeouts.get("coder", 750)
+    batch_timeout = timeout_per_file * 2
 
     results, errors = loop.run_until_complete(
         run_parallel_file_generation(
@@ -480,7 +484,17 @@ def process_utds_feedback(task_derivation, manager, feedback,
         if td_success:
             manager._ui_log("TaskDerivation", "Success",
                            f"Alle Tasks erfolgreich: {len(td_modified)} Dateien geaendert")
-            feedback = td_summary
+            # AENDERUNG 13.02.2026: Fix 53d — Original-Feedback ERHALTEN statt ersetzen
+            # ROOT-CAUSE-FIX:
+            # Symptom: ParallelPatchMode deaktiviert in Iterationen 3+ ("PatchModeAllFiles")
+            # Ursache: feedback = td_summary ueberschrieb das Original-Feedback KOMPLETT
+            #          td_summary enthaelt keine [DATEI:xxx] Patterns mehr
+            #          → _get_affected_files_from_feedback() findet keine Dateien
+            #          → should_use_parallel_patch() wird nie True
+            #          → Sequenzieller Coder statt paralleler PatchMode
+            # Loesung: td_summary an Original-Feedback ANHAENGEN statt ersetzen
+            #          So bleiben [DATEI:xxx] Patterns fuer ParallelPatch-Erkennung erhalten
+            feedback = f"{feedback}\n\nUTDS-STATUS (automatisch behoben):\n{td_summary}"
         else:
             manager._ui_log("TaskDerivation", "Partial",
                            "Nicht alle Tasks erfolgreich - verbleibende werden dokumentiert")

@@ -193,10 +193,47 @@ def run_coder_task(manager, project_rules: Dict[str, Any], c_prompt: str, agent_
                     raise error
                 continue
 
-            # AENDERUNG 29.01.2026: Server-Fehler-Delay im Caller statt im Helper
+            # AENDERUNG 13.02.2026: Fix 54 — Server-Fehler Retry statt Crash
+            # ROOT-CAUSE-FIX:
+            # Symptom: DevLoop stuerzt ab bei "peer closed connection" (OpenRouter bricht HTTP ab)
+            # Ursache: Server-Fehler wurden pausiert (5s) aber dann als fatal geworfen (raise error)
+            #          Kein continue, kein Error-Tracking, kein Modellwechsel
+            # Loesung: Gleiche Retry-Logik wie bei litellm_internal_error:
+            #          Error-Count tracken → nach ERRORS_BEFORE_MODEL_SWITCH Modell wechseln → continue
             if is_server_error(error):
-                manager._ui_log("Coder", "Warning", "Server-Fehler erkannt - kurze Pause von 5s")
+                error_type = "server_error"
+                error_key = (current_model, error_type)
+
+                if last_error_type and last_error_type != error_type:
+                    error_tracker = {}
+                last_error_type = error_type
+
+                error_tracker[error_key] = error_tracker.get(error_key, 0) + 1
+                error_count = error_tracker[error_key]
+
+                manager._ui_log("Coder", "Warning",
+                                f"Server-Fehler erkannt (Fehler {error_count}/{ERRORS_BEFORE_MODEL_SWITCH}): "
+                                f"{str(error)[:100]} - Pause 5s vor Retry")
                 time.sleep(5)
+
+                if error_count >= ERRORS_BEFORE_MODEL_SWITCH:
+                    manager._ui_log("Coder", "Status", f"Modellwechsel nach {error_count} Server-Fehlern")
+                    manager.model_router.mark_rate_limited_sync(current_model)
+                    agent_coder = init_agents(
+                        manager.config,
+                        project_rules,
+                        router=manager.model_router,
+                        include=["coder"],
+                        tech_blueprint=getattr(manager, 'tech_blueprint', None)
+                    ).get("coder")
+                    task_coder = Task(description=c_prompt, expected_output="Code", agent=agent_coder)
+                    error_tracker = {}
+
+                if coder_attempt == MAX_CODER_RETRIES - 1:
+                    manager._ui_log("Coder", "Error", f"Alle {MAX_CODER_RETRIES} Versuche fehlgeschlagen (Server-Fehler): {str(error)[:200]}")
+                    raise error
+                continue
+
             manager._ui_log("Coder", "Error", f"Unerwarteter Fehler: {str(error)[:200]}")
             raise error
 

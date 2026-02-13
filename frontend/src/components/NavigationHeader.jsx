@@ -19,7 +19,8 @@ import {
   BookOpen,
   Boxes,
   Package,
-  Lightbulb  // ÄNDERUNG 29.01.2026: Discovery Session Icon
+  Lightbulb,  // ÄNDERUNG 29.01.2026: Discovery Session Icon
+  Kanban       // AENDERUNG 13.02.2026: Kanban-Board Icon
 } from 'lucide-react';
 
 /**
@@ -126,6 +127,18 @@ const NavigationHeader = ({ currentRoom, setCurrentRoom, showConnectButton = fal
           >
             <Package size={16} />
             <span>IT</span>
+          </button>
+          {/* AENDERUNG 13.02.2026: Kanban-Board Button */}
+          <button
+            onClick={() => setCurrentRoom('kanban')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+              currentRoom === 'kanban'
+                ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <Kanban size={16} />
+            <span>Kanban</span>
           </button>
         </nav>
       </div>

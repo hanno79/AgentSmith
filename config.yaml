@@ -8,8 +8,9 @@ max_model_attempts: 5
 parallel_file_generation:
   enabled: true
   max_workers: null
-  timeout_per_file: 750
-  batch_timeout: 1500
+  # AENDERUNG 13.02.2026: Fix 53c — timeout_per_file + batch_timeout ENTFERNT
+  # File-by-File Coder nutzt jetzt agent_timeouts.coder (Single Source of Truth)
+  # Vorher: timeout_per_file=750 ueberschrieb agent_timeouts.coder=1800!
 targeted_fix:
   enabled: true
   max_files: 7
@@ -22,7 +23,7 @@ agent_timeouts:
   tester: 300
   security: 300
   researcher: 600
-  planner: 300
+  planner: 900
   designer: 300
   fix: 750
   task_deriver: 300
@@ -52,10 +53,8 @@ parallel_patch:
   min_files_for_parallel: 2
   min_chars_for_parallel: 8000
   truncation_guard: true
-  # AENDERUNG 13.02.2026: Fix 53b — group_timeout_seconds ENTFERNT
-  # Gruppen-Coder nutzen jetzt agent_timeouts.coder (Single Source of Truth)
-  max_concurrent_groups: 8      # OpenRouter vertraegt 10-20 parallele Calls, 8 mit Marge
-  max_chars_per_group: 15000    # Max Zeichen pro Gruppe (~5000 Tokens Code)
+  max_concurrent_groups: 8
+  max_chars_per_group: 15000
 security_max_retries: 10
 vier_augen:
   enabled: true
@@ -308,7 +307,7 @@ models:
       - openrouter/google/gemini-2.5-flash
       - openrouter/qwen/qwen-3
     planner:
-      primary: openrouter/openai/gpt-5-codex
+      primary: openrouter/openai/gpt-5.2-codex
       fallback:
       - openrouter/google/gemini-3-flash-preview
       - openrouter/nousresearch/hermes-3-llama-3.1-405b

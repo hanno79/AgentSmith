@@ -984,9 +984,15 @@ def validate_import_dependencies(project_path: str, tech_blueprint: Dict[str, An
         declared_deps.update(pkg.get(key, {}).keys())
 
     # 2. Alle JS/TS/JSX/TSX Dateien nach Imports scannen
+    # AENDERUNG 13.02.2026: Fix 56b — Multi-Line Imports erkennen (re.DOTALL)
+    # ROOT-CAUSE-FIX:
+    # Symptom: lucide-react nicht als fehlend erkannt (4 Iterationen verschwendet)
+    # Ursache: .*? matcht keine Newlines → mehrzeilige destructured Imports unsichtbar
+    # Loesung: re.DOTALL erlaubt .*? ueber Zeilenumbrueche, lazy verhindert Over-Match
     import_pattern = re.compile(
         r"""(?:import\s+.*?\s+from\s+['"]([^'"./][^'"]*?)['"]|"""
-        r"""require\(\s*['"]([^'"./][^'"]*?)['"]\s*\))"""
+        r"""require\(\s*['"]([^'"./][^'"]*?)['"]\s*\))""",
+        re.DOTALL
     )
     imported_packages = set()
 

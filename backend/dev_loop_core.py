@@ -140,15 +140,25 @@ class DevLoop:
                 _utds_protected_files = list(set(_utds_modified_files)) if _utds_modified_files else []
                 _utds_modified_files = []
 
-                # AENDERUNG 10.02.2026: Fix 48 — Paralleler PatchMode
+                # AENDERUNG 13.02.2026: Fix 55 — Skip FullMode nach File-by-File
                 # ROOT-CAUSE-FIX:
-                # Symptom: Dateien werden abgeschnitten (z.B. `import { cl;`)
-                # Ursache: EIN LLM-Call fuer ALLE betroffenen Dateien ueberschreitet max_tokens
-                # Loesung: Aufteilen in Gruppen (max 3 Dateien) → parallele Coder-Calls
+                # Symptom: Iteration 0 regeneriert alle 15 Dateien in 30 Min FullMode
+                # Ursache: feedback="" → ParallelPatch-Bedingung False → Standard-Coder
+                # Loesung: Wenn File-by-File bereits Code generiert hat, Coder ueberspringen
+                _fbf_files = getattr(manager, '_fbf_created_files', None)
+                _skip_coder = iteration == 0 and _fbf_files and manager.current_code
+
+                # AENDERUNG 10.02.2026: Fix 48 — Paralleler PatchMode
                 _is_patch = not getattr(manager, 'is_first_run', True)
                 _use_parallel = False
 
-                if _is_patch and feedback:
+                if _skip_coder:
+                    manager._ui_log("Coder", "SkipAfterFBF",
+                        f"File-by-File hat {len(_fbf_files)} Dateien generiert "
+                        "- ueberspringe Coder, starte Tests+Review direkt")
+                    created_files = list(_fbf_files)
+                    truncated_files = []
+                elif _is_patch and feedback:
                     from .dev_loop_parallel_patch import should_use_parallel_patch, run_parallel_patch
                     from .dev_loop_coder_utils import _get_affected_files_from_feedback, _get_current_code_dict
                     _pp_affected = _get_affected_files_from_feedback(feedback)
@@ -168,7 +178,7 @@ class DevLoop:
                         )
                         truncated_files = []  # Truncation wird IN run_parallel_patch behandelt
 
-                if not _use_parallel:
+                if not _skip_coder and not _use_parallel:
                     # STANDARD: Einzelner Coder (wie bisher)
                     c_prompt = build_coder_prompt(
                         manager, user_goal, feedback, iteration,
@@ -349,6 +359,18 @@ class DevLoop:
 
             if review_says_ok and not sandbox_failed and security_passed and has_minimum_files:
 
+                # AENDERUNG 13.02.2026: Features auf "review" setzen (vor Smoke-Test)
+                try:
+                    from backend.feature_tracking_db import get_feature_tracking_db
+                    _fdb = get_feature_tracking_db()
+                    _fdb_run_id = getattr(manager, '_stats_run_id', None) or project_id
+                    for _feat in _fdb.get_features(_fdb_run_id, status="in_progress"):
+                        _fdb.update_status(_feat["id"], "review")
+                    manager._ui_log("System", "FeatureStats", json.dumps(
+                        _fdb.get_stats(_fdb_run_id), ensure_ascii=False))
+                except Exception:
+                    pass
+
                 # AENDERUNG 10.02.2026: Fix 43 - Smoke-Test als blockierende Success-Bedingung
                 # ROOT-CAUSE-FIX:
                 # Symptom: DevLoop deklariert Success obwohl Projekt nicht im Browser startet
@@ -400,6 +422,20 @@ class DevLoop:
                             f"External Review bestanden ({info_count} Info-Findings)")
 
                 success = True
+
+                # AENDERUNG 13.02.2026: Alle Features auf "done" setzen bei Erfolg
+                try:
+                    from backend.feature_tracking_db import get_feature_tracking_db
+                    _fdb = get_feature_tracking_db()
+                    _fdb_run_id = getattr(manager, '_stats_run_id', None) or project_id
+                    for _feat in _fdb.get_features(_fdb_run_id):
+                        if _feat["status"] not in ("done", "failed"):
+                            _fdb.mark_done(_feat["id"])
+                    manager._ui_log("System", "FeatureStats", json.dumps(
+                        _fdb.get_stats(_fdb_run_id), ensure_ascii=False))
+                except Exception as _fdb_err:
+                    logger.warning("Feature-Tracking Success-Update: %s", _fdb_err)
+
                 handle_success_finalization(
                     manager, iteration, review_says_ok,
                     sandbox_failed, security_passed,

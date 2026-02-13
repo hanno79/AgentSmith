@@ -214,6 +214,24 @@ async def run_planner(
         plan = parse_planner_output(result)
         if plan and plan.get("files"):
             file_count = len(plan["files"])
+
+            # AENDERUNG 13.02.2026: Features in DB speichern fuer Kanban-Board
+            try:
+                from backend.feature_tracking_db import get_feature_tracking_db
+                _fdb = get_feature_tracking_db()
+                _run_id = getattr(manager, '_stats_run_id', None) or getattr(manager, 'run_id', 'unknown')
+                _feature_ids = _fdb.create_features_from_plan(_run_id, plan["files"])
+                if _feature_ids:
+                    manager._ui_log("System", "FeaturesCreated", json.dumps(
+                        _fdb.get_stats(_run_id), ensure_ascii=False))
+                # Feature-ID-Mapping fuer spaetere Status-Updates (path → feature_id)
+                manager._feature_id_map = {}
+                for i, f in enumerate(plan["files"]):
+                    if i < len(_feature_ids):
+                        manager._feature_id_map[f.get("path", "")] = _feature_ids[i]
+            except Exception as _fdb_err:
+                logger.warning("Feature-Tracking DB: %s", _fdb_err)
+
             # AENDERUNG 03.02.2026: "Result" zu "PlannerOutput" geaendert
             # Grund: Frontend erwartet COMPLETION_EVENTS fuer Status-Reset auf "Idle"
             manager._ui_log("Planner", "PlannerOutput", json.dumps({
@@ -486,8 +504,30 @@ async def run_file_by_file_loop(
     existing_content: Dict[str, str] = {}
     failed_files: List[str] = []
 
+    # AENDERUNG 13.02.2026: Feature-DB Referenz fuer Status-Updates
+    _fdb_ref = None
+    _fdb_run_id = None
+    try:
+        from backend.feature_tracking_db import get_feature_tracking_db
+        _fdb_ref = get_feature_tracking_db()
+        _fdb_run_id = getattr(manager, '_stats_run_id', None) or getattr(manager, 'run_id', 'unknown')
+    except Exception:
+        pass
+    _fid_map = getattr(manager, '_feature_id_map', {})
+
     for file_task in sorted_files:
         filepath = file_task["path"]
+
+        # AENDERUNG 13.02.2026: Feature-Status auf "in_progress" setzen
+        _fid = _fid_map.get(filepath)
+        if _fid and _fdb_ref:
+            try:
+                _fdb_ref.update_status(_fid, "in_progress", agent="Coder")
+                manager._ui_log("System", "FeatureUpdate", json.dumps({
+                    "id": _fid, "status": "in_progress", "file_path": filepath
+                }, ensure_ascii=False))
+            except Exception:
+                pass
 
         # Pruefe Abhaengigkeiten
         depends = file_task.get("depends_on", [])
@@ -528,6 +568,16 @@ async def run_file_by_file_loop(
                 completed_files.append(filepath)
                 existing_content[filepath] = result
                 success = True
+
+                # AENDERUNG 13.02.2026: Feature-Status auf "done" setzen
+                if _fid and _fdb_ref:
+                    try:
+                        _fdb_ref.mark_done(_fid, actual_lines=len(result.splitlines()))
+                        manager._ui_log("System", "FeatureUpdate", json.dumps({
+                            "id": _fid, "status": "done", "file_path": filepath
+                        }, ensure_ascii=False))
+                    except Exception:
+                        pass
                 break
 
             # AENDERUNG 31.01.2026: Analysiere Fehler fuer gezielten Retry
@@ -552,6 +602,12 @@ async def run_file_by_file_loop(
             failed_files.append(filepath)
             manager._ui_log("FileByFile", "Error",
                            f"Datei {filepath} konnte nicht erstellt werden")
+            # AENDERUNG 13.02.2026: Feature-Status auf "failed" setzen
+            if _fid and _fdb_ref:
+                try:
+                    _fdb_ref.mark_failed(_fid, f"Generierung fehlgeschlagen nach {max_iterations} Versuchen")
+                except Exception:
+                    pass
 
     # 3. Integration: Traceability, Documentation, Memory
     await _integrate_file_by_file_results(

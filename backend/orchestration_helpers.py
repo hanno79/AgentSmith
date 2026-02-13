@@ -121,7 +121,15 @@ def is_server_error(error: Exception) -> bool:
         '500',
         '502',
         '503',
-        '504'
+        '504',
+        # AENDERUNG 13.02.2026: Fix 54 — Connection-Errors sind auch Server-Fehler
+        # OpenRouter bricht manchmal HTTP-Verbindungen ab nach langer Laufzeit
+        # Diese werden von litellm als APIError geworfen, haben aber keinen Status-Code
+        'peer closed connection',
+        'incomplete chunked read',
+        'connection reset',
+        'connection aborted',
+        'remoteprotocolerror',
     ]
     return any(pattern in error_str for pattern in server_error_patterns)
 
