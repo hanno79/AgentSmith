@@ -106,7 +106,15 @@ const COLOR_CLASSES = {
     bg: 'bg-amber-900/30',
     button: 'bg-amber-600 hover:bg-amber-500 text-white',
     check: 'text-amber-400'
-  }
+  },
+  // AENDERUNG 11.02.2026: Khaki fuer Fix-Agent (Bracket-Syntax, kein Standard-Tailwind)
+  khaki: {
+    text: 'text-[#F0E68C]',
+    border: 'border-[#F0E68C]',
+    bg: 'bg-[#F0E68C]/10',
+    button: 'bg-[#F0E68C] hover:bg-[#d4ca7a] text-gray-900',
+    check: 'text-[#F0E68C]'
+  },
 };
 
 const getColorClasses = (color) => COLOR_CLASSES[color] || COLOR_CLASSES.gray;

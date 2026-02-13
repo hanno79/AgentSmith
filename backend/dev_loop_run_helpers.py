@@ -128,16 +128,31 @@ def _run_parallel_generation(loop, manager, project_rules, parallel_config):
     # Ursache: PROTECTED_CONFIGS existierte nur im Default-Plan, nicht im LLM-Planner-Pfad
     # Loesung: Config-Dateien die bereits vom Template kopiert wurden aus file_list entfernen
     if hasattr(manager, 'project_path') and manager.project_path:
-        from agents.planner_defaults import PROTECTED_CONFIGS
+        from agents.planner_defaults import PROTECTED_CONFIGS, PROTECTED_CONFIG_STEMS
         skipped = []
         for cfg in list(file_list):  # list() fuer sichere Iteration
             basename = os.path.basename(cfg)
             if basename in PROTECTED_CONFIGS:
                 full_path = os.path.join(str(manager.project_path), cfg)
+                # AENDERUNG 13.02.2026: Fix 52 — Stem-Varianten-Check
+                # ROOT-CAUSE-FIX: Coder generiert next.config.mjs, Template hat next.config.js
+                # → Beide existieren → Next.js kann nicht starten
+                # Pruefen ob DIESE Datei ODER eine Stem-Variante bereits auf Disk existiert
+                stem = os.path.splitext(basename)[0]
                 if os.path.exists(full_path):
                     file_list.remove(cfg)
                     file_descriptions.pop(cfg, None)
                     skipped.append(cfg)
+                elif stem in PROTECTED_CONFIG_STEMS:
+                    # Stem-Variante pruefen: next.config.mjs → next.config existiert als .js?
+                    parent_dir = os.path.dirname(os.path.join(str(manager.project_path), cfg))
+                    for ext in (".js", ".mjs", ".ts"):
+                        variant_path = os.path.join(parent_dir, stem + ext)
+                        if os.path.exists(variant_path):
+                            file_list.remove(cfg)
+                            file_descriptions.pop(cfg, None)
+                            skipped.append(f"{cfg} (Variante {stem + ext} existiert)")
+                            break
         if skipped:
             manager._ui_log("DevLoop", "TemplateSkip",
                 f"{len(skipped)} Template-Config-Dateien uebersprungen: {', '.join(skipped)}")

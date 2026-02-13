@@ -327,10 +327,19 @@ def _is_protected_config(project_path: str, filename: str) -> bool:
                            "jsconfig.json", "tsconfig.json")
 
         filename_norm = filename.replace("\\", "/")
+        filename_base = os.path.basename(filename_norm)
+        filename_stem = os.path.splitext(filename_base)[0]
         for req_file in required_files:
             # Nur Config-Dateien schuetzen, keine Code-Dateien
             if any(req_file.endswith(s) for s in config_suffixes):
                 if filename_norm == req_file or filename_norm.endswith("/" + req_file):
+                    return True
+                # AENDERUNG 13.02.2026: Fix 52 — Stem-Varianten-Match
+                # ROOT-CAUSE-FIX: Template hat next.config.js, Coder generiert next.config.mjs
+                # → Beide Config-Dateien existieren → Next.js kann nicht starten
+                # Wenn der Stem gleich ist (next.config == next.config), ist es eine Variante
+                req_stem = os.path.splitext(os.path.basename(req_file))[0]
+                if filename_stem == req_stem and filename_stem.endswith(".config"):
                     return True
         return False
     except Exception:

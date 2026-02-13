@@ -171,8 +171,10 @@ def _get_affected_files_from_feedback(feedback: str) -> List[str]:
                 if basename not in found_files:
                     found_files.append(basename)
 
-    # AENDERUNG 10.02.2026: Fix 48b — Max 10 Dateien (Paralleler PatchMode kann mehr verarbeiten)
-    return found_files[:10]
+    # AENDERUNG 13.02.2026: Fix 53 — Limit erhoeht fuer parallelen PatchMode
+    # Fix 42c (FALSE_POSITIVE_FILENAMES) filtert false positives jetzt zuverlaessig
+    # Bei 30+ Dateien ist paralleler Patch essentiell fuer Timeout-Vermeidung
+    return found_files[:30]
 
 
 # AENDERUNG 07.02.2026: Dynamische Code-Extensions aus qg_constants

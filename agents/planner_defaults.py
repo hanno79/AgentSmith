@@ -8,14 +8,26 @@ Beschreibung: Planner Default-Plan Logik - Template-basierte und generische Fall
               # AENDERUNG 08.02.2026: Neues Modul (Fix 27 Regel-1 Refactoring)
 """
 
+import os
 from typing import Any, Dict, List, Optional
 
 # AENDERUNG 10.02.2026: Fix 49 — Auf Modul-Ebene fuer Import aus anderen Modulen
 # Template-Config-Dateien die bereits vom Template kopiert wurden und NICHT regeneriert werden sollen
+# AENDERUNG 13.02.2026: Fix 52 — .mjs/.ts Varianten hinzugefuegt
+# ROOT-CAUSE-FIX: Coder generiert next.config.mjs obwohl Template next.config.js hat
+# → Beide Config-Dateien existieren → Next.js kann nicht starten
+# Ursache: PROTECTED_CONFIGS hatte nur .js Varianten, nicht .mjs/.ts
 PROTECTED_CONFIGS = {
-    "tailwind.config.js", "postcss.config.js", "next.config.js",
-    "jsconfig.json", "tsconfig.json", "vite.config.js"
+    "tailwind.config.js", "tailwind.config.ts",
+    "postcss.config.js", "postcss.config.mjs", "postcss.config.ts",
+    "next.config.js", "next.config.mjs", "next.config.ts",
+    "jsconfig.json", "tsconfig.json",
+    "vite.config.js", "vite.config.mjs", "vite.config.ts",
 }
+# Stem-Varianten: next.config → [next.config.js, next.config.mjs, next.config.ts]
+# Werden in dev_loop_run_helpers.py fuer Stem-Match genutzt
+PROTECTED_CONFIG_STEMS = {os.path.splitext(c)[0] for c in PROTECTED_CONFIGS
+                          if c.endswith(('.js', '.mjs', '.ts'))}
 
 
 def _create_template_based_plan(blueprint: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:

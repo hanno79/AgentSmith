@@ -440,7 +440,12 @@ def run_sandbox_and_tests(
     skip_ui_test = docker_ran_and_succeeded and not _needs_server_test
     try:
         if not skip_ui_test:
-            ui_result = test_project(manager.project_path, manager.tech_blueprint, manager.config)
+            # AENDERUNG 11.02.2026: Fix 51 - Docker-Container an Tester durchreichen
+            # Ohne docker_container startet der Tester den Server auf dem Host statt im Container
+            # → Port-Konflikt mit Docker-Port-Mapping → ERR_EMPTY_RESPONSE
+            _docker_ctr = getattr(manager, '_docker_container', None)
+            ui_result = test_project(manager.project_path, manager.tech_blueprint, manager.config,
+                                     docker_container=_docker_ctr)
             test_summary = summarize_ui_result(ui_result)
         manager._ui_log("Tester", "Result", test_summary)
 

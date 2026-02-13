@@ -17,7 +17,7 @@ targeted_fix:
 enable_file_by_file_mode: true
 agent_timeouts:
   default: 750
-  coder: 1500
+  coder: 1800
   reviewer: 1200
   tester: 300
   security: 300
@@ -52,6 +52,10 @@ parallel_patch:
   min_files_for_parallel: 2
   min_chars_for_parallel: 8000
   truncation_guard: true
+  # AENDERUNG 13.02.2026: Fix 53b — group_timeout_seconds ENTFERNT
+  # Gruppen-Coder nutzen jetzt agent_timeouts.coder (Single Source of Truth)
+  max_concurrent_groups: 8      # OpenRouter vertraegt 10-20 parallele Calls, 8 mit Marge
+  max_chars_per_group: 15000    # Max Zeichen pro Gruppe (~5000 Tokens Code)
 security_max_retries: 10
 vier_augen:
   enabled: true
@@ -225,10 +229,10 @@ models:
     coder:
       primary: openrouter/moonshotai/kimi-k2.5
       fallback:
-      - openrouter/minimax/minimax-m2.1
+      - openrouter/minimax/minimax-m2.5
       - openrouter/qwen/qwen3-coder-next
+      - openrouter/z-ai/glm-5
       - openrouter/anthropic/claude-sonnet-4.5
-      - openrouter/z-ai/glm-4.7
     tester:
       primary: openrouter/deepseek/deepseek-r1-0528
       fallback:
@@ -594,8 +598,6 @@ docker:
     python: python:3.11-slim
     nodejs: node:20-alpine
     playwright: mcr.microsoft.com/playwright:v1.40.0-jammy
-  # AENDERUNG 10.02.2026: Fix 50 - Persistenter Docker-Container pro Projekt
-  # Loest: npm-Inkonsistenzen, globale Paketverschmutzung, Windows-Pfadprobleme
   project_container:
     enabled: true
     base_images:

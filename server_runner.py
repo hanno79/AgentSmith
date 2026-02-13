@@ -483,8 +483,14 @@ def start_server(project_path: str, tech_blueprint: Dict[str, Any],
                 _docker_container=docker_container
             )
         else:
-            logger.warning("Docker-Server-Start fehlgeschlagen - versuche Host-Fallback")
-            # Fallthrough zum Host-Start
+            # AENDERUNG 11.02.2026: Fix 51 - KEIN Host-Fallback wenn Docker Port belegt
+            # ROOT-CAUSE-FIX: Docker mapped Port auf Host → is_port_available() gibt True
+            # zurueck obwohl kein Server laeuft → falsches ServerInfo wuerde
+            # ERR_EMPTY_RESPONSE verursachen weil Docker-Proxy die TCP-Verbindung annimmt
+            # aber nichts im Container auf dem Port antwortet
+            logger.error("Docker-Server-Start fehlgeschlagen - Port %d durch Docker belegt, "
+                         "kein Host-Fallback moeglich", port)
+            return None
 
     # ÄNDERUNG 06.02.2026: Dependencies vor Server-Start installieren
     if not _install_dependencies(project_path, tech_blueprint):

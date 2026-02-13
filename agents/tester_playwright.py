@@ -197,7 +197,8 @@ def test_web_ui(file_path: str, config: Optional[Dict[str, Any]] = None) -> UITe
 
 
 def _test_with_server(project_path: str, tech_blueprint: Dict[str, Any],
-                      test_url: str, config: Optional[Dict[str, Any]] = None) -> UITestResult:
+                      test_url: str, config: Optional[Dict[str, Any]] = None,
+                      docker_container=None) -> UITestResult:
     """
     Interne Funktion: Testet gegen einen laufenden Server.
 
@@ -214,7 +215,9 @@ def _test_with_server(project_path: str, tech_blueprint: Dict[str, Any],
     startup_timeout_ms = tech_blueprint.get("server_startup_time_ms")
     startup_timeout = (startup_timeout_ms if startup_timeout_ms is not None else 30000) / 1000
 
-    with managed_server(project_path, tech_blueprint, timeout=int(startup_timeout)) as server:
+    # AENDERUNG 11.02.2026: Fix 51 - Docker-Container an managed_server durchreichen
+    with managed_server(project_path, tech_blueprint, timeout=int(startup_timeout),
+                        docker_container=docker_container) as server:
         if server is None:
             return {
                 "status": "ERROR",

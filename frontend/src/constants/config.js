@@ -102,6 +102,15 @@ export const COLORS = {
     rgb: '245, 158, 11',
     glow: '0 0 30px rgba(245, 158, 11, 0.8), 0 0 15px rgba(245, 158, 11, 0.5), 0 0 5px rgba(255, 255, 255, 0.3)',
   },
+  // AENDERUNG 11.02.2026: Khaki fuer Fix-Agent (kein Standard-Tailwind → Bracket-Syntax)
+  khaki: {
+    border: 'border-[#F0E68C]/40',
+    text: 'text-[#F0E68C]',
+    bg: 'bg-[#F0E68C]/10',
+    hex: '#F0E68C',
+    rgb: '240, 230, 140',
+    glow: '0 0 30px rgba(240, 230, 140, 0.8), 0 0 15px rgba(240, 230, 140, 0.5), 0 0 5px rgba(255, 255, 255, 0.3)',
+  },
   // ÄNDERUNG 30.01.2026: Platinum/Weiß für Documentation Manager
   platinum: {
     border: 'border-white/30',

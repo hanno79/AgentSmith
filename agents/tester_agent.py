@@ -203,7 +203,8 @@ def _get_ui_test_strategy(project_type: str, tech_blueprint: Dict[str, Any]) -> 
 # Haupt-Test-Dispatcher
 # =========================================================================
 def test_project(project_path: str, tech_blueprint: Dict[str, Any],
-                 config: Optional[Dict[str, Any]] = None) -> UITestResult:
+                 config: Optional[Dict[str, Any]] = None,
+                 docker_container=None) -> UITestResult:
     """
     Intelligente Test-Funktion mit Framework-basiertem Routing.
 
@@ -300,7 +301,9 @@ def test_project(project_path: str, tech_blueprint: Dict[str, Any],
 
     if needs_server:
         logger.info(f"Server-Test: Starte Server und teste {test_target}")
-        return _test_with_server(project_path, tech_blueprint, test_target, config)
+        # AENDERUNG 11.02.2026: Fix 51 - Docker-Container an Tester durchreichen
+        return _test_with_server(project_path, tech_blueprint, test_target, config,
+                                 docker_container=docker_container)
     else:
         logger.info(f"Statischer Test: Teste Datei {test_target}")
         return test_web_ui(test_target, config)

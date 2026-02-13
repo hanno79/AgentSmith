@@ -52,6 +52,7 @@ const BG_CLASS_MAP = {
   orange: 'bg-orange-400',
   indigo: 'bg-indigo-400',
   amber: 'bg-amber-400',
+  khaki: 'bg-[#F0E68C]',
   platinum: 'bg-white',
 };
 
