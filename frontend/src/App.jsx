@@ -15,7 +15,7 @@
  *               # ÄNDERUNG [31.01.2026]: Mission Control, Right Panel und Agent Routing ausgelagert.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
 
 import MainframeHub from './MainframeHub';
@@ -29,6 +29,8 @@ import AgentRouter, { isAgentRoute } from './components/AgentRouter';
 import KanbanBoard from './components/KanbanBoard';
 // AENDERUNG 14.02.2026: Celebration-Overlay bei Projekt-Erfolg
 import CelebrationOverlay from './components/CelebrationOverlay';
+// AENDERUNG 14.02.2026: Toast-Benachrichtigungen fuer Agent-Events
+import ToastContainer from './components/ToastContainer';
 import useWebSocket from './hooks/useWebSocket';
 import useConfig from './hooks/useConfig';
 import { API_BASE, COLORS } from './constants/config';
@@ -401,9 +403,44 @@ const App = () => {
     }
   }, [status]);
 
-  // Deploy-Handler: Startet die Agenten-Pipeline
-  // AENDERUNG 09.02.2026: project_name im POST-Body mitschicken
-  const handleDeploy = async () => {
+  // AENDERUNG 14.02.2026: Browser-Tab Titel + Favicon dynamisch je nach Status
+  useEffect(() => {
+    const STATUS_TAB = {
+      Idle:    { title: 'AgentSmith',                      color: '#06b6d4' },
+      Working: { title: '\u2699 Arbeitet... | AgentSmith', color: '#f59e0b' },
+      Success: { title: '\u2705 Fertig! | AgentSmith',     color: '#22c55e' },
+      Error:   { title: '\u274C Fehler | AgentSmith',      color: '#ef4444' },
+    };
+    const cfg = STATUS_TAB[status] || STATUS_TAB.Idle;
+    document.title = cfg.title;
+
+    // Canvas-Favicon generieren
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = 32; canvas.height = 32;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = cfg.color;
+      ctx.beginPath();
+      ctx.arc(16, 16, 14, 0, Math.PI * 2);
+      ctx.fill();
+      // Weisser Punkt in der Mitte
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc(16, 16, 5, 0, Math.PI * 2);
+      ctx.fill();
+      const link = document.querySelector("link[rel~='icon']") || document.createElement('link');
+      link.rel = 'icon';
+      link.href = canvas.toDataURL();
+      document.head.appendChild(link);
+    } catch {
+      // Canvas nicht verfuegbar — Favicon bleibt unveraendert
+    }
+  }, [status]);
+
+  // AENDERUNG 14.02.2026: Keyboard Shortcuts (Ctrl+Enter = Deploy, Escape = Schliessen)
+  const toastRef = useRef(null);
+
+  const handleDeploy = useCallback(async () => {
     if (!goal) return;
     setStatus('Working');
     setLogs([]);
@@ -418,7 +455,65 @@ const App = () => {
       setLogs(prev => [...prev, { agent: 'System', event: 'Error', message: 'Keine Verbindung zum Backend.' }]);
       setStatus('Error');
     }
-  };
+  }, [goal, projectName]);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Ctrl+Enter: Deploy starten (nur wenn Idle + Goal vorhanden)
+      if (e.ctrlKey && e.key === 'Enter' && status === 'Idle' && goal.trim()) {
+        e.preventDefault();
+        handleDeploy();
+      }
+      // Escape: Stufenweise schliessen
+      if (e.key === 'Escape') {
+        if (showCelebration) { setShowCelebration(false); return; }
+        if (helpRequests.length > 0) { clearHelpRequests(); return; }
+        if (currentRoom !== 'mission-control') { setCurrentRoom('mission-control'); }
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [status, goal, currentRoom, showCelebration, helpRequests, clearHelpRequests, handleDeploy]);
+
+  // AENDERUNG 14.02.2026: Toast-Trigger — Agent-Events aus Logs als Benachrichtigungen
+  const lastToastLogIdx = useRef(-1);
+  useEffect(() => {
+    if (logs.length === 0) { lastToastLogIdx.current = -1; return; }
+    // Nur neue Logs seit letztem Check verarbeiten
+    const startIdx = Math.max(0, lastToastLogIdx.current + 1);
+    lastToastLogIdx.current = logs.length - 1;
+    if (!toastRef.current) return;
+
+    for (let i = startIdx; i < logs.length; i++) {
+      const log = logs[i];
+      if (!log?.event) continue;
+
+      // Events die bereits eigene UI haben → kein Toast
+      if (log.event === 'Success') continue;          // CelebrationOverlay
+      if (log.event === 'HELP_NEEDED') continue;       // HelpPanel
+
+      // Agent-Completion Events
+      if (log.event === 'CodeOutput') {
+        toastRef.current.addToast(log.agent || 'Coder', 'Code generiert', 'info');
+      } else if (log.event === 'ReviewOutput') {
+        const isOk = log.message?.includes('OK') || log.message?.includes('APPROVED');
+        toastRef.current.addToast('Reviewer', isOk ? 'Review bestanden' : 'Feedback erhalten', isOk ? 'success' : 'warning');
+      } else if (log.event === 'UITestResult') {
+        toastRef.current.addToast('Tester', 'Tests durchgefuehrt', 'info');
+      } else if (log.event === 'SecurityOutput') {
+        const secure = log.message?.includes('SECURE');
+        toastRef.current.addToast('Security', secure ? 'Sicherheitsscan: OK' : 'Sicherheitswarnung!', secure ? 'success' : 'warning');
+      } else if (log.event === 'DesignerOutput') {
+        toastRef.current.addToast('Designer', 'Design erstellt', 'info');
+      } else if (log.event === 'ModelSwitch') {
+        toastRef.current.addToast(log.agent || 'System', 'Modell gewechselt', 'info');
+      } else if (log.event === 'Failure') {
+        toastRef.current.addToast('System', 'Fehler aufgetreten', 'error');
+      } else if (log.event === 'TechStackOutput') {
+        toastRef.current.addToast('TechArchitect', 'Tech-Stack definiert', 'info');
+      }
+    }
+  }, [logs]);
 
   // ÄNDERUNG 25.01.2026: Reset-Funktion für Projekt-Neustart
   // ÄNDERUNG 28.01.2026: localStorage und Session ebenfalls zurücksetzen
@@ -574,6 +669,9 @@ const App = () => {
           logs={logs}
         />
       </div>
+
+      {/* AENDERUNG 14.02.2026: Toast-Benachrichtigungen fuer Agent-Events */}
+      <ToastContainer ref={toastRef} />
 
       {/* ÄNDERUNG 30.01.2026: HelpPanel für HELP_NEEDED Events */}
       <HelpPanel
