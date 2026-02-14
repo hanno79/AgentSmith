@@ -27,6 +27,8 @@ import RightPanel from './components/RightPanel';
 import AgentRouter, { isAgentRoute } from './components/AgentRouter';
 // AENDERUNG 13.02.2026: Kanban-Board Import
 import KanbanBoard from './components/KanbanBoard';
+// AENDERUNG 14.02.2026: Celebration-Overlay bei Projekt-Erfolg
+import CelebrationOverlay from './components/CelebrationOverlay';
 import useWebSocket from './hooks/useWebSocket';
 import useConfig from './hooks/useConfig';
 import { API_BASE, COLORS } from './constants/config';
@@ -192,6 +194,8 @@ const App = () => {
   // AENDERUNG 13.02.2026: Feature-Tracking State fuer Kanban-Board
   const [featureData, setFeatureData] = useState([]);
   const [currentRunId, setCurrentRunId] = useState(null);
+  // AENDERUNG 14.02.2026: Celebration-Overlay State
+  const [showCelebration, setShowCelebration] = useState(false);
 
   // ÄNDERUNG 24.01.2026: Resizable Panel State für rechte Sidebar
   const [previewHeight, setPreviewHeight] = useState(60); // 60% für Preview
@@ -388,6 +392,15 @@ const App = () => {
     }
   }, [logs, currentRunId]);
 
+  // AENDERUNG 14.02.2026: Celebration bei Success anzeigen (Auto-Dismiss nach 6s)
+  useEffect(() => {
+    if (status === 'Success') {
+      setShowCelebration(true);
+      const timer = setTimeout(() => setShowCelebration(false), 6000);
+      return () => clearTimeout(timer);
+    }
+  }, [status]);
+
   // Deploy-Handler: Startet die Agenten-Pipeline
   // AENDERUNG 09.02.2026: project_name im POST-Body mitschicken
   const handleDeploy = async () => {
@@ -433,6 +446,8 @@ const App = () => {
       // AENDERUNG 13.02.2026: Feature-Daten zuruecksetzen
       setFeatureData([]);
       setCurrentRunId(null);
+      // AENDERUNG 14.02.2026: Celebration zuruecksetzen
+      setShowCelebration(false);
 
       // Alle Agenten auf Idle setzen
       setActiveAgents({
@@ -565,6 +580,16 @@ const App = () => {
         helpRequests={helpRequests}
         onDismiss={dismissHelpRequest}
         onDismissAll={clearHelpRequests}
+      />
+
+      {/* AENDERUNG 14.02.2026: Celebration-Overlay bei Projekt-Erfolg */}
+      <CelebrationOverlay
+        show={showCelebration}
+        onDismiss={() => setShowCelebration(false)}
+        featureStats={featureData.length > 0 ? {
+          total: featureData.length,
+          done: featureData.filter(f => f.status === 'done').length,
+        } : null}
       />
     </div>
   );

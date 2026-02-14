@@ -11,8 +11,9 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import PropTypes from 'prop-types';
+import { motion } from 'framer-motion';
 import { DragDropContext } from '@hello-pangea/dnd';
-import { BarChart3, RefreshCw } from 'lucide-react';
+import { BarChart3, RefreshCw, PartyPopper } from 'lucide-react';
 import KanbanColumn from './KanbanColumn';
 import { API_BASE } from '../constants/config';
 
@@ -127,17 +128,34 @@ const KanbanBoard = ({ runId, featureData, onFeatureDataChange }) => {
         {/* Progress-Bar */}
         <div className="flex-1 max-w-md">
           <div className="flex items-center gap-2">
-            <div className="flex-1 h-2 bg-gray-800 rounded-full overflow-hidden">
+            <div className="flex-1 h-2 bg-gray-800 rounded-full overflow-hidden relative">
               <div
-                className="h-full bg-gradient-to-r from-cyan-500 to-green-500 rounded-full transition-all duration-500"
+                className={`h-full bg-gradient-to-r from-cyan-500 to-green-500 rounded-full transition-all duration-500 ${stats.percentage === 100 ? 'animate-pulse' : ''}`}
                 style={{ width: `${stats.percentage}%` }}
               />
+              {/* AENDERUNG 14.02.2026: Glow bei 100% */}
+              {stats.percentage === 100 && (
+                <div className="absolute inset-0 rounded-full" style={{ boxShadow: '0 0 12px rgba(34, 197, 94, 0.5)' }} />
+              )}
             </div>
             <span className="text-sm font-mono text-gray-400 min-w-[3rem] text-right">
               {stats.percentage}%
             </span>
           </div>
         </div>
+
+        {/* AENDERUNG 14.02.2026: 100%-Celebration Badge */}
+        {stats.percentage === 100 && (
+          <motion.div
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ type: 'spring', stiffness: 200, damping: 12 }}
+            className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-green-500/20 border border-green-500/30 text-green-400 text-xs font-medium"
+          >
+            <PartyPopper className="w-3.5 h-3.5" />
+            Alle Features abgeschlossen!
+          </motion.div>
+        )}
 
         {/* Stats-Badges */}
         <div className="flex items-center gap-2 text-xs">
