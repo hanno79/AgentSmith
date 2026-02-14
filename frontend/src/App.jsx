@@ -349,13 +349,27 @@ const App = () => {
   }, [goal, logs, status]);
 
   // AENDERUNG 13.02.2026: Feature-Events aus dem Log-Stream extrahieren
+  // ROOT-CAUSE-FIX 14.02.2026:
+  // Symptom: Kanban-Board zeigte keine Features, currentRunId blieb null
+  // Ursache: Guard `agent !== 'System'` blockierte Library/ProjectStart Event
+  // Loesung: ProjectStart-Check VOR den System-Guard verschieben
   useEffect(() => {
     if (logs.length === 0) return;
     const latest = logs[logs.length - 1];
+
+    // 1. Run-ID aus Library/ProjectStart ZUERST extrahieren (agent='Library', nicht 'System')
+    if (latest?.agent === 'Library' && latest.event === 'ProjectStart') {
+      const match = latest.message?.match(/Protokollierung gestartet:\s*(\S+)/);
+      if (match) {
+        setCurrentRunId(match[1]);
+      }
+      return;
+    }
+
+    // 2. Feature-Events kommen nur von agent='System'
     if (latest?.agent !== 'System') return;
 
     if (latest.event === 'FeaturesCreated' || latest.event === 'FeatureStats') {
-      // Stats-Update — run_id aus dem vorherigen ProjectStart Event ermitteln
       try {
         const statsData = JSON.parse(latest.message);
         if (statsData.total > 0 && currentRunId) {
@@ -382,14 +396,6 @@ const App = () => {
         ));
       } catch {
         // JSON-Parse fehlgeschlagen - ignorieren
-      }
-    }
-
-    // Run-ID aus Library ProjectStart Event extrahieren
-    if (latest.agent === 'Library' && latest.event === 'ProjectStart') {
-      const match = latest.message?.match(/Protokollierung gestartet:\s*(\S+)/);
-      if (match) {
-        setCurrentRunId(match[1]);
       }
     }
   }, [logs, currentRunId]);
