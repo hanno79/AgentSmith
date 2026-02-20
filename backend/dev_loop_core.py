@@ -52,6 +52,56 @@ from .dev_loop_run_helpers import (
 from .dev_loop_helpers import extract_filenames_from_feedback
 
 
+import re
+import hashlib
+
+
+def _compute_feedback_signature(feedback: str, sandbox_result: str) -> str:
+    """
+    AENDERUNG 20.02.2026: Fix 58c — Normalisierte Feedback-Signatur.
+    ROOT-CAUSE-FIX: Error-Hash aenderte sich pro Iteration (Zeilennummern, Zeitstempel)
+    obwohl der Kern-Fehler identisch blieb → keine Stagnation erkannt.
+
+    Extrahiert Kern-Fehlermuster aus Feedback und Sandbox-Ergebnis:
+    - Entfernt Zeilennummern, Zeitstempel, variablen Content
+    - Normalisiert auf Kern-Patterns ("no such table", "Module not found", etc.)
+
+    Returns:
+        Normalisierte Signatur (MD5-Hash) oder leerer String wenn kein Feedback
+    """
+    combined = (feedback or "") + (sandbox_result or "")
+    if not combined.strip():
+        return ""
+
+    # Zeilennummern entfernen (z.B. "line 42", "Zeile 42", ":42:", "(42)")
+    normalized = re.sub(r'(?:line|zeile|:)\s*\d+', '', combined, flags=re.IGNORECASE)
+    normalized = re.sub(r'\(\d+\)', '', normalized)
+    # Zeitstempel entfernen
+    normalized = re.sub(r'\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}', '', normalized)
+    # Hex-Hashes entfernen (z.B. Error-IDs)
+    normalized = re.sub(r'[0-9a-f]{8,}', '', normalized)
+    # Whitespace normalisieren
+    normalized = re.sub(r'\s+', ' ', normalized).strip().lower()
+
+    # Kern-Pattern extrahieren (Top-20 wiederkehrende Fehlermuster)
+    core_patterns = []
+    _ERROR_PATTERNS = [
+        "no such table", "module not found", "cannot read properties",
+        "failed to compile", "syntaxerror", "referenceerror", "typeerror",
+        "cannot find module", "unexpected token", "is not defined",
+        "import error", "hydration", "missing required", "sqlite_error",
+        "enoent", "permission denied", "timeout", "connection refused",
+        "unhandled rejection", "cannot resolve"
+    ]
+    for pattern in _ERROR_PATTERNS:
+        if pattern in normalized:
+            core_patterns.append(pattern)
+
+    # Signatur: Hash aus Kern-Patterns + normalisiertem Text (erste 500 Zeichen)
+    signature_input = "|".join(sorted(core_patterns)) + "||" + normalized[:500]
+    return hashlib.md5(signature_input.encode()).hexdigest()[:16]
+
+
 class DevLoop:
     def __init__(self, manager, set_current_agent, run_with_timeout):
         self.manager = manager
@@ -119,6 +169,11 @@ class DevLoop:
         # ROOT-CAUSE-FIX: Leere Seite ueber 3+ Iterationen → Modellwechsel erzwingen
         # Unabhaengig vom Error-Hash (der sich jede Iteration aendert)
         _empty_page_counter = 0
+        # AENDERUNG 20.02.2026: Fix 58c — Feedback-Stagnation-Erkennung
+        # ROOT-CAUSE-FIX: Tabellen-Mismatch wiederholte sich 10x ohne Modellwechsel
+        # weil Error-Hash sich minimal aenderte (Zeilennummer) obwohl Kern-Fehler gleich blieb
+        _last_feedback_signature = ""
+        _stagnation_counter = 0
 
         while iteration < max_retries:
             manager.iteration = iteration
@@ -588,6 +643,24 @@ class DevLoop:
                     _empty_page_counter = 0
             else:
                 _empty_page_counter = 0
+
+            # AENDERUNG 20.02.2026: Fix 58c — Feedback-Stagnation-Erkennung
+            # ROOT-CAUSE-FIX: Tabellen-Mismatch ("no such table: todos") wiederholte sich
+            # 10x ohne Modellwechsel weil Error-Hash sich minimal aenderte (Zeilennummer)
+            # obwohl der Kern-Fehler identisch blieb. Neuer Check: Normalisiertes Feedback
+            # ueber 4+ Iterationen gleich → erzwinge Modellwechsel
+            _feedback_sig = _compute_feedback_signature(feedback, sandbox_result)
+            if _feedback_sig and _feedback_sig == _last_feedback_signature:
+                _stagnation_counter += 1
+                if _stagnation_counter >= 4:
+                    manager._ui_log("Orchestrator", "StagnationDetected",
+                        f"Gleiches Feedback-Muster seit {_stagnation_counter + 1} Iterationen "
+                        f"(Signatur: {_feedback_sig[:50]}...) — erzwinge Modellwechsel")
+                    model_attempt = max_model_attempts
+                    _stagnation_counter = 0
+            else:
+                _stagnation_counter = 0
+                _last_feedback_signature = _feedback_sig
 
             model_attempt += 1
             failed_attempts_history.append({"model": current_coder_model, "attempt": model_attempt,

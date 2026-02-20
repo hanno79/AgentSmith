@@ -104,7 +104,8 @@ def create_planner(config: Dict[str, Any], project_rules: Dict[str, List[str]], 
     )
 
 
-def create_planning_task(agent: Agent, blueprint: Dict[str, Any], user_prompt: str) -> Task:
+def create_planning_task(agent: Agent, blueprint: Dict[str, Any], user_prompt: str,
+                         database_schema: str = "") -> Task:
     """
     Erstellt einen Planning-Task fuer den Planner-Agenten.
 
@@ -112,10 +113,21 @@ def create_planning_task(agent: Agent, blueprint: Dict[str, Any], user_prompt: s
         agent: Der Planner-Agent
         blueprint: TechStack-Blueprint mit project_type, language, etc.
         user_prompt: Original-Anforderung des Benutzers
+        database_schema: SQL-Schema vom DBDesigner (Tabellennamen!)
 
     Returns:
         CrewAI Task-Instanz
     """
+    # AENDERUNG 20.02.2026: Fix 58a — Schema-Block im Planner-Prompt
+    # ROOT-CAUSE-FIX: Planner sah keine Tabellennamen → hardcoded "todos" statt echte Tabellen
+    schema_section = ""
+    if database_schema and "Kein Datenbank" not in database_schema:
+        schema_section = (
+            f"\nDATENBANK-SCHEMA (EXAKT diese Tabellennamen verwenden — NICHT umbenennen!):\n"
+            f"{database_schema[:2000]}\n"
+            f"WICHTIG: API-Routen und Datenbankabfragen MUESSEN diese Tabellennamen verwenden!\n"
+        )
+
     description = f"""Erstelle einen File-by-File Implementierungsplan fuer dieses Projekt.
 
 BENUTZER-ANFORDERUNG:
@@ -123,7 +135,7 @@ BENUTZER-ANFORDERUNG:
 
 TECHNISCHER BLUEPRINT:
 {json.dumps(blueprint, indent=2, ensure_ascii=False)}
-
+{schema_section}
 DEINE AUFGABE:
 1. Analysiere die Anforderungen und den Blueprint
 2. Identifiziere alle benoetigten Dateien

@@ -561,7 +561,14 @@ def is_rate_limit_error(error: Exception) -> bool:
                   "Server-Fehler erkannt (kein Rate-Limit)")
         return False
 
-    is_rate_limit = (status_code in [429, 402]) or bool(re.search(rate_limit_pattern, error_str))
+    # AENDERUNG 20.02.2026: Fix 58e — "out of credits" als Rate-Limit erkennen
+    # ROOT-CAUSE-FIX: Augment "You have run out of credits" wurde nicht als Rate-Limit
+    # erkannt → Reviewer iterierte endlos ohne Modellwechsel
+    credit_exhaustion = any(p in error_str for p in [
+        'out of credits', 'credits exhausted', 'insufficient credits',
+        'no credits', 'credit limit'
+    ])
+    is_rate_limit = (status_code in [429, 402]) or bool(re.search(rate_limit_pattern, error_str)) or credit_exhaustion
 
     # AENDERUNG 09.02.2026: Fix 36c — Rate-Limit vs. Upstream-Error unterscheiden
     # ROOT-CAUSE-FIX:
@@ -645,7 +652,11 @@ def is_empty_or_invalid_response(response: str) -> bool:
         "[empty]",
         "[no output]",
         "failed to generate",
-        "unable to process"
+        "unable to process",
+        # AENDERUNG 20.02.2026: Fix 58e — Credit-Exhaustion als ungueltige Antwort
+        "out of credits",
+        "run out of credits",
+        "insufficient credits",
     ]
     response_lower = response.lower()
     return any(pattern in response_lower for pattern in invalid_patterns)

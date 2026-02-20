@@ -193,10 +193,14 @@ async def run_planner(
             router=manager.model_router
         )
 
+        # AENDERUNG 20.02.2026: Fix 58a — Schema an Planner durchreichen
+        # ROOT-CAUSE-FIX: Planner sah nur blueprint["database"]="sqlite" aber keine
+        # Tabellennamen → generierte generischen "todos"-Plan statt echte Tabellen
         task = create_planning_task(
             planner,
             manager.tech_blueprint,
-            user_goal
+            user_goal,
+            database_schema=getattr(manager, 'database_schema', '')
         )
 
         # AENDERUNG 08.02.2026: Pro-Agent Timeout statt globalem agent_timeout_seconds
@@ -284,7 +288,9 @@ async def run_planner(
     )
 
     # Fallback: Default-Plan
-    plan = create_default_plan(manager.tech_blueprint, user_goal)
+    # AENDERUNG 20.02.2026: Fix 58b — database_schema an Default-Plan durchreichen
+    plan = create_default_plan(manager.tech_blueprint, user_goal,
+                               database_schema=getattr(manager, 'database_schema', ''))
     manager._ui_log("Planner", "Info", f"Default-Plan mit {len(plan['files'])} Dateien erstellt")
 
     # AENDERUNG 02.02.2026: Auch Default-Plan in Memory speichern

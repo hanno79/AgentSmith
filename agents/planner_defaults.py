@@ -9,7 +9,10 @@ Beschreibung: Planner Default-Plan Logik - Template-basierte und generische Fall
 """
 
 import os
+import logging
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 # AENDERUNG 10.02.2026: Fix 49 — Auf Modul-Ebene fuer Import aus anderen Modulen
 # Template-Config-Dateien die bereits vom Template kopiert wurden und NICHT regeneriert werden sollen
@@ -34,7 +37,39 @@ PROTECTED_CONFIG_STEMS = {os.path.splitext(c)[0] for c in PROTECTED_CONFIGS
                           if c.endswith(('.js', '.mjs', '.ts'))}
 
 
-def _create_template_based_plan(blueprint: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
+def _extract_api_resource(database_schema: str, blueprint: Dict[str, Any]) -> str:
+    """
+    AENDERUNG 20.02.2026: Fix 58b — Dynamischer API-Pfad aus DB-Schema.
+    ROOT-CAUSE-FIX: Hardcoded "todos" fuehrte zu Tabellen-Mismatch (db.js hat bugs/ideas,
+    route.js fragt "todos"). Jetzt wird der Tabellenname aus dem Schema extrahiert.
+
+    Args:
+        database_schema: SQL-Schema vom DBDesigner
+        blueprint: TechStack-Blueprint
+
+    Returns:
+        API-Ressourcen-Name (z.B. "bugs" oder "data" als Fallback)
+    """
+    if not database_schema or "Kein Datenbank" in database_schema:
+        return "data"
+
+    try:
+        from backend.orchestration_helpers import extract_tables_from_schema
+        tables = extract_tables_from_schema(database_schema)
+        if tables:
+            # Erste Tabelle als primaere API-Ressource
+            resource = tables[0].get("name", "data")
+            logger.info(f"[PlannerDefaults] API-Ressource aus Schema: {resource} "
+                       f"(aus {len(tables)} Tabellen)")
+            return resource
+    except ImportError:
+        logger.warning("[PlannerDefaults] extract_tables_from_schema nicht verfuegbar")
+
+    return "data"
+
+
+def _create_template_based_plan(blueprint: Dict[str, Any],
+                                database_schema: str = "") -> Optional[List[Dict[str, Any]]]:
     """
     AENDERUNG 08.02.2026: Template-basierter Default-Plan (Fix 27).
     Erstellt einen Default-Plan basierend auf dem Template des Blueprints.
@@ -119,11 +154,15 @@ def _create_template_based_plan(blueprint: Dict[str, Any]) -> Optional[List[Dict
             })
 
     # 5. API-Routen wenn DB vorhanden (Priority 3)
+    # AENDERUNG 20.02.2026: Fix 58b — Dynamischer API-Pfad statt hardcoded "todos"
+    # ROOT-CAUSE-FIX: Default-Plan hatte immer "app/api/todos/route.js" egal welche
+    # Tabellen der DBDesigner erstellt hat → Tabellen-Mismatch ueber 10+ Iterationen
     if db_type and db_type != "none":
         if "next" in project_type:
             db_dep = "lib/db.js"
+            api_resource = _extract_api_resource(database_schema, blueprint)
             files.append({
-                "path": "app/api/todos/route.js",
+                "path": f"app/api/{api_resource}/route.js",
                 "description": "API Route Handler (CRUD)",
                 "depends_on": [db_dep],
                 "estimated_lines": 100,
@@ -171,19 +210,22 @@ def _create_template_based_plan(blueprint: Dict[str, Any]) -> Optional[List[Dict
     return files if len(files) >= 3 else None
 
 
-def create_default_plan(blueprint: Dict[str, Any], user_prompt: str) -> Dict[str, Any]:
+def create_default_plan(blueprint: Dict[str, Any], user_prompt: str,
+                        database_schema: str = "") -> Dict[str, Any]:
     """
     Erstellt einen Standard-Plan wenn der Planner-Agent fehlschlaegt.
 
     Args:
         blueprint: TechStack-Blueprint
         user_prompt: Benutzer-Anforderung
+        database_schema: SQL-Schema vom DBDesigner (fuer dynamische API-Pfade)
 
     Returns:
         Standard-Plan basierend auf Projekt-Typ
     """
     # AENDERUNG 08.02.2026: Template-basierter Default-Plan (Fix 27)
-    template_files = _create_template_based_plan(blueprint)
+    # AENDERUNG 20.02.2026: Fix 58b — database_schema durchreichen
+    template_files = _create_template_based_plan(blueprint, database_schema)
     if template_files:
         return {
             "project_name": "project",

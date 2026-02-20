@@ -352,11 +352,25 @@ class DevLoopTaskDerivation:
                 summary_parts.append(f"- {err[:100]}")
 
         # Wenn nicht alle erfolgreich, verbleibende Issues aufzeigen
+        # AENDERUNG 20.02.2026: Fix 58d — Ausfuehrlichere Hints bei komplettem Fehlschlag
+        # ROOT-CAUSE-FIX: UTDS leitete korrekte Fixes ab, aber Agent-Erstellung scheiterte.
+        # Die Task-Descriptions (korrekte Problemanalysen!) gingen verloren.
+        # Jetzt: Bei komplettem Fehlschlag → detaillierte Hints fuer Coder aufbereiten
         if not success:
-            summary_parts.append("\n### Verbleibende Aufgaben:")
-            for task in derivation_result.tasks:
-                if task.id in all_failed:
-                    summary_parts.append(f"- [{task.id}] {task.title}: {task.source_issue[:100]}")
+            all_failed_set = set(all_failed)
+            if completed == 0 and failed > 0:
+                summary_parts.append("\n### AUTOMATISCH ERKANNTE PROBLEME (UTDS konnte nicht ausfuehren):")
+                summary_parts.append("Bitte diese Probleme MANUELL im naechsten Coder-Durchgang beheben:")
+                for task in derivation_result.tasks:
+                    if task.id in all_failed_set:
+                        affected = ", ".join(task.affected_files[:3]) if task.affected_files else "unbekannt"
+                        summary_parts.append(
+                            f"- PROBLEM in {affected}: {task.title} — {task.source_issue[:200]}")
+            else:
+                summary_parts.append("\n### Verbleibende Aufgaben:")
+                for task in derivation_result.tasks:
+                    if task.id in all_failed_set:
+                        summary_parts.append(f"- [{task.id}] {task.title}: {task.source_issue[:100]}")
 
         return success, "\n".join(summary_parts), list(set(all_modified))
 

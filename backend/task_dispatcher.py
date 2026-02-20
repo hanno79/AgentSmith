@@ -408,6 +408,9 @@ class TaskDispatcher:
     def _get_agent_for_task(self, task: DerivedTask) -> Optional[Any]:
         """
         Holt oder erstellt einen Agenten fuer den Task-Typ.
+        AENDERUNG 20.02.2026: Fix 58d — 3 Versuche statt 2 + Cache-Invalidierung
+        ROOT-CAUSE-FIX: 20/20 UTDS-Batch-Ausfuehrungen schlugen fehl weil Agent-Erstellung
+        bei erschoepften Modell-Credits scheiterte. Korrekte Fixes gingen komplett verloren.
 
         Args:
             task: DerivedTask
@@ -422,7 +425,7 @@ class TaskDispatcher:
             logger.debug(f"[UTDS] Agent '{agent_type}' aus Cache geholt")
             return self._agent_cache[agent_type]
 
-        # Agent erstellen ueber agent_factory
+        # Versuch 1: Agent erstellen ueber agent_factory
         try:
             if hasattr(self.manager, 'agent_factory'):
                 logger.debug(f"[UTDS] Versuche Agent '{agent_type}' via agent_factory")
@@ -433,21 +436,35 @@ class TaskDispatcher:
                     return agent
                 else:
                     logger.warning(f"[UTDS] agent_factory.get('{agent_type}') lieferte None")
+        except Exception as e:
+            logger.warning(f"[UTDS] Factory-Fehler fuer '{agent_type}': {e}")
 
-            # Fallback: Direkter Import
+        # Versuch 2: Fallback: Direkter Import mit aktuellem Modell
+        try:
             logger.debug(f"[UTDS] Versuche Agent '{agent_type}' via Fallback-Import")
             agent = self._create_agent_fallback(agent_type)
             if agent:
                 self._agent_cache[agent_type] = agent
                 logger.info(f"[UTDS] Agent '{agent_type}' erfolgreich erstellt via Fallback")
-            else:
-                logger.error(f"[UTDS] Fallback-Erstellung fuer '{agent_type}' fehlgeschlagen")
-            return agent
-
+                return agent
         except Exception as e:
-            logger.error(f"[TaskDispatcher] Agent-Erstellung fehlgeschlagen: {e}")
-            logger.exception(f"[TaskDispatcher] Stacktrace fuer '{agent_type}':")
-            return None
+            logger.warning(f"[UTDS] Fallback-Fehler fuer '{agent_type}': {e}")
+
+        # Versuch 3 (NEU Fix 58d): Coder als Universal-Fallback fuer alle UTDS-Tasks
+        # Wenn der spezifische Agent-Typ nicht erstellt werden kann, nutze den Coder-Agent
+        # als Ersatz — der Coder kann generisch Code-Fixes erstellen
+        if agent_type != "coder":
+            try:
+                logger.info(f"[UTDS] Verwende Coder als Universal-Fallback fuer '{agent_type}'")
+                agent = self._create_agent_fallback("coder")
+                if agent:
+                    self._agent_cache[agent_type] = agent
+                    return agent
+            except Exception as e:
+                logger.error(f"[UTDS] Auch Coder-Fallback fehlgeschlagen: {e}")
+
+        logger.error(f"[UTDS] Alle 3 Versuche fuer '{agent_type}' fehlgeschlagen")
+        return None
 
     def _create_agent_fallback(self, agent_type: str) -> Optional[Any]:
         """
