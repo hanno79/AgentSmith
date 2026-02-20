@@ -17,12 +17,16 @@ from typing import Any, Dict, List, Optional
 # ROOT-CAUSE-FIX: Coder generiert next.config.mjs obwohl Template next.config.js hat
 # → Beide Config-Dateien existieren → Next.js kann nicht starten
 # Ursache: PROTECTED_CONFIGS hatte nur .js Varianten, nicht .mjs/.ts
+# AENDERUNG 20.02.2026: Fix 57d — globals.css hinzugefuegt
+# ROOT-CAUSE-FIX: Coder ueberschreibt globals.css mit nur 3 Zeilen (Tailwind Directives)
+# obwohl Template 62 Zeilen mit Shadcn CSS-Custom-Properties hat → Next.js rendert nicht
 PROTECTED_CONFIGS = {
     "tailwind.config.js", "tailwind.config.ts",
     "postcss.config.js", "postcss.config.mjs", "postcss.config.ts",
     "next.config.js", "next.config.mjs", "next.config.ts",
     "jsconfig.json", "tsconfig.json",
     "vite.config.js", "vite.config.mjs", "vite.config.ts",
+    "globals.css",  # Fix 57d: Shadcn CSS-Variablen schuetzen
 }
 # Stem-Varianten: next.config → [next.config.js, next.config.mjs, next.config.ts]
 # Werden in dev_loop_run_helpers.py fuer Stem-Match genutzt
@@ -89,9 +93,11 @@ def _create_template_based_plan(blueprint: Dict[str, Any]) -> Optional[List[Dict
         })
 
     # 3. CSS/Styles (Priority 1)
+    # AENDERUNG 20.02.2026: Fix 57d — Basename-Match fuer PROTECTED_CONFIGS
+    # ROOT-CAUSE-FIX: rf="app/globals.css" matched nicht gegen "globals.css" im Set
     required = template.get("required_files", [])
     for rf in required:
-        if rf.endswith(".css") and rf not in PROTECTED_CONFIGS:
+        if rf.endswith(".css") and os.path.basename(rf) not in PROTECTED_CONFIGS:
             files.append({
                 "path": rf,
                 "description": "Stylesheet / CSS-Importe",
@@ -133,8 +139,9 @@ def _create_template_based_plan(blueprint: Dict[str, Any]) -> Optional[List[Dict
             })
 
     # 6. Hauptseite/App (Priority 4) - verbleibende required_files
+    # AENDERUNG 20.02.2026: Fix 57d — Basename-Match fuer PROTECTED_CONFIGS
     for rf in required:
-        if rf in PROTECTED_CONFIGS:
+        if os.path.basename(rf) in PROTECTED_CONFIGS:
             continue
         if rf.endswith(".css") or "layout" in rf or "_app" in rf or "base.html" in rf:
             continue

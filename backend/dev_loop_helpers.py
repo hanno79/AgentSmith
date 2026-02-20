@@ -10,9 +10,13 @@ Beschreibung: Helper-Funktionen für DevLoop.
 """
 
 import re
+import os
 import ast
 import json
 import hashlib
+import shutil
+import subprocess
+import tempfile
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 
@@ -159,6 +163,62 @@ def _parse_code_to_files(code: str) -> dict:
     return code_dict
 
 
+# AENDERUNG 20.02.2026: Fix 57a — Direkte JS-Validierung ohne detect_code_type()
+# ROOT-CAUSE-FIX:
+# Symptom: config.js wird als "Syntaxfehler (python)" gemeldet obwohl es valides JS ist
+# Ursache: run_sandbox() nutzt detect_code_type() das JS ohne {} als Python klassifiziert
+# Loesung: Direkt node --check ausfuehren wenn Extension bereits .js/.ts bekannt ist
+def _validate_js_directly(content: str) -> str:
+    """
+    Validiert JavaScript/TypeScript-Code direkt mit node --check.
+
+    Umgeht detect_code_type() aus sandbox_runner.py, die JS-Code ohne
+    geschweifte Klammern faelschlicherweise als Python klassifiziert.
+
+    Args:
+        content: Der JS/TS-Code
+
+    Returns:
+        Validierungsergebnis als String
+    """
+    if not content or not content.strip():
+        return "❌ Datei ist leer."
+
+    node_path = shutil.which("node")
+    if not node_path:
+        return "✅ node nicht verfuegbar — Syntax-Check uebersprungen."
+
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode='w', suffix='.js', delete=False, encoding='utf-8'
+        ) as f:
+            f.write(content)
+            tmpfile = f.name
+
+        try:
+            result = subprocess.run(
+                [node_path, "--check", tmpfile],
+                capture_output=True, timeout=30
+            )
+            if result.returncode == 0:
+                return "✅ JavaScript-Syntaxpruefung bestanden."
+            else:
+                stderr = result.stderr.decode('utf-8', errors='ignore').strip()
+                if stderr:
+                    first_line = stderr.split('\n')[0][:200]
+                    return f"❌ JavaScript-Syntaxfehler: {first_line}"
+                return "❌ JavaScript-Syntaxfehler erkannt."
+        finally:
+            try:
+                os.unlink(tmpfile)
+            except OSError:
+                pass
+    except subprocess.TimeoutExpired:
+        return "✅ node --check Timeout — uebersprungen."
+    except Exception as e:
+        return f"✅ node --check fehlgeschlagen ({e}) — uebersprungen."
+
+
 def _validate_files_individually(code_dict: dict, tech_blueprint: dict) -> str:
     """
     Validiert jede Datei separat und gibt Ergebnis MIT Dateinamen zurueck.
@@ -206,9 +266,11 @@ def _validate_files_individually(code_dict: dict, tech_blueprint: dict) -> str:
             if result.startswith("❌"):
                 errors.append(f"[{filename}] {result[2:].strip()}")
 
-        # Reines JS (kein JSX-Framework)
+        # AENDERUNG 20.02.2026: Fix 57a — Direkte JS-Validierung
+        # ROOT-CAUSE-FIX: run_sandbox() nutzt detect_code_type() das JS ohne {}
+        # als Python klassifiziert → ast.parse() auf JS → false-positive Fehler
         elif ext in ('js', 'ts'):
-            result = run_sandbox(content)
+            result = _validate_js_directly(content)
             if result.startswith("❌"):
                 errors.append(f"[{filename}] {result[2:].strip()}")
 

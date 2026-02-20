@@ -12,6 +12,7 @@ Beschreibung: Content-basierte Validierungsregeln (Dreifach-Schutz Ebene 3).
               Extrahiert aus dev_loop_helpers.py (Regel 1: Max 500 Zeilen)
 """
 
+import os
 import re
 from typing import List
 
@@ -225,5 +226,13 @@ def extract_filenames_from_feedback(feedback: str) -> List[str]:
     datei_pattern = r'\[DATEI:(.+?\.[a-z]{1,4})\]'
     for match in re.finditer(datei_pattern, feedback):
         filenames.add(match.group(1).strip().replace("\\", "/"))
+
+    # AENDERUNG 20.02.2026: Fix 57b — FALSE_POSITIVE_FILENAMES filtern
+    # ROOT-CAUSE-FIX: "Next.js", "Node.js" etc. werden als Dateinamen extrahiert
+    # obwohl sie Framework-Namen aus beschreibendem Text sind (z.B. "die Next.js Umgebung")
+    # _get_affected_files_from_feedback() hatte diesen Filter bereits, hier fehlte er
+    from .dev_loop_coder_utils import FALSE_POSITIVE_FILENAMES
+    filenames = {f for f in filenames
+                 if os.path.basename(f).lower() not in FALSE_POSITIVE_FILENAMES}
 
     return list(filenames)

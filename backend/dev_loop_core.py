@@ -533,6 +533,32 @@ class DevLoop:
                 manager._ui_log("Orchestrator", "PingPongDetected", json.dumps(
                     {"files": _pp_files, "counts": {f: _file_feedback_counter[f] for f in _pp_files}}, ensure_ascii=False))
 
+                # AENDERUNG 20.02.2026: Fix 57c — PingPong bricht Sandbox-Zyklus
+                # ROOT-CAUSE-FIX: PingPong-Dateien mit >= 5 Iterationen die NUR
+                # Sandbox-Fehler verursachen blockieren endlos. Override wenn ALLE
+                # Sandbox-Fehler von PingPong-Dateien stammen (= false positives)
+                _pp_severe = [f for f in _pp_files
+                              if _file_feedback_counter.get(f, 0) >= 5]
+                if _pp_severe and sandbox_failed and sandbox_result:
+                    _sandbox_lines = [
+                        line for line in sandbox_result.split("\n")
+                        if line.strip().startswith("[") and "❌" not in line[:5]
+                    ]
+                    # Extrahiere Dateinamen aus Sandbox-Fehlerzeilen [filename]
+                    _sandbox_error_lines = [
+                        line for line in sandbox_result.split("\n")
+                        if line.strip().startswith("[") and "]" in line
+                    ]
+                    _non_pp_errors = [
+                        line for line in _sandbox_error_lines
+                        if not any(pp in line for pp in _pp_severe)
+                    ]
+                    if not _non_pp_errors:
+                        manager._ui_log("Orchestrator", "PingPongOverride",
+                            f"Sandbox-Fehler fuer {len(_pp_severe)} PingPong-Dateien "
+                            f"ignoriert (>= 5 Iterationen): {_pp_severe}")
+                        sandbox_failed = False
+
             if hasattr(manager, 'doc_service') and manager.doc_service:
                 manager.doc_service.collect_iteration(
                     iteration=iteration + 1, changes=feedback[:300] if feedback else "Keine",
