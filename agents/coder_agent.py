@@ -207,7 +207,8 @@ def build_single_file_prompt(
     file_description: str,
     blueprint: Dict[str, Any],
     existing_files: Dict[str, str],
-    user_goal: str
+    user_goal: str,
+    database_schema: str = ""
 ) -> str:
     """
     Baut den Prompt fuer eine einzelne Datei.
@@ -218,6 +219,7 @@ def build_single_file_prompt(
         blueprint: TechStack-Blueprint
         existing_files: Dict mit bereits erstellten Dateien (path -> content)
         user_goal: Urspruengliches Benutzer-Ziel
+        database_schema: SQL-Schema vom DBDesigner (Fix 58g)
 
     Returns:
         Vollstaendiger Prompt fuer den Coder
@@ -235,6 +237,16 @@ TECHNISCHER KONTEXT:
 - Sprache: {blueprint.get('language', 'unknown')}
 - App-Typ: {blueprint.get('app_type', 'webapp')}
 """
+
+    # AENDERUNG 20.02.2026: Fix 58g — Schema fuer DB-relevante Dateien
+    # ROOT-CAUSE-FIX: Ohne Schema erstellt Free-Modell generische users/posts-Tabellen
+    # statt der im Schema definierten Tabellen (z.B. bugs/ideas)
+    if database_schema and "Kein Datenbank" not in database_schema:
+        is_db_related = ("db" in target_file.lower() or "/api/" in target_file
+                         or "model" in target_file.lower() or "database" in target_file.lower()
+                         or "page" in target_file.lower())
+        if is_db_related:
+            prompt += f"\nDATENBANK-SCHEMA (EXAKT diese Tabellennamen und Spalten verwenden!):\n{database_schema[:2000]}\nWICHTIG: Verwende NUR die Tabellennamen aus dem Schema! Erfinde KEINE eigenen!\n"
 
     if existing_files:
         prompt += "\n\nBEREITS ERSTELLTE DATEIEN (als Referenz):\n"

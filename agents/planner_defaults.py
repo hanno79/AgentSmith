@@ -37,35 +37,37 @@ PROTECTED_CONFIG_STEMS = {os.path.splitext(c)[0] for c in PROTECTED_CONFIGS
                           if c.endswith(('.js', '.mjs', '.ts'))}
 
 
-def _extract_api_resource(database_schema: str, blueprint: Dict[str, Any]) -> str:
+def _extract_api_resources(database_schema: str, blueprint: Dict[str, Any]) -> list:
     """
-    AENDERUNG 20.02.2026: Fix 58b — Dynamischer API-Pfad aus DB-Schema.
-    ROOT-CAUSE-FIX: Hardcoded "todos" fuehrte zu Tabellen-Mismatch (db.js hat bugs/ideas,
-    route.js fragt "todos"). Jetzt wird der Tabellenname aus dem Schema extrahiert.
+    AENDERUNG 20.02.2026: Fix 58b+58f — ALLE API-Ressourcen aus DB-Schema.
+    ROOT-CAUSE-FIX 58b: Hardcoded "todos" fuehrte zu Tabellen-Mismatch.
+    ROOT-CAUSE-FIX 58f: Nur erste Tabelle extrahiert → fehlende Routes fuer
+    weitere Tabellen (z.B. /api/ideas 404 bei bugs+ideas Schema).
+    Jetzt werden ALLE Tabellennamen als Liste zurueckgegeben.
 
     Args:
         database_schema: SQL-Schema vom DBDesigner
         blueprint: TechStack-Blueprint
 
     Returns:
-        API-Ressourcen-Name (z.B. "bugs" oder "data" als Fallback)
+        Liste aller API-Ressourcen-Namen (z.B. ["bugs", "ideas"] oder ["data"] als Fallback)
     """
     if not database_schema or "Kein Datenbank" in database_schema:
-        return "data"
+        return ["data"]
 
     try:
         from backend.orchestration_helpers import extract_tables_from_schema
         tables = extract_tables_from_schema(database_schema)
         if tables:
-            # Erste Tabelle als primaere API-Ressource
-            resource = tables[0].get("name", "data")
-            logger.info(f"[PlannerDefaults] API-Ressource aus Schema: {resource} "
-                       f"(aus {len(tables)} Tabellen)")
-            return resource
+            resources = [t.get("name", "data") for t in tables if t.get("name")]
+            if resources:
+                logger.info(f"[PlannerDefaults] API-Ressourcen aus Schema: {resources} "
+                           f"({len(resources)} Tabellen)")
+                return resources
     except ImportError:
         logger.warning("[PlannerDefaults] extract_tables_from_schema nicht verfuegbar")
 
-    return "data"
+    return ["data"]
 
 
 def _create_template_based_plan(blueprint: Dict[str, Any],
@@ -154,20 +156,21 @@ def _create_template_based_plan(blueprint: Dict[str, Any],
             })
 
     # 5. API-Routen wenn DB vorhanden (Priority 3)
-    # AENDERUNG 20.02.2026: Fix 58b — Dynamischer API-Pfad statt hardcoded "todos"
-    # ROOT-CAUSE-FIX: Default-Plan hatte immer "app/api/todos/route.js" egal welche
-    # Tabellen der DBDesigner erstellt hat → Tabellen-Mismatch ueber 10+ Iterationen
+    # AENDERUNG 20.02.2026: Fix 58b+58f — Eine Route PRO Tabelle aus Schema
+    # ROOT-CAUSE-FIX 58b: Hardcoded "todos" → Tabellen-Mismatch
+    # ROOT-CAUSE-FIX 58f: Nur eine Route → fehlende Routes bei Multi-Tabellen-Schema
     if db_type and db_type != "none":
         if "next" in project_type:
             db_dep = "lib/db.js"
-            api_resource = _extract_api_resource(database_schema, blueprint)
-            files.append({
-                "path": f"app/api/{api_resource}/route.js",
-                "description": "API Route Handler (CRUD)",
-                "depends_on": [db_dep],
-                "estimated_lines": 100,
-                "priority": 3
-            })
+            api_resources = _extract_api_resources(database_schema, blueprint)
+            for resource in api_resources:
+                files.append({
+                    "path": f"app/api/{resource}/route.js",
+                    "description": f"API Route Handler (CRUD) fuer {resource}",
+                    "depends_on": [db_dep],
+                    "estimated_lines": 100,
+                    "priority": 3
+                })
         elif "flask" in project_type:
             files.append({
                 "path": "src/routes.py",

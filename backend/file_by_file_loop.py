@@ -358,12 +358,14 @@ def run_single_file_coder(
         )
 
         # Baue Prompt mit Kontext
+        # AENDERUNG 20.02.2026: Fix 58g — Schema an Einzeldatei-Coder durchreichen
         prompt = build_single_file_prompt(
             filepath,
             description,
             manager.tech_blueprint,
             existing_files,
-            user_goal
+            user_goal,
+            database_schema=getattr(manager, 'database_schema', '')
         )
 
         task = Task(
