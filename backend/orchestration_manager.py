@@ -155,6 +155,16 @@ class OrchestrationManager:
         self._feature_id_map = {}  # Mapping file_path → feature_id (gesetzt nach Planner)
         self._feature_tracking_db = None  # Lazy-Init bei erstem Zugriff
 
+        # AENDERUNG 21.02.2026: Claude SDK Provider (zusaetzliches LLM-Backend neben OpenRouter)
+        self.claude_provider = None
+        if self.config.get("claude_sdk", {}).get("enabled", False):
+            try:
+                from .claude_sdk_provider import get_claude_sdk_provider
+                self.claude_provider = get_claude_sdk_provider()
+                logger.info("Claude SDK Provider aktiviert (Max Plan Backend)")
+            except ImportError as e:
+                logger.warning("Claude SDK Provider nicht verfuegbar: %s", e)
+
         # AENDERUNG 01.02.2026: External Bureau fuer Augment Context
         self.external_bureau = None
         if EXTERNAL_BUREAU_AVAILABLE:
@@ -257,6 +267,21 @@ class OrchestrationManager:
     async def _handle_worker_status_change(self, data: Dict[str, Any]):
         await handle_worker_status_change(data, self.on_log)
 
+    def get_provider(self, role: str) -> str:
+        """
+        Gibt den konfigurierten Provider fuer eine Agent-Rolle zurueck.
+        AENDERUNG 21.02.2026: Claude SDK als zusaetzliches Backend.
+
+        Args:
+            role: Agent-Rolle (z.B. "coder", "reviewer")
+
+        Returns:
+            "claude-sdk" wenn aktiviert und Rolle konfiguriert, sonst "openrouter"
+        """
+        if self.claude_provider and role in self.config.get("claude_sdk", {}).get("agent_models", {}):
+            return "claude-sdk"
+        return "openrouter"
+
     def _handle_model_fallback(self, agent_role: str, primary: str, fallback: str):
         """
         AENDERUNG 01.02.2026: Callback wenn ModelRouter zu Fallback wechselt.
@@ -298,12 +323,14 @@ class OrchestrationManager:
                                       self.discovery_briefing, getattr(self, 'doc_service', None))
 
     def _generate_readme_with_agent(self, context: str) -> str:
+        # AENDERUNG 21.02.2026: Fix 59g — manager durchreichen fuer Claude SDK Integration
         return generate_readme_with_agent(
             context=context, config=self.config, project_rules=self.project_rules,
             model_router=self.model_router, project_path=self.project_path,
             tech_blueprint=self.tech_blueprint, discovery_briefing=self.discovery_briefing,
             doc_service=getattr(self, 'doc_service', None), ui_log_callback=self._ui_log,
-            update_worker_status_callback=self._update_worker_status
+            update_worker_status_callback=self._update_worker_status,
+            manager=self
         )
 
     def _update_worker_status(self, office: str, worker_status: str, task_description: str = None, model: str = None):
@@ -367,7 +394,8 @@ class OrchestrationManager:
 
             # AENDERUNG 08.02.2026: Globales agent_timeout_seconds entfernt, Pro-Agent-Timeouts aus agent_timeouts Dict
             agent_timeouts = self.config.get("agent_timeouts", {})
-            MAX_RESEARCHER_RETRIES = 3
+            # AENDERUNG 21.02.2026: 3→7 damit alle konfigurierten Modelle + dynamischer Fallback probiert werden
+            MAX_RESEARCHER_RETRIES = 7
             start_context = ""
             research_query = ""
             research_result = ""
@@ -424,64 +452,91 @@ class OrchestrationManager:
                 RESEARCH_TIMEOUT_SECONDS = agent_timeouts.get("researcher", 600)
                 research_query = f"Suche technische Details für: {user_goal}"
 
-                for researcher_attempt in range(MAX_RESEARCHER_RETRIES):
-                    research_model = self.model_router.get_model("researcher") if self.model_router else "unknown"
-                    self._ui_log("Researcher", "ResearchOutput", json.dumps({
-                        "query": research_query, "result": "", "status": "searching",
-                        "model": research_model, "timeout_seconds": RESEARCH_TIMEOUT_SECONDS,
-                        "attempt": researcher_attempt + 1, "max_attempts": MAX_RESEARCHER_RETRIES
-                    }, ensure_ascii=False))
+                # AENDERUNG 21.02.2026: Multi-Tier Claude SDK (Opus fuer Researcher)
+                sdk_research_done = False
+                try:
+                    from .claude_sdk_provider import run_sdk_with_retry
+                    set_current_agent("Researcher", getattr(self, '_stats_run_id', project_id))
+                    self._update_worker_status("researcher", "working", f"Recherche: {research_query[:50]}...", "claude-sdk/opus")
+                    sdk_result = run_sdk_with_retry(
+                        self, role="researcher", prompt=research_query,
+                        timeout_seconds=RESEARCH_TIMEOUT_SECONDS,
+                        agent_display_name="Researcher"
+                    )
+                    if sdk_result:
+                        start_context = f"\n\nRecherche-Ergebnisse:\n{sdk_result}"
+                        self._ui_log("Researcher", "Result", "Recherche abgeschlossen (Claude SDK).")
+                        self._update_worker_status("researcher", "idle")
+                        self._ui_log("Researcher", "ResearchOutput", json.dumps({
+                            "query": research_query, "result": sdk_result[:2000],
+                            "status": "completed", "model": "claude-sdk/opus",
+                            "timeout_seconds": RESEARCH_TIMEOUT_SECONDS
+                        }, ensure_ascii=False))
+                        sdk_research_done = True
+                except Exception as sdk_err:
+                    logger.debug("Claude SDK Researcher nicht verfuegbar: %s", sdk_err)
 
-                    try:
-                        self._ui_log("Researcher", "Status", f"Sucht Kontext... (max. {RESEARCH_TIMEOUT_SECONDS}s, Versuch {researcher_attempt + 1}/{MAX_RESEARCHER_RETRIES})")
-                        set_current_agent("Researcher", getattr(self, '_stats_run_id', project_id))
-                        self._update_worker_status("researcher", "working", f"Recherche: {research_query[:50]}...", research_model)
-                        res_agent = create_researcher(self.config, self.config.get("templates", {}).get("webapp", {}), router=self.model_router)
-                        res_task = Task(description=research_query, expected_output="Zusammenfassung.", agent=res_agent)
-                        research_result = run_with_heartbeat(
-                            func=lambda: str(res_task.execute_sync()), ui_log_callback=self._ui_log,
-                            agent_name="Researcher", task_description="Recherche-Phase",
-                            heartbeat_interval=15, timeout_seconds=RESEARCH_TIMEOUT_SECONDS
-                        )
-                        start_context = f"\n\nRecherche-Ergebnisse:\n{research_result}"
-                        self._ui_log("Researcher", "Result", "Recherche abgeschlossen.")
-                        self._update_worker_status("researcher", "idle")
+                # Fallback: Bestehender OpenRouter/CrewAI Loop
+                if not sdk_research_done:
+                    for researcher_attempt in range(MAX_RESEARCHER_RETRIES):
+                        research_model = self.model_router.get_model("researcher") if self.model_router else "unknown"
                         self._ui_log("Researcher", "ResearchOutput", json.dumps({
-                            "query": research_query, "result": research_result[:2000],
-                            "status": "completed", "model": research_model, "timeout_seconds": RESEARCH_TIMEOUT_SECONDS
+                            "query": research_query, "result": "", "status": "searching",
+                            "model": research_model, "timeout_seconds": RESEARCH_TIMEOUT_SECONDS,
+                            "attempt": researcher_attempt + 1, "max_attempts": MAX_RESEARCHER_RETRIES
                         }, ensure_ascii=False))
-                        break
-                    except TimeoutError as te:
-                        self._ui_log("Researcher", "Timeout", f"Recherche abgebrochen: {te}")
-                        self._update_worker_status("researcher", "idle")
-                        start_context = ""
-                        self._ui_log("Researcher", "ResearchOutput", json.dumps({
-                            "query": research_query, "result": "", "status": "timeout",
-                            "model": research_model, "error": str(te)
-                        }, ensure_ascii=False))
-                        break
-                    except Exception as e:
-                        if is_model_unavailable_error(e) or is_rate_limit_error(e) or is_empty_response_error(e):
-                            self._ui_log("Researcher", "Warning", f"Modell {research_model} nicht verfügbar (Versuch {researcher_attempt + 1}/{MAX_RESEARCHER_RETRIES}): {str(e)[:80]}")
-                            self.model_router.mark_rate_limited_sync(research_model)
+
+                        try:
+                            self._ui_log("Researcher", "Status", f"Sucht Kontext... (max. {RESEARCH_TIMEOUT_SECONDS}s, Versuch {researcher_attempt + 1}/{MAX_RESEARCHER_RETRIES})")
+                            set_current_agent("Researcher", getattr(self, '_stats_run_id', project_id))
+                            self._update_worker_status("researcher", "working", f"Recherche: {research_query[:50]}...", research_model)
+                            res_agent = create_researcher(self.config, self.config.get("templates", {}).get("webapp", {}), router=self.model_router)
+                            res_task = Task(description=research_query, expected_output="Zusammenfassung.", agent=res_agent)
+                            research_result = run_with_heartbeat(
+                                func=lambda: str(res_task.execute_sync()), ui_log_callback=self._ui_log,
+                                agent_name="Researcher", task_description="Recherche-Phase",
+                                heartbeat_interval=15, timeout_seconds=RESEARCH_TIMEOUT_SECONDS
+                            )
+                            start_context = f"\n\nRecherche-Ergebnisse:\n{research_result}"
+                            self._ui_log("Researcher", "Result", "Recherche abgeschlossen.")
                             self._update_worker_status("researcher", "idle")
-                            if researcher_attempt < MAX_RESEARCHER_RETRIES - 1:
-                                self._ui_log("Researcher", "Info", "Wechsle zu Fallback-Modell...")
-                                continue
+                            self._ui_log("Researcher", "ResearchOutput", json.dumps({
+                                "query": research_query, "result": research_result[:2000],
+                                "status": "completed", "model": research_model, "timeout_seconds": RESEARCH_TIMEOUT_SECONDS
+                            }, ensure_ascii=False))
+                            break
+                        except TimeoutError as te:
+                            self._ui_log("Researcher", "Timeout", f"Recherche abgebrochen: {te}")
+                            self._update_worker_status("researcher", "idle")
+                            start_context = ""
+                            self._ui_log("Researcher", "ResearchOutput", json.dumps({
+                                "query": research_query, "result": "", "status": "timeout",
+                                "model": research_model, "error": str(te)
+                            }, ensure_ascii=False))
+                            break
+                        except Exception as e:
+                            if is_model_unavailable_error(e) or is_rate_limit_error(e) or is_empty_response_error(e):
+                                self._ui_log("Researcher", "Warning", f"Modell {research_model} nicht verfügbar (Versuch {researcher_attempt + 1}/{MAX_RESEARCHER_RETRIES}): {str(e)[:80]}")
+                                self.model_router.mark_rate_limited_sync(research_model)
+                                self._update_worker_status("researcher", "idle")
+                                if researcher_attempt < MAX_RESEARCHER_RETRIES - 1:
+                                    self._ui_log("Researcher", "Info", "Wechsle zu Fallback-Modell...")
+                                    continue
+                                else:
+                                    self._ui_log("Researcher", "Error", f"Recherche nach {MAX_RESEARCHER_RETRIES} Versuchen fehlgeschlagen")
                             else:
-                                self._ui_log("Researcher", "Error", f"Recherche nach {MAX_RESEARCHER_RETRIES} Versuchen fehlgeschlagen")
-                        else:
-                            self._ui_log("Researcher", "Error", f"Recherche fehlgeschlagen: {e}")
-                        self._update_worker_status("researcher", "idle")
-                        start_context = ""
-                        self._ui_log("Researcher", "ResearchOutput", json.dumps({
-                            "query": research_query, "result": "", "status": "error",
-                            "model": research_model, "error": str(e), "attempt": researcher_attempt + 1
-                        }, ensure_ascii=False))
-                        break
+                                self._ui_log("Researcher", "Error", f"Recherche fehlgeschlagen: {e}")
+                            self._update_worker_status("researcher", "idle")
+                            start_context = ""
+                            self._ui_log("Researcher", "ResearchOutput", json.dumps({
+                                "query": research_query, "result": "", "status": "error",
+                                "model": research_model, "error": str(e), "attempt": researcher_attempt + 1
+                            }, ensure_ascii=False))
+                            break
 
             # 🧠 META-ORCHESTRATOR
-            MAX_META_RETRIES = 3
+            # AENDERUNG 21.02.2026: 3→7 damit alle konfigurierten Modelle + dynamischer Fallback probiert werden
+            MAX_META_RETRIES = 7
             plan_data = None
             for meta_attempt in range(MAX_META_RETRIES):
                 current_meta_model = self.model_router.get_model("meta_orchestrator") if self.model_router else "unknown"
@@ -654,32 +709,38 @@ class OrchestrationManager:
 
     def _run_techstack_phase(self, user_goal: str, base_project_rules: dict, project_id: str, agent_timeout: int):
         """TechStack-Analyse Phase (Wrapper für ausgelagerte Funktion)."""
+        # AENDERUNG 21.02.2026: Fix 59g — manager durchreichen fuer Claude SDK Integration
         self.tech_blueprint, self.quality_gate = run_techstack_phase(
             user_goal=user_goal, base_project_rules=base_project_rules, project_id=project_id,
             agent_timeout=agent_timeout, config=self.config, model_router=self.model_router,
             project_path=self.project_path, discovery_briefing=self.discovery_briefing,
-            ui_log_callback=self._ui_log, update_worker_status_callback=self._update_worker_status
+            ui_log_callback=self._ui_log, update_worker_status_callback=self._update_worker_status,
+            manager=self
         )
 
     def _run_db_designer_phase(self, user_goal: str, project_rules: dict, project_id: str, agent_timeout: int):
         """DB-Designer Phase (Wrapper für ausgelagerte Funktion)."""
+        # AENDERUNG 21.02.2026: Fix 59g — manager durchreichen fuer Claude SDK Integration
         self.database_schema = run_db_designer_phase(
             user_goal=user_goal, project_rules=project_rules, project_id=project_id,
             agent_timeout=agent_timeout, config=self.config, model_router=self.model_router,
             tech_blueprint=self.tech_blueprint, quality_gate=getattr(self, 'quality_gate', None),
             doc_service=getattr(self, 'doc_service', None),
-            ui_log_callback=self._ui_log, update_worker_status_callback=self._update_worker_status
+            ui_log_callback=self._ui_log, update_worker_status_callback=self._update_worker_status,
+            manager=self
         )
 
     def _run_designer_phase(self, user_goal: str, project_rules: dict, project_id: str, agent_timeout: int):
         """Designer Phase (Wrapper für ausgelagerte Funktion)."""
+        # AENDERUNG 21.02.2026: Fix 59g — manager durchreichen fuer Claude SDK Integration
         self.design_concept = run_designer_phase(
             user_goal=user_goal, project_rules=project_rules, project_id=project_id,
             project_path=self.project_path, agent_timeout=agent_timeout, config=self.config,
             model_router=self.model_router, tech_blueprint=self.tech_blueprint,
             quality_gate=getattr(self, 'quality_gate', None),
             doc_service=getattr(self, 'doc_service', None),
-            ui_log_callback=self._ui_log, update_worker_status_callback=self._update_worker_status
+            ui_log_callback=self._ui_log, update_worker_status_callback=self._update_worker_status,
+            manager=self
         )
 
     def _create_run_bat(self):

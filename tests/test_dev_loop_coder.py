@@ -272,14 +272,14 @@ class TestGetAffectedFilesFromFeedback:
             "Erwartet: Leere Liste bei None-Feedback"
         )
 
-    def test_max_5_dateien_limit(self):
-        """Maximal 5 Dateien werden zurueckgegeben."""
-        # Erstelle Feedback mit mehr als 5 Dateien
-        lines = [f'File "module_{i}.py", line {i}' for i in range(10)]
+    def test_max_30_dateien_limit(self):
+        """Maximal 30 Dateien werden zurueckgegeben (Fix 53: Limit von 5 auf 30 erhoeht)."""
+        # AENDERUNG 14.02.2026: Limit an Fix 53 angepasst (5 → 30)
+        lines = [f'File "module_{i}.py", line {i}' for i in range(40)]
         feedback = "\n".join(lines)
         result = _get_affected_files_from_feedback(feedback)
-        assert len(result) <= 5, (
-            f"Erwartet: Maximal 5 Dateien, erhalten: {len(result)}"
+        assert len(result) <= 30, (
+            f"Erwartet: Maximal 30 Dateien, erhalten: {len(result)}"
         )
 
     def test_keine_duplikate(self):

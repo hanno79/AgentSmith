@@ -173,3 +173,123 @@ def invalid_html_code():
 
 # NOTE: The HTML validator in sandbox_runner.py only checks for <html> and </html> presence,
 # not proper tag nesting. For truly invalid HTML, we need to remove </html>:
+
+
+# =========================================================================
+# AENDERUNG 14.02.2026: Phase 0 Test-Coverage-Plan — Neue Fixtures
+# =========================================================================
+
+@pytest.fixture
+def sample_tech_blueprint():
+    """Beispiel Next.js Tech-Blueprint fuer DevLoop-Tests."""
+    return {
+        "project_type": "webapp",
+        "framework": "Next.js",
+        "language": "javascript",
+        "styling": "tailwindcss",
+        "database": "sqlite",
+        "container_id": "#__next"
+    }
+
+
+@pytest.fixture
+def sample_code_dict():
+    """Beispiel code_dict mit typischen Next.js Projekt-Dateien."""
+    return {
+        "app/page.js": """'use client'
+import { useState, useEffect } from 'react'
+
+export default function Home() {
+  const [items, setItems] = useState([])
+  return <div><h1>Meine App</h1></div>
+}
+""",
+        "app/layout.js": """export default function RootLayout({ children }) {
+  return (
+    <html lang="de" suppressHydrationWarning>
+      <body suppressHydrationWarning>{children}</body>
+    </html>
+  )
+}
+""",
+        "lib/db.js": """import Database from 'better-sqlite3'
+const db = new Database('data/app.db')
+export function getItems() { return db.prepare('SELECT * FROM items').all() }
+export function addItem(name) { return db.prepare('INSERT INTO items (name) VALUES (?)').run(name) }
+""",
+        "app/api/items/route.js": """import { getItems, addItem } from '../../../lib/db'
+import { NextResponse } from 'next/server'
+
+export async function GET() {
+  const items = getItems()
+  return NextResponse.json(items)
+}
+
+export async function POST(request) {
+  const { name } = await request.json()
+  addItem(name)
+  return NextResponse.json({ success: true })
+}
+""",
+        "package.json": '{"name": "test-app", "dependencies": {"next": "14.2.0", "react": "18.2.0"}}',
+    }
+
+
+@pytest.fixture
+def sample_feedback():
+    """Beispiel Reviewer-Feedback mit [DATEI:xxx] Markern."""
+    return """REVIEW-ERGEBNIS: NICHT BESTANDEN
+
+BETROFFENE DATEIEN:
+- [DATEI:app/page.js] — fehlende Error-Boundary
+- [DATEI:lib/db.js] — SQL-Injection Risiko bei addItem()
+- `app/api/items/route.js` — fehlende Input-Validierung
+
+DETAILS:
+1. app/page.js: Die useState-Initialisierung braucht Error-Handling
+2. lib/db.js hat SQL-Injection via string concatenation
+"""
+
+
+@pytest.fixture
+def sample_coder_output():
+    """Beispiel Multi-File Coder-Output mit ### FILENAME: Markern."""
+    return """### FILENAME: app/page.js
+'use client'
+import { useState, useEffect } from 'react'
+
+export default function Home() {
+  const [items, setItems] = useState([])
+  useEffect(() => {
+    fetch('/api/items').then(r => r.json()).then(setItems)
+  }, [])
+  return <div><h1>Items</h1></div>
+}
+
+### FILENAME: lib/db.js
+import Database from 'better-sqlite3'
+const db = new Database('data/app.db')
+export function getItems() { return db.prepare('SELECT * FROM items').all() }
+"""
+
+
+@pytest.fixture
+def mock_manager(temp_dir):
+    """Mock-Manager mit allen DevLoop-relevanten Attributen."""
+    from unittest.mock import MagicMock
+    manager = MagicMock()
+    manager.project_path = temp_dir
+    manager.current_code = ""
+    manager.iteration = 0
+    manager.max_iterations = 50
+    manager.tech_blueprint = {
+        "project_type": "webapp",
+        "framework": "Next.js",
+        "language": "javascript",
+    }
+    manager.config = {"mode": "test"}
+    manager._file_feedback_counter = {}
+    manager._iteration_history = []
+    manager._utds_protected_files = set()
+    manager._fbf_created_files = []
+    return manager

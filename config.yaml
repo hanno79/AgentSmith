@@ -19,7 +19,7 @@ agent_timeouts:
   reviewer: 1200
   tester: 300
   security: 300
-  researcher: 600
+  researcher: 900
   planner: 900
   designer: 300
   fix: 750
@@ -29,15 +29,17 @@ agent_timeouts:
   techstack_architect: 750
 token_limits:
   default: 8192
-  coder: 131072
+  # AENDERUNG 21.02.2026: Fix 59e — 131072→65536 damit max_tokens + Input-Tokens
+  # nicht das Context-Limit von Free-Modellen (131072) sprengt
+  coder: 65536
   tester: 8192
-  reviewer: 131072
+  reviewer: 65536
   planner: 65536
   designer: 8192
   security: 4096
   researcher: 8192
   orchestrator: 4096
-  fix: 131072
+  fix: 65536
   task_deriver: 24576
   discovery: 4096
   validator: 12288
@@ -80,13 +82,12 @@ models:
       - openrouter/meta-llama/llama-3.1-405b-instruct:free
       - openrouter/z-ai/glm-4.5-air:free
     researcher:
-      primary: openrouter/meta-llama/llama-3.3-70b-instruct:free
+      primary: openrouter/z-ai/glm-4.5-air:free
       fallback:
-      - openrouter/deepseek/deepseek-r1-0528:free
-      - openrouter/openai/gpt-oss-120b:free
       - openrouter/nousresearch/hermes-3-llama-3.1-405b:free
-      - openrouter/z-ai/glm-4.5-air:free
-    # AENDERUNG 21.02.2026: Fix 59a — Coder Primary auf Code-optimiertes 77B Modell
+      - openrouter/meta-llama/llama-3.3-70b-instruct:free
+      - openrouter/openai/gpt-oss-120b:free
+      - openrouter/deepseek/deepseek-r1-0528:free
     coder:
       primary: openrouter/qwen/qwen3-coder:free
       fallback:
@@ -113,19 +114,19 @@ models:
       - openrouter/mistralai/mistral-small-3.1-24b-instruct:free
       - openrouter/xiaomi/mimo-v2-flash:free
     designer:
-      primary: openrouter/google/gemma-3-27b-it:free
+      primary: openrouter/nvidia/nemotron-3-nano-30b-a3b:free
       fallback:
       - openrouter/mistralai/mistral-small-3.1-24b-instruct:free
+      - openrouter/openai/gpt-oss-20b:free
       - openrouter/arcee-ai/trinity-large-preview:free
       - openrouter/qwen/qwen2.5-vl-7b-instruct:free
-      - openrouter/google/gemma-3-12b-it:free
     database_designer:
       primary: openrouter/qwen/qwen3-coder:free
       fallback:
-      - openrouter/meta-llama/llama-3.3-70b-instruct:free
-      - openrouter/google/gemma-3-27b-it:free
       - openrouter/openai/gpt-oss-120b:free
-      - openrouter/deepseek/deepseek-r1-0528:free
+      - openrouter/google/gemma-3-27b-it:free
+      - openrouter/arcee-ai/trinity-large-preview:free
+      - openrouter/nousresearch/hermes-3-llama-3.1-405b:free
     security:
       primary: openrouter/openai/gpt-oss-120b:free
       fallback:
@@ -138,7 +139,6 @@ models:
       - openrouter/arcee-ai/trinity-large-preview:free
       - openrouter/google/gemma-3-27b-it:free
       - openrouter/xiaomi/mimo-v2-flash:free
-    # AENDERUNG 21.02.2026: Fix 59a — Reviewer Primary auf gueltiges Free-Modell
     reviewer:
       primary: openrouter/deepseek/deepseek-r1-0528:free
       fallback:
@@ -191,13 +191,12 @@ models:
       - openrouter/qwen/qwen3-235b-a22b:free
       - openrouter/openai/gpt-oss-120b:free
     planner:
-      primary: openrouter/openai/gpt-oss-120b:free
+      primary: openrouter/qwen/qwen3-coder:free
       fallback:
+      - openrouter/openai/gpt-oss-120b:free
       - openrouter/meta-llama/llama-3.3-70b-instruct:free
       - openrouter/deepseek/deepseek-r1-0528:free
-      - openrouter/qwen/qwen3-coder:free
       - openrouter/z-ai/glm-4.5-air:free
-    # AENDERUNG 21.02.2026: Fix 59a — Fix-Agent extended_fallback
     fix:
       primary: openrouter/openai/gpt-oss-120b:free
       fallback:
@@ -621,3 +620,28 @@ docker:
     install_timeout: 300
     server_timeout: 90
     test_timeout: 180
+# AENDERUNG 21.02.2026: Multi-Tier Claude SDK Modelle
+# Jede Agent-Rolle bekommt das passende Claude-Modell:
+# - Opus: Komplexe Denkaufgaben (Research, Architektur)
+# - Sonnet: Standard-Aufgaben (Code-Generierung, Review, Design)
+# - Haiku: Einfache/schnelle Aufgaben (Fixes, Einzeldateien, Tests)
+# OpenRouter bleibt als Fallback wenn Claude SDK Rate-Limits erreicht.
+claude_sdk:
+  enabled: true
+  default_model: sonnet
+  max_retries: 3
+  agent_models:
+    # Tier 1: Opus — Komplexe Denkaufgaben
+    researcher: opus
+    techstack_architect: opus
+    # Tier 2: Sonnet — Standard-Aufgaben
+    coder: sonnet
+    reviewer: sonnet
+    designer: sonnet
+    db_designer: sonnet
+    planner: sonnet
+    documentation_manager: sonnet
+    security: sonnet
+    # Tier 3: Haiku — Einfache/schnelle Aufgaben
+    fix: haiku
+    tester: haiku

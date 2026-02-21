@@ -206,14 +206,31 @@ async def run_planner(
         # AENDERUNG 08.02.2026: Pro-Agent Timeout statt globalem agent_timeout_seconds
         agent_timeouts = manager.config.get("agent_timeouts", {})
         timeout = agent_timeouts.get("planner", 300)
-        result = run_with_heartbeat(
-            func=lambda: str(task.execute_sync()),
-            ui_log_callback=manager._ui_log,
-            agent_name="Planner",
-            task_description="File-Plan erstellen",
-            heartbeat_interval=10,
-            timeout_seconds=timeout
-        )
+
+        # AENDERUNG 21.02.2026: Multi-Tier Claude SDK (Sonnet fuer Planner)
+        result = None
+        try:
+            from backend.claude_sdk_provider import run_sdk_with_retry
+            sdk_result = run_sdk_with_retry(
+                manager, role="planner", prompt=task.description,
+                timeout_seconds=timeout,
+                agent_display_name="Planner"
+            )
+            if sdk_result:
+                result = sdk_result
+        except Exception as sdk_err:
+            logger.debug("Claude SDK Planner nicht verfuegbar: %s", sdk_err)
+
+        # Fallback: CrewAI/OpenRouter
+        if not result:
+            result = run_with_heartbeat(
+                func=lambda: str(task.execute_sync()),
+                ui_log_callback=manager._ui_log,
+                agent_name="Planner",
+                task_description="File-Plan erstellen",
+                heartbeat_interval=10,
+                timeout_seconds=timeout
+            )
 
         plan = parse_planner_output(result)
         if plan and plan.get("files"):
@@ -347,8 +364,44 @@ def run_single_file_coder(
         "iteration": iteration
     }, ensure_ascii=False))
 
+    # Baue Prompt mit Kontext
+    # AENDERUNG 20.02.2026: Fix 58g — Schema an Einzeldatei-Coder durchreichen
+    prompt = build_single_file_prompt(
+        filepath,
+        description,
+        manager.tech_blueprint,
+        existing_files,
+        user_goal,
+        database_schema=getattr(manager, 'database_schema', '')
+    )
+
+    # AENDERUNG 08.02.2026: Pro-Agent Timeout statt globalem agent_timeout_seconds
+    agent_timeouts = manager.config.get("agent_timeouts", {})
+    timeout = agent_timeouts.get("coder", 750)
+
+    # AENDERUNG 21.02.2026: Multi-Tier Claude SDK (Haiku fuer Einzeldateien)
     try:
-        # Erstelle Single-File Coder
+        from backend.claude_sdk_provider import run_sdk_with_retry
+        sdk_result = run_sdk_with_retry(
+            manager, role="fix", prompt=prompt,
+            timeout_seconds=timeout,
+            agent_display_name="Coder"
+        )
+        if sdk_result:
+            content = _extract_file_content(sdk_result, filepath)
+            if content:
+                manager._ui_log("Coder", "SingleFile", json.dumps({
+                    "action": "complete",
+                    "file": filepath,
+                    "lines": len(content.split('\n')),
+                    "provider": "claude-sdk"
+                }, ensure_ascii=False))
+                return filepath, content
+    except Exception as sdk_err:
+        logger.debug("Claude SDK fuer %s nicht verfuegbar: %s", filepath, sdk_err)
+
+    # Fallback: Bestehender OpenRouter/CrewAI Pfad
+    try:
         coder = create_single_file_coder(
             manager.config,
             project_rules,
@@ -357,26 +410,12 @@ def run_single_file_coder(
             file_description=description
         )
 
-        # Baue Prompt mit Kontext
-        # AENDERUNG 20.02.2026: Fix 58g — Schema an Einzeldatei-Coder durchreichen
-        prompt = build_single_file_prompt(
-            filepath,
-            description,
-            manager.tech_blueprint,
-            existing_files,
-            user_goal,
-            database_schema=getattr(manager, 'database_schema', '')
-        )
-
         task = Task(
             description=prompt,
             expected_output=f"Code fuer {filepath}",
             agent=coder
         )
 
-        # AENDERUNG 08.02.2026: Pro-Agent Timeout statt globalem agent_timeout_seconds
-        agent_timeouts = manager.config.get("agent_timeouts", {})
-        timeout = agent_timeouts.get("coder", 750)
         result = run_with_heartbeat(
             func=lambda: str(task.execute_sync()),
             ui_log_callback=manager._ui_log,
@@ -386,7 +425,6 @@ def run_single_file_coder(
             timeout_seconds=timeout
         )
 
-        # Extrahiere Code aus Result
         content = _extract_file_content(result, filepath)
         if content:
             manager._ui_log("Coder", "SingleFile", json.dumps({

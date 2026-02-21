@@ -178,10 +178,45 @@ Wenn der Code FEHLERFREI ist und alle Tests bestanden: Antworte mit "OK"
 """
     manager._update_worker_status("reviewer", "working", "Pruefe Code...", manager.model_router.get_model("reviewer") if manager.model_router else "")
 
-    MAX_REVIEW_RETRIES = 6  # Erhoeht: 2 Versuche pro Modell x 3 Modelle
     # AENDERUNG 08.02.2026: Nur noch agent_timeouts Dict (globales agent_timeout_seconds entfernt)
     agent_timeouts = manager.config.get("agent_timeouts", {})
     REVIEWER_TIMEOUT_SECONDS = agent_timeouts.get("reviewer", 1200)
+
+    # AENDERUNG 21.02.2026: Multi-Tier Claude SDK (zentrale Helper-Funktion)
+    from .claude_sdk_provider import run_sdk_with_retry
+    sdk_result = run_sdk_with_retry(
+        manager, role="reviewer", prompt=r_prompt,
+        timeout_seconds=REVIEWER_TIMEOUT_SECONDS,
+        agent_display_name="Reviewer"
+    )
+    if sdk_result and not is_empty_or_invalid_response(sdk_result):
+        # Claude SDK Review erfolgreich — Ergebnis-Parsing
+        sdk_result = truncate_review_output(sdk_result, max_length=3000)
+        sdk_config = manager.config.get("claude_sdk", {})
+        claude_model = sdk_config.get("agent_models", {}).get("reviewer", sdk_config.get("default_model", "sonnet"))
+        reviewer_model = f"claude-sdk/{claude_model}"
+        review_verdict = "OK" if "OK" in sdk_result.upper() and not sandbox_failed else "FEEDBACK"
+        is_approved = review_verdict == "OK" and not sandbox_failed
+        human_summary = create_human_readable_verdict(review_verdict, sandbox_failed, sdk_result)
+
+        manager._ui_log("Reviewer", "ReviewOutput", json.dumps({
+            "verdict": review_verdict,
+            "isApproved": is_approved,
+            "humanSummary": human_summary,
+            "feedback": sdk_result if review_verdict == "FEEDBACK" else "",
+            "model": reviewer_model,
+            "iteration": manager.iteration + 1,
+            "maxIterations": manager.max_retries,
+            "sandboxStatus": "PASS" if not sandbox_failed else "FAIL",
+            "sandboxResult": sandbox_result[:500] if sandbox_result else "",
+            "testSummary": test_summary[:500] if test_summary else "",
+            "reviewOutput": sdk_result if sdk_result else ""
+        }, ensure_ascii=False))
+        manager._update_worker_status("reviewer", "idle")
+        return sdk_result, review_verdict, human_summary
+
+    # Bestehender OpenRouter/CrewAI Pfad (Fallback oder primaerer Pfad wenn Claude SDK deaktiviert)
+    MAX_REVIEW_RETRIES = 6  # Erhoeht: 2 Versuche pro Modell x 3 Modelle
     # AENDERUNG 29.01.2026: Modellwechsel erst nach X gleichen Fehlern
     ERRORS_BEFORE_MODEL_SWITCH = 2
     review_output = None

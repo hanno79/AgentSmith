@@ -174,6 +174,9 @@ class DevLoop:
         # weil Error-Hash sich minimal aenderte (Zeilennummer) obwohl Kern-Fehler gleich blieb
         _last_feedback_signature = ""
         _stagnation_counter = 0
+        # AENDERUNG 21.02.2026: Fix 59h — SDK Tier-Eskalation bei PingPong
+        # Wenn PingPong >= 3: Haiku→Sonnet, >= 6: Sonnet→Opus
+        manager._sdk_tier_escalation = None
 
         while iteration < max_retries:
             manager.iteration = iteration
@@ -634,6 +637,25 @@ class DevLoop:
                             f"Sandbox-Fehler fuer {len(_pp_severe)} PingPong-Dateien "
                             f"ignoriert (>= 5 Iterationen): {_pp_severe}")
                         sandbox_failed = False
+
+                # AENDERUNG 21.02.2026: Fix 59h — SDK Tier-Eskalation bei PingPong
+                # Wenn ein Problem trotz 3+ Iterationen nicht geloest wird, eskaliere:
+                # Haiku(fix)→Sonnet(coder)→Opus(researcher)
+                _max_pp_count = max(_file_feedback_counter[f] for f in _pp_files)
+                if _max_pp_count >= 6 and manager._sdk_tier_escalation != "researcher":
+                    manager._sdk_tier_escalation = "researcher"  # → Opus
+                    manager._ui_log("Orchestrator", "TierEscalation",
+                        f"PingPong >= 6 Iterationen ({_max_pp_count}x) — eskaliere SDK auf Opus")
+                elif _max_pp_count >= 3 and not manager._sdk_tier_escalation:
+                    manager._sdk_tier_escalation = "coder"  # → Sonnet
+                    manager._ui_log("Orchestrator", "TierEscalation",
+                        f"PingPong >= 3 Iterationen ({_max_pp_count}x) — eskaliere SDK auf Sonnet")
+            else:
+                # Kein PingPong mehr → Tier-Eskalation zuruecksetzen
+                if getattr(manager, '_sdk_tier_escalation', None):
+                    manager._ui_log("Orchestrator", "TierReset",
+                        "PingPong aufgeloest — SDK Tier-Eskalation zurueckgesetzt")
+                    manager._sdk_tier_escalation = None
 
             if hasattr(manager, 'doc_service') and manager.doc_service:
                 manager.doc_service.collect_iteration(

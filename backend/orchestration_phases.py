@@ -26,6 +26,7 @@ from .heartbeat_utils import run_with_heartbeat
 from .orchestration_utils import _repair_json, _extract_json_from_text, _infer_blueprint_from_requirements
 from .orchestration_budget import set_current_agent
 from .quality_gate import QualityGate
+from .claude_sdk_provider import run_sdk_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,8 @@ def run_techstack_phase(
     project_path: str,
     discovery_briefing: Dict[str, Any],
     ui_log_callback: Callable,
-    update_worker_status_callback: Callable
+    update_worker_status_callback: Callable,
+    manager=None
 ) -> tuple:
     """
     TechStack-Analyse Phase.
@@ -63,6 +65,7 @@ def run_techstack_phase(
         discovery_briefing: Discovery Briefing
         ui_log_callback: UI-Log Callback
         update_worker_status_callback: Worker-Status Callback
+        manager: OrchestrationManager (fuer Claude SDK Integration)
 
     Returns:
         Tuple (tech_blueprint, quality_gate)
@@ -97,11 +100,24 @@ def run_techstack_phase(
     except Exception as tmpl_err:
         logger.warning("Template-Matching fehlgeschlagen: %s", tmpl_err)
 
-    # ÄNDERUNG 02.02.2026: MAX_TECHSTACK_RETRIES erhöht von 3 auf 7 (Bug #3 Fix)
-    # Grund: primary + 4 fallbacks + extended_fallbacks + dynamischer Fallback brauchen mehr Versuche
-    MAX_TECHSTACK_RETRIES = 7
+    # AENDERUNG 21.02.2026: Fix 59g — Claude SDK Integration fuer TechArchitect (Opus)
     techstack_result = None
+    if manager:
+        sdk_prompt = f"Entscheide TechStack für: {user_goal}{template_hint}"
+        sdk_result = run_sdk_with_retry(
+            manager, role="techstack_architect", prompt=sdk_prompt,
+            timeout_seconds=agent_timeout, agent_display_name="TechStack"
+        )
+        if sdk_result:
+            ui_log_callback("TechStack", "Info", "TechStack via Claude SDK (Opus) erfolgreich")
+            techstack_result = sdk_result
+
+    # Fallback: CrewAI/OpenRouter Retry-Schleife (nur wenn SDK kein Ergebnis lieferte)
+    # ÄNDERUNG 02.02.2026: MAX_TECHSTACK_RETRIES erhöht von 3 auf 7 (Bug #3 Fix)
+    MAX_TECHSTACK_RETRIES = 7
     for techstack_attempt in range(MAX_TECHSTACK_RETRIES):
+        if techstack_result:
+            break  # SDK hat bereits Ergebnis geliefert
         current_techstack_model = model_router.get_model("techstack_architect")
         try:
             agent_techstack = init_agents(config, base_project_rules, router=model_router,
@@ -222,23 +238,45 @@ def run_db_designer_phase(
     quality_gate,
     doc_service,
     ui_log_callback: Callable,
-    update_worker_status_callback: Callable
+    update_worker_status_callback: Callable,
+    manager=None
 ) -> str:
     """
     DB-Designer Phase.
+
+    Args:
+        manager: OrchestrationManager (fuer Claude SDK Integration)
 
     Returns:
         database_schema als String
     """
     ui_log_callback("DBDesigner", "Status", "Erstelle Schema...")
     set_current_agent("Database-Designer", project_id)
-    dbdesigner_model = model_router.get_model("database_designer") if model_router else "unknown"
+    # AENDERUNG 21.02.2026: Fix 59g — Naming-Bug Fix: "database_designer" → "db_designer"
+    # (konsistent mit config.yaml, init_agents und agent_factory)
+    dbdesigner_model = model_router.get_model("db_designer") if model_router else "unknown"
     update_worker_status_callback("db_designer", "working", "Erstelle Schema...", dbdesigner_model)
 
     database_schema = ""
-    MAX_DB_RETRIES = 3
+
+    # AENDERUNG 21.02.2026: Fix 59g — Claude SDK Integration fuer DB-Designer (Sonnet)
+    if manager:
+        sdk_prompt = f"Erstelle ein Datenbank-Schema für: {user_goal}"
+        sdk_result = run_sdk_with_retry(
+            manager, role="db_designer", prompt=sdk_prompt,
+            timeout_seconds=agent_timeout, agent_display_name="DB-Designer"
+        )
+        if sdk_result:
+            ui_log_callback("DBDesigner", "Info", "Schema via Claude SDK (Sonnet) erfolgreich")
+            database_schema = sdk_result
+
+    # Fallback: CrewAI/OpenRouter Retry-Schleife (nur wenn SDK kein Ergebnis lieferte)
+    # AENDERUNG 21.02.2026: 3→7 damit alle konfigurierten Modelle + dynamischer Fallback probiert werden
+    MAX_DB_RETRIES = 7
     for db_attempt in range(MAX_DB_RETRIES):
-        current_db_model = model_router.get_model("database_designer")
+        if database_schema:
+            break  # SDK hat bereits Ergebnis geliefert
+        current_db_model = model_router.get_model("db_designer")
         try:
             agent_db = init_agents(config, project_rules, router=model_router, include=["db_designer"]).get("db_designer")
             if agent_db:
@@ -297,10 +335,14 @@ def run_designer_phase(
     quality_gate,
     doc_service,
     ui_log_callback: Callable,
-    update_worker_status_callback: Callable
+    update_worker_status_callback: Callable,
+    manager=None
 ) -> str:
     """
     Designer Phase.
+
+    Args:
+        manager: OrchestrationManager (fuer Claude SDK Integration)
 
     Returns:
         design_concept als String
@@ -311,8 +353,27 @@ def run_designer_phase(
     update_worker_status_callback("designer", "working", "Erstelle Design-Konzept...", designer_model)
 
     design_concept = ""
-    MAX_DESIGN_RETRIES = 3
+
+    # AENDERUNG 21.02.2026: Fix 59g — Claude SDK Integration fuer Designer (Sonnet)
+    if manager:
+        tech_info = f"Tech-Stack: {tech_blueprint.get('project_type', 'webapp')}"
+        if tech_blueprint.get('dependencies'):
+            tech_info += f", Frameworks: {', '.join(tech_blueprint.get('dependencies', []))}"
+        sdk_prompt = f"Design für: {user_goal}\n{tech_info}"
+        sdk_result = run_sdk_with_retry(
+            manager, role="designer", prompt=sdk_prompt,
+            timeout_seconds=agent_timeout, agent_display_name="Designer"
+        )
+        if sdk_result:
+            ui_log_callback("Designer", "Info", "Design via Claude SDK (Sonnet) erfolgreich")
+            design_concept = sdk_result
+
+    # Fallback: CrewAI/OpenRouter Retry-Schleife (nur wenn SDK kein Ergebnis lieferte)
+    # AENDERUNG 21.02.2026: 3→7 damit alle konfigurierten Modelle + dynamischer Fallback probiert werden
+    MAX_DESIGN_RETRIES = 7
     for design_attempt in range(MAX_DESIGN_RETRIES):
+        if design_concept:
+            break  # SDK hat bereits Ergebnis geliefert
         current_design_model = model_router.get_model("designer")
         try:
             agent_des = init_agents(config, project_rules, router=model_router, include=["designer"]).get("designer")

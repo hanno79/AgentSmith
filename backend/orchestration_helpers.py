@@ -631,6 +631,32 @@ def is_openrouter_error(error: Exception) -> bool:
     return any(pattern in error_str for pattern in openrouter_patterns)
 
 
+# AENDERUNG 21.02.2026: Claude SDK Error-Erkennung fuer Provider-Fallback
+def is_claude_sdk_error(error: Exception) -> bool:
+    """
+    Prueft ob ein Fehler vom Claude SDK Provider stammt.
+    Wird verwendet um gezielt auf OpenRouter zu fallen.
+
+    Args:
+        error: Die aufgetretene Exception
+
+    Returns:
+        True wenn es ein Claude SDK-spezifischer Fehler ist
+    """
+    error_str = str(error).lower()
+    claude_sdk_patterns = [
+        'claude sdk',
+        'claude-agent-sdk',
+        'claude_agent_sdk',
+        'claudeagentoptions',
+        'anyio',  # Async-Runtime des SDK
+    ]
+    # Typ-Check: ImportError vom SDK
+    if isinstance(error, ImportError) and 'claude' in error_str:
+        return True
+    return any(pattern in error_str for pattern in claude_sdk_patterns)
+
+
 def is_empty_or_invalid_response(response: str) -> bool:
     """
     Erkennt leere oder ungültige Antworten von LLM-Modellen.

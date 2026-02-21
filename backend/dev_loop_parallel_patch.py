@@ -267,8 +267,23 @@ def _build_group_prompt(
 
 
 # AENDERUNG 13.02.2026: Fix 53 — Eigener Coder-Call mit konfigurierbarem Timeout
+# AENDERUNG 21.02.2026: Multi-Tier Claude SDK (Haiku fuer Gruppen-Patches)
 def _run_coder_with_timeout(manager, project_rules, prompt, timeout_seconds):
-    """Fuehrt einen Coder-Call mit eigenem Timeout aus (unabhaengig vom globalen coder-Timeout)."""
+    """Fuehrt einen Coder-Call mit eigenem Timeout aus. Claude SDK zuerst, CrewAI als Fallback."""
+    # Claude SDK Versuch (Haiku fuer einfache Patch-Aufgaben)
+    try:
+        from .claude_sdk_provider import run_sdk_with_retry
+        sdk_result = run_sdk_with_retry(
+            manager, role="fix", prompt=prompt,
+            timeout_seconds=timeout_seconds,
+            agent_display_name="ParallelPatch"
+        )
+        if sdk_result:
+            return sdk_result
+    except Exception as sdk_err:
+        logger.debug("Claude SDK ParallelPatch nicht verfuegbar: %s", sdk_err)
+
+    # Fallback: Bestehender CrewAI/OpenRouter Pfad
     from .agent_factory import init_agents
     from .heartbeat_utils import run_with_heartbeat
     from crewai import Task

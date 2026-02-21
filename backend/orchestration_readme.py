@@ -15,6 +15,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional, Callable
 
 from crewai import Task
+from .claude_sdk_provider import run_sdk_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +128,8 @@ def generate_readme_with_agent(
     discovery_briefing: Optional[Dict[str, Any]],
     doc_service,
     ui_log_callback: Callable[[str, str, str], None],
-    update_worker_status_callback: Callable
+    update_worker_status_callback: Callable,
+    manager=None
 ) -> str:
     """
     Generiert README.md mit dem echten Documentation Manager Agent.
@@ -144,6 +146,7 @@ def generate_readme_with_agent(
         doc_service: DocumentationService Instanz
         ui_log_callback: UI-Log Callback
         update_worker_status_callback: Worker-Status Update Callback
+        manager: OrchestrationManager (fuer Claude SDK Integration)
 
     Returns:
         README-Inhalt als String
@@ -154,8 +157,23 @@ def generate_readme_with_agent(
     )
     from backend.agent_factory import init_agents
 
+    # AENDERUNG 21.02.2026: Fix 59g — Claude SDK Integration fuer DocManager (Sonnet)
+    task_description = get_readme_task_description(context)
+    agent_timeouts = config.get("agent_timeouts", {})
+    doc_timeout = agent_timeouts.get("documentation_manager", 300)
+
+    if manager:
+        sdk_result = run_sdk_with_retry(
+            manager, role="documentation_manager", prompt=task_description,
+            timeout_seconds=doc_timeout, agent_display_name="DocManager"
+        )
+        if sdk_result:
+            ui_log_callback("DocumentationManager", "Info",
+                            "README via Claude SDK (Sonnet) erfolgreich")
+            return sdk_result
+
+    # Fallback: CrewAI/OpenRouter
     try:
-        # Agent erstellen
         agents = init_agents(
             config,
             project_rules,
@@ -169,8 +187,6 @@ def generate_readme_with_agent(
                            "Agent konnte nicht erstellt werden, verwende Template")
             return generate_simple_readme(project_path, tech_blueprint, discovery_briefing, doc_service)
 
-        # Task erstellen und ausführen
-        task_description = get_readme_task_description(context)
         doc_task = Task(
             description=task_description,
             expected_output="README.md Inhalt in Markdown",

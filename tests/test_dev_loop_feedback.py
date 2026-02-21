@@ -205,6 +205,192 @@ class TestBuildFeedback:
             f"Erwartet: 'REVIEWER-ANALYSE' im Feedback, Erhalten: {result[:300]}"
         )
 
+    @patch(f"{PATCH_PREFIX}.format_test_feedback", return_value="")
+    @patch(f"{PATCH_PREFIX}.create_help_needed")
+    def test_affected_file_in_security_feedback(self, mock_help, mock_fmt):
+        """affected_file wird als [DATEI:xxx] ins Security-Feedback eingefuegt."""
+        mock_help.return_value = _create_help_needed_mock()
+        manager = _create_mock_manager()
+
+        vulns = [{"severity": "high", "description": "XSS",
+                  "fix": "Escape", "affected_file": "app.js"}]
+        result = self._call_build_feedback(
+            manager,
+            security_passed=False,
+            security_rescan_vulns=vulns,
+            test_result=_default_test_result()
+        )
+
+        assert "[DATEI:app.js]" in result
+
+    @patch(f"{PATCH_PREFIX}.format_test_feedback", return_value="")
+    @patch(f"{PATCH_PREFIX}.create_help_needed")
+    def test_security_mit_unit_test_skip(self, mock_help, mock_fmt):
+        """Bei Security-Issues UND fehlenden Unit-Tests wird HELP_NEEDED gesendet."""
+        mock_help.return_value = _create_help_needed_mock()
+        manager = _create_mock_manager()
+
+        vulns = [{"severity": "critical", "description": "SQLi", "fix": "Fix"}]
+        result = self._call_build_feedback(
+            manager,
+            security_passed=False,
+            security_rescan_vulns=vulns,
+            test_result=_default_test_result(unit_status="SKIP")
+        )
+
+        assert "SECURITY" in result
+        # create_help_needed muss 2x aufgerufen werden (Security + Unit-Test)
+        assert mock_help.call_count >= 2
+
+    @patch(f"{PATCH_PREFIX}.format_test_feedback", return_value="")
+    @patch(f"{PATCH_PREFIX}.create_help_needed")
+    def test_sandbox_unit_test_fail(self, mock_help, mock_fmt):
+        """UNIT-TEST-FEHLER Kategorie bei unit_tests.status == FAIL."""
+        mock_help.return_value = _create_help_needed_mock()
+        manager = _create_mock_manager()
+
+        result = self._call_build_feedback(
+            manager,
+            sandbox_failed=True,
+            sandbox_result="Some output",
+            test_result=_default_test_result(unit_status="FAIL")
+        )
+
+        assert "UNIT-TEST-FEHLER" in result
+
+    @patch(f"{PATCH_PREFIX}.format_test_feedback", return_value="")
+    @patch(f"{PATCH_PREFIX}.create_help_needed")
+    def test_sandbox_ui_test_fail(self, mock_help, mock_fmt):
+        """UI-TEST-FEHLER Kategorie bei ui_tests.status == FAIL."""
+        mock_help.return_value = _create_help_needed_mock()
+        manager = _create_mock_manager()
+
+        result = self._call_build_feedback(
+            manager,
+            sandbox_failed=True,
+            sandbox_result="Some output",
+            test_result=_default_test_result(ui_status="FAIL")
+        )
+
+        assert "UI-TEST-FEHLER" in result
+
+    @patch(f"{PATCH_PREFIX}.format_test_feedback", return_value="")
+    @patch(f"{PATCH_PREFIX}.create_help_needed")
+    def test_sandbox_generischer_fehler(self, mock_help, mock_fmt):
+        """Generischer Sandbox-Fehler wird als FEHLER kategorisiert."""
+        mock_help.return_value = _create_help_needed_mock()
+        manager = _create_mock_manager()
+
+        result = self._call_build_feedback(
+            manager,
+            sandbox_failed=True,
+            sandbox_result="Unbekannter Fehler aufgetreten",
+            test_result=_default_test_result()
+        )
+
+        assert "FEHLER" in result
+
+    @patch(f"{PATCH_PREFIX}.format_test_feedback", return_value="")
+    @patch(f"{PATCH_PREFIX}.create_help_needed")
+    def test_leere_seite_react_diagnose(self, mock_help, mock_fmt):
+        """Leere-Seite-Diagnose fuer React-Projekte."""
+        mock_help.return_value = _create_help_needed_mock()
+        manager = _create_mock_manager({"project_type": "react_app", "language": "javascript"})
+
+        result = self._call_build_feedback(
+            manager,
+            sandbox_failed=True,
+            sandbox_result="Test fehlgeschlagen",
+            test_summary="leere Seite angezeigt",
+            test_result=_default_test_result()
+        )
+
+        assert "ReactDOM" in result or "root" in result
+
+    @patch(f"{PATCH_PREFIX}.format_test_feedback", return_value="")
+    @patch(f"{PATCH_PREFIX}.create_help_needed")
+    def test_leere_seite_flask_diagnose(self, mock_help, mock_fmt):
+        """Leere-Seite-Diagnose fuer Flask-Projekte."""
+        mock_help.return_value = _create_help_needed_mock()
+        manager = _create_mock_manager({"project_type": "flask_api", "language": "python"})
+
+        result = self._call_build_feedback(
+            manager,
+            sandbox_failed=True,
+            sandbox_result="Test fehlgeschlagen",
+            test_summary="leere Seite erkannt",
+            test_result=_default_test_result()
+        )
+
+        assert "Route" in result or "templates" in result
+
+    @patch(f"{PATCH_PREFIX}.format_test_feedback", return_value="")
+    @patch(f"{PATCH_PREFIX}.create_help_needed")
+    def test_referenz_fehler_diagnose(self, mock_help, mock_fmt):
+        """'nicht gefunden' in Sandbox-Ergebnis ergibt DATEI-REFERENZEN Diagnose."""
+        mock_help.return_value = _create_help_needed_mock()
+        manager = _create_mock_manager()
+
+        result = self._call_build_feedback(
+            manager,
+            sandbox_failed=True,
+            sandbox_result="Module nicht gefunden: app.js",
+            test_summary="Referenz fehlt",
+            test_result=_default_test_result()
+        )
+
+        assert "DATEI-REFERENZEN" in result
+
+    @patch(f"{PATCH_PREFIX}.format_test_feedback", return_value="Fehler details")
+    @patch(f"{PATCH_PREFIX}.create_help_needed")
+    def test_structured_feedback_ohne_success(self, mock_help, mock_fmt):
+        """Strukturiertes Test-Feedback wird eingebaut wenn kein Success-Marker."""
+        mock_help.return_value = _create_help_needed_mock()
+        manager = _create_mock_manager()
+
+        result = self._call_build_feedback(
+            manager,
+            sandbox_failed=True,
+            sandbox_result="Error",
+            test_summary="Test fehlgeschlagen",
+            test_result=_default_test_result()
+        )
+
+        assert "Fehler details" in result
+
+    @patch(f"{PATCH_PREFIX}.format_test_feedback", return_value="✅ Alles OK")
+    @patch(f"{PATCH_PREFIX}.create_help_needed")
+    def test_structured_feedback_mit_success_marker(self, mock_help, mock_fmt):
+        """Bei Success-Marker wird test_summary statt structured feedback verwendet."""
+        mock_help.return_value = _create_help_needed_mock()
+        manager = _create_mock_manager()
+
+        result = self._call_build_feedback(
+            manager,
+            sandbox_failed=True,
+            sandbox_result="Error",
+            test_summary="Detaillierter Testbericht",
+            test_result=_default_test_result()
+        )
+
+        assert "Detaillierter Testbericht" in result
+
+    @patch(f"{PATCH_PREFIX}.format_test_feedback", return_value="")
+    @patch(f"{PATCH_PREFIX}.create_help_needed")
+    def test_sandbox_unit_test_skip_bei_sandbox_fehler(self, mock_help, mock_fmt):
+        """Unit-Test-Skip wird auch bei Sandbox-Fehler erwaehnt."""
+        mock_help.return_value = _create_help_needed_mock()
+        manager = _create_mock_manager()
+
+        result = self._call_build_feedback(
+            manager,
+            sandbox_failed=True,
+            sandbox_result="Error",
+            test_result=_default_test_result(unit_status="SKIP")
+        )
+
+        assert "Unit-Tests fehlen" in result or "UNIT-TEST" in result
+
     # Hilfsmethode um build_feedback mit Standardwerten aufzurufen
     def _call_build_feedback(
         self,
@@ -344,6 +530,28 @@ class TestHandleModelSwitch:
         assert fb.endswith(original_feedback), (
             f"Erwartet: Original-Feedback am Ende erhalten, Erhalten: {fb[-200:]}"
         )
+
+    @patch(f"{PATCH_PREFIX}.init_agents")
+    @patch(f"{PATCH_PREFIX}.hash_error", return_value="abc123")
+    def test_kein_neues_modell_verfuegbar(self, mock_hash, mock_init):
+        """Wenn kein anderes Modell verfuegbar, bleibt aktuelles Modell."""
+        manager = _create_mock_manager()
+        same_model = "gpt-4"
+        manager.model_router.get_model_for_error.return_value = same_model
+        mock_init.return_value = {"coder": MagicMock()}
+
+        model, attempt, used, fb = self._call_handle_model_switch(
+            manager,
+            current_coder_model=same_model,
+            model_attempt=3,
+            max_model_attempts=3,
+            sandbox_result="Error",
+            sandbox_failed=True
+        )
+
+        assert model == same_model
+        # init_agents darf NICHT aufgerufen werden wenn gleiches Modell
+        mock_init.assert_not_called()
 
     # Hilfsmethode um handle_model_switch mit Standardwerten aufzurufen
     def _call_handle_model_switch(

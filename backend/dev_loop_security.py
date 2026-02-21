@@ -25,6 +25,7 @@ from .orchestration_helpers import (
     extract_vulnerabilities
 )
 from .heartbeat_utils import run_with_heartbeat
+from .claude_sdk_provider import run_sdk_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +86,47 @@ WICHTIG - CVE-REGELN:
 - Fokussiere dich auf CODE-Probleme, nicht auf Versions-CVEs.
 """
 
+        # AENDERUNG 21.02.2026: Fix 59g — Claude SDK Integration fuer Security Agent
+        # SDK zuerst versuchen (Sonnet), bei Fehler Fallback auf OpenRouter via CrewAI
+        sdk_result = run_sdk_with_retry(
+            manager, role="security", prompt=security_rescan_prompt,
+            timeout_seconds=SECURITY_TIMEOUT, agent_display_name="Security"
+        )
+        if sdk_result:
+            manager._ui_log("Security", "Info", "Security-Scan via Claude SDK (Sonnet) erfolgreich")
+            # SDK-Ergebnis verarbeiten (gleiche Pipeline wie CrewAI)
+            _existing = []
+            if hasattr(manager, 'project_path') and manager.project_path:
+                _proj = str(manager.project_path)
+                if os.path.exists(_proj):
+                    _skip = {'node_modules', '.next', '.git', '__pycache__', 'screenshots'}
+                    for _r, _d, _f in os.walk(_proj):
+                        _d[:] = [d for d in _d if d not in _skip]
+                        for fn in _f:
+                            _existing.append(
+                                os.path.relpath(os.path.join(_r, fn), _proj).replace("\\", "/")
+                            )
+            security_rescan_vulns = extract_vulnerabilities(
+                sdk_result, existing_files=_existing
+            )
+            manager.security_vulnerabilities = security_rescan_vulns
+            security_passed = not security_rescan_vulns or all(
+                v.get('severity') == 'low' for v in security_rescan_vulns
+            )
+            rescan_status = "SECURE" if security_passed else "VULNERABLE"
+            manager._ui_log("Security", "SecurityRescanOutput", json.dumps({
+                "vulnerabilities": security_rescan_vulns,
+                "overall_status": rescan_status,
+                "scan_type": "code_scan",
+                "iteration": iteration + 1,
+                "blocking": not security_passed,
+                "model": "claude-sdk/sonnet",
+                "timestamp": datetime.now().isoformat()
+            }, ensure_ascii=False))
+            manager._ui_log("Security", "RescanResult", f"Code-Scan: {rescan_status} ({len(security_rescan_vulns)} Findings)")
+            return security_passed, security_rescan_vulns
+
+        # Fallback: CrewAI/OpenRouter Retry-Schleife
         # AENDERUNG 30.01.2026: Retry-Schleife mit Fallback bei 404/Rate-Limit
         for security_attempt in range(MAX_SECURITY_RETRIES):
             current_security_model = manager.model_router.get_model("security") if manager.model_router else "unknown"

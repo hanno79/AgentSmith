@@ -44,12 +44,25 @@ def run_coder_task(manager, project_rules: Dict[str, Any], c_prompt: str, agent_
     """
     Fuehrt den Coder-Task mit Retry-Logik und Heartbeat-Updates aus.
     AENDERUNG 29.01.2026: Modellwechsel erst nach 2 gleichen Fehlern mit demselben Modell.
+    AENDERUNG 21.02.2026: Claude SDK als bevorzugter Provider mit OpenRouter-Fallback.
     """
-    task_coder = Task(description=c_prompt, expected_output="Code", agent=agent_coder)
-    MAX_CODER_RETRIES = 6  # Erhoeht: 2 Versuche pro Modell x 3 Modelle
     # AENDERUNG 08.02.2026: Nur noch agent_timeouts Dict (globales agent_timeout_seconds entfernt)
     agent_timeouts = manager.config.get("agent_timeouts", {})
     CODER_TIMEOUT_SECONDS = agent_timeouts.get("coder", 750)
+
+    # AENDERUNG 21.02.2026: Multi-Tier Claude SDK (zentrale Helper-Funktion)
+    from .claude_sdk_provider import run_sdk_with_retry
+    sdk_result = run_sdk_with_retry(
+        manager, role="coder", prompt=c_prompt,
+        timeout_seconds=CODER_TIMEOUT_SECONDS,
+        agent_display_name="Coder"
+    )
+    if sdk_result:
+        return sdk_result, agent_coder
+
+    # Bestehender OpenRouter/CrewAI Pfad (Fallback oder primaerer Pfad wenn Claude SDK deaktiviert)
+    task_coder = Task(description=c_prompt, expected_output="Code", agent=agent_coder)
+    MAX_CODER_RETRIES = 6  # Erhoeht: 2 Versuche pro Modell x 3 Modelle
     # AENDERUNG 29.01.2026: Modellwechsel erst nach X gleichen Fehlern
     ERRORS_BEFORE_MODEL_SWITCH = 2
     current_code = ""

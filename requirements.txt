@@ -1,5 +1,6 @@
 crewai
 litellm  # KRITISCH: Benötigt für OpenRouter-Support!
+claude-agent-sdk>=0.1.39  # AENDERUNG 21.02.2026: Claude SDK Provider (Max Plan Backend)
 rich
 PyYAML
 ruamel.yaml  # Für Kommentar-Erhaltung in YAML-Dateien
