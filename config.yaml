@@ -1,6 +1,6 @@
 openai_api_base: https://openrouter.ai/api/v1
 openai_api_key: ${OPENAI_API_KEY}
-mode: production
+mode: test
 project_type: webapp
 include_designer: true
 max_retries: 50
@@ -8,9 +8,6 @@ max_model_attempts: 5
 parallel_file_generation:
   enabled: true
   max_workers: null
-  # AENDERUNG 13.02.2026: Fix 53c — timeout_per_file + batch_timeout ENTFERNT
-  # File-by-File Coder nutzt jetzt agent_timeouts.coder (Single Source of Truth)
-  # Vorher: timeout_per_file=750 ueberschrieb agent_timeouts.coder=1800!
 targeted_fix:
   enabled: true
   max_files: 7
@@ -89,12 +86,18 @@ models:
       - openrouter/openai/gpt-oss-120b:free
       - openrouter/nousresearch/hermes-3-llama-3.1-405b:free
       - openrouter/z-ai/glm-4.5-air:free
+    # AENDERUNG 21.02.2026: Fix 59a — Coder Primary auf Code-optimiertes 77B Modell
     coder:
-      primary: openrouter/openai/gpt-oss-120b:free
+      primary: openrouter/qwen/qwen3-coder:free
       fallback:
+      - openrouter/openai/gpt-oss-120b:free
       - openrouter/meta-llama/llama-3.3-70b-instruct:free
+      - openrouter/stepfun/step-3.5-flash:free
       - openrouter/arcee-ai/trinity-large-preview:free
-      - openrouter/qwen/qwen3-coder:free
+      extended_fallback:
+      - openrouter/deepseek/deepseek-r1-0528:free
+      - openrouter/z-ai/glm-4.5-air:free
+      - openrouter/google/gemma-3-27b-it:free
       - openrouter/mistralai/mistral-small-3.1-24b-instruct:free
     tester:
       primary: openrouter/openai/gpt-oss-120b:free
@@ -117,12 +120,12 @@ models:
       - openrouter/qwen/qwen2.5-vl-7b-instruct:free
       - openrouter/google/gemma-3-12b-it:free
     database_designer:
-      primary: openrouter/meta-llama/llama-3.3-70b-instruct:free
+      primary: openrouter/qwen/qwen3-coder:free
       fallback:
+      - openrouter/meta-llama/llama-3.3-70b-instruct:free
       - openrouter/google/gemma-3-27b-it:free
       - openrouter/openai/gpt-oss-120b:free
       - openrouter/deepseek/deepseek-r1-0528:free
-      - openrouter/qwen/qwen3-coder:free
     security:
       primary: openrouter/openai/gpt-oss-120b:free
       fallback:
@@ -135,13 +138,18 @@ models:
       - openrouter/arcee-ai/trinity-large-preview:free
       - openrouter/google/gemma-3-27b-it:free
       - openrouter/xiaomi/mimo-v2-flash:free
+    # AENDERUNG 21.02.2026: Fix 59a — Reviewer Primary auf gueltiges Free-Modell
     reviewer:
-      primary: openrouter/deepseek/deepseek-v3.2-speciale
+      primary: openrouter/deepseek/deepseek-r1-0528:free
       fallback:
       - openrouter/meta-llama/llama-3.3-70b-instruct:free
       - openrouter/qwen/qwen3-coder:free
       - openrouter/openai/gpt-oss-120b:free
       - openrouter/meta-llama/llama-3.1-405b-instruct:free
+      extended_fallback:
+      - openrouter/arcee-ai/trinity-large-preview:free
+      - openrouter/z-ai/glm-4.5-air:free
+      - openrouter/google/gemma-3-27b-it:free
     techstack_architect:
       primary: openrouter/meta-llama/llama-3.3-70b-instruct:free
       fallback:
@@ -183,12 +191,13 @@ models:
       - openrouter/qwen/qwen3-235b-a22b:free
       - openrouter/openai/gpt-oss-120b:free
     planner:
-      primary: openrouter/meta-llama/llama-3.3-70b-instruct:free
+      primary: openrouter/openai/gpt-oss-120b:free
       fallback:
+      - openrouter/meta-llama/llama-3.3-70b-instruct:free
       - openrouter/deepseek/deepseek-r1-0528:free
-      - openrouter/openai/gpt-oss-120b:free
       - openrouter/qwen/qwen3-coder:free
       - openrouter/z-ai/glm-4.5-air:free
+    # AENDERUNG 21.02.2026: Fix 59a — Fix-Agent extended_fallback
     fix:
       primary: openrouter/openai/gpt-oss-120b:free
       fallback:
@@ -196,6 +205,10 @@ models:
       - openrouter/qwen/qwen3-coder:free
       - openrouter/arcee-ai/trinity-large-preview:free
       - openrouter/mistralai/mistral-small-3.1-24b-instruct:free
+      extended_fallback:
+      - openrouter/deepseek/deepseek-r1-0528:free
+      - openrouter/z-ai/glm-4.5-air:free
+      - openrouter/google/gemma-3-27b-it:free
     task_deriver:
       primary: openrouter/meta-llama/llama-3.3-70b-instruct:free
       fallback:

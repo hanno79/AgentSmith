@@ -338,6 +338,28 @@ def build_coder_prompt(
     elif feedback:
         c_prompt += f"\nKorrektur: {feedback}\n"
 
+    # AENDERUNG 21.02.2026: Fix 59f — Fehlende Dateien als Erstellungsanweisung
+    # ROOT-CAUSE-FIX:
+    # Symptom: PatchMode kann nur existierende Dateien aendern, nicht neue erstellen
+    # Ursache: Fehlende Route-Dateien (z.B. /api/ideas/route.js) werden nie generiert
+    # Loesung: Erkannte fehlende Dateien explizit als Erstellungsauftrag im Prompt
+    _missing_files = getattr(manager, '_missing_files', [])
+    if _missing_files:
+        c_prompt += "\n### NEUE DATEIEN ERSTELLEN (PFLICHT!):\n"
+        c_prompt += "Die folgenden Dateien werden von existierendem Code referenziert,\n"
+        c_prompt += "existieren aber NICHT. Du MUSST sie als ### FILENAME: <pfad> erstellen:\n\n"
+        for mf in _missing_files:
+            c_prompt += f"### FILENAME: {mf['file']}\n"
+            c_prompt += f"Grund: {mf['reason']}\n"
+            # Schema-Kontext fuer DB-bezogene Dateien (API-Routen)
+            _db_schema = getattr(manager, 'database_schema', '')
+            if '/api/' in mf['file'] and _db_schema and "Kein Datenbank" not in _db_schema:
+                c_prompt += f"DATENBANK-SCHEMA (EXAKT diese Tabellennamen verwenden!):\n"
+                c_prompt += f"{_db_schema[:1000]}\n"
+            c_prompt += "Erstelle diese Datei VOLLSTAENDIG mit funktionierendem Code.\n\n"
+        # Reset nach Verwendung
+        manager._missing_files = []
+
     if iteration == 0 and not feedback:
         c_prompt += "\n\n🛡️ SECURITY BASICS (von Anfang an beachten!):\n"
         c_prompt += "- Kein innerHTML/document.write mit User-Input (XSS-Risiko)\n"
@@ -469,7 +491,8 @@ def build_coder_prompt(
     c_prompt += "- MUSS Dependencies installieren (npm install / pip install -r requirements.txt)\n"
     c_prompt += "- MUSS den Server in neuem Fenster starten: start \"\" cmd /c \"npm run dev\"\n"
     c_prompt += "- MUSS den Browser oeffnen: start \"\" http://localhost:PORT\n"
-    c_prompt += "- MUSS am Ende 'pause > nul' haben\n"
+    # AENDERUNG 14.02.2026: pause entfernt - blockiert subprocess.Popen() im server_runner (Deadlock)
+    c_prompt += "- VERBOTEN: 'pause' oder 'pause > nul' (blockiert automatisierten Testlauf!)\n"
     c_prompt += "- VERBOTEN: Argumente wie run.bat [dev|build|start]\n"
 
     # AENDERUNG 07.02.2026: Dynamische Template-Regeln statt hartcodierte Framework-Regeln

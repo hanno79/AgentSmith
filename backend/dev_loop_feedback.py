@@ -2,14 +2,16 @@
 """
 Author: rahn
 Datum: 31.01.2026
-Version: 1.0
+Version: 1.1
 Beschreibung: Feedback-Funktionen für DevLoop.
               Extrahiert aus dev_loop_steps.py (Regel 1: Max 500 Zeilen)
               Enthält: Feedback-Builder, Modellwechsel-Logik
               ÄNDERUNG 30.01.2026: HELP_NEEDED Events bei kritischen Security-Issues
               AENDERUNG 31.01.2026: Fehler-Modell-Historie zur Vermeidung von Ping-Pong
+              AENDERUNG 21.02.2026: Fix 59b+59c — Review-Truncation + Strukturiertes Feedback
 """
 
+import re
 import json
 from typing import Dict, Any, List, Tuple
 
@@ -17,6 +19,69 @@ from .orchestration_helpers import format_test_feedback
 from .agent_message import create_help_needed
 from .agent_factory import init_agents
 from .dev_loop_helpers import hash_error
+
+
+# AENDERUNG 21.02.2026: Fix 59b — Intelligente Review-Kuerzung
+def _truncate_review_preserving_files(review_output: str, max_chars: int = 4000) -> str:
+    """
+    Kuerzt Review-Output, behaelt aber alle [DATEI:xxx] Referenzen.
+    Verhindert dass Dateinamen durch Abschneiden verloren gehen.
+    """
+    if len(review_output) <= max_chars:
+        return review_output
+    # Alle [DATEI:xxx] Referenzen extrahieren
+    file_refs = re.findall(r'\[DATEI:[^\]]+\]', review_output)
+    truncated = review_output[:max_chars]
+    # Fehlende Referenzen am Ende anfuegen
+    missing_refs = [ref for ref in file_refs if ref not in truncated]
+    if missing_refs:
+        truncated += "\nWEITERE BETROFFENE DATEIEN: " + " ".join(missing_refs)
+    return truncated
+
+
+# AENDERUNG 21.02.2026: Fix 59c — Compiler-artiges strukturiertes Feedback
+def _build_structured_feedback(sandbox_result: str, test_result: dict,
+                                review_output: str) -> str:
+    """
+    Erstellt compiler-artiges strukturiertes Feedback.
+    Format: ERROR [datei:zeile]: Beschreibung
+    Wird VOR dem Natural-Language-Feedback eingefuegt.
+    """
+    errors = []
+
+    # 1. Sandbox-Fehler parsen (Python-Tracebacks + JS-Fehler mit Zeilenangabe)
+    if sandbox_result:
+        # Python: File "xxx.py", line N
+        for match in re.finditer(
+            r'File "([^"]+)", line (\d+)[^\n]*\n\s*(.+)',
+            sandbox_result
+        ):
+            errors.append(f"  ERROR [{match.group(1)}:{match.group(2)}]: {match.group(3).strip()[:200]}")
+        # JS/TS: filename.js:N:N oder filename.js(N,N)
+        for match in re.finditer(
+            r'([^\s]+\.(?:js|jsx|ts|tsx)):(\d+)(?::\d+)?[^\n]*?(.+)',
+            sandbox_result
+        ):
+            msg = match.group(3).strip()[:200]
+            if msg and not msg.startswith('//'):
+                errors.append(f"  ERROR [{match.group(1)}:{match.group(2)}]: {msg}")
+
+    # 2. Test-Fehler parsen
+    ui_tests = test_result.get("ui_tests", {})
+    for issue in ui_tests.get("issues", []):
+        if isinstance(issue, str) and len(issue) > 10:
+            errors.append(f"  TEST-ERROR: {issue[:200]}")
+
+    # 3. Reviewer [DATEI:xxx] Referenzen extrahieren
+    if review_output:
+        for match in re.finditer(r'\[DATEI:([^\]]+)\]', review_output):
+            errors.append(f"  REVIEW-TARGET: [DATEI:{match.group(1)}]")
+
+    if not errors:
+        return ""
+
+    header = f"=== FEHLER-ZUSAMMENFASSUNG ({len(errors)} Probleme) ===\n"
+    return header + "\n".join(errors[:20]) + "\n=== ENDE FEHLER-ZUSAMMENFASSUNG ===\n\n"
 
 
 def build_feedback(
@@ -120,6 +185,9 @@ def build_feedback(
             return skip_feedback
 
     if sandbox_failed:
+        # AENDERUNG 21.02.2026: Fix 59c — Strukturiertes Feedback VOR Natural Language
+        structured = _build_structured_feedback(sandbox_result, test_result, review_output)
+
         # ÄNDERUNG 31.01.2026: Test-Fehler nach Typ differenzieren
         # Gibt dem Coder spezifischere Anleitung je nach Fehlerart
         unit_tests = test_result.get("unit_tests", {})
@@ -145,12 +213,12 @@ def build_feedback(
 
         feedback += f"SANDBOX:\n{sandbox_result}\n\n"
 
-        # ÄNDERUNG 31.01.2026: Reviewer-Analyse immer einbauen wenn vorhanden
+        # AENDERUNG 21.02.2026: Fix 59b — Review-Truncation 2000→4000 + intelligente Kuerzung
         # Der Reviewer identifiziert oft die Lösung (z.B. Unicode-Ersetzung),
         # diese muss dem Coder auch bei Sandbox-Fehlern mitgeteilt werden
         if review_output and len(review_output.strip()) > 50:
-            # Kürzen um Tokenverbrauch zu begrenzen, aber Essenz behalten
-            reviewer_analysis = review_output[:2000]
+            # Fix 59b: Intelligente Kuerzung die [DATEI:xxx] Referenzen behaelt
+            reviewer_analysis = _truncate_review_preserving_files(review_output, max_chars=4000)
             feedback += f"REVIEWER-ANALYSE:\n{reviewer_analysis}\n\n"
 
         # Unit-Test-Skip auch bei Sandbox-Fehler erwähnen
@@ -186,6 +254,10 @@ def build_feedback(
             feedback += "\nDATEI-REFERENZEN:\n"
             feedback += "Es fehlen referenzierte Dateien. Stelle sicher, dass alle\n"
             feedback += "in HTML eingebundenen Scripts und Stylesheets auch erstellt werden.\n"
+
+        # AENDERUNG 21.02.2026: Fix 59c — Strukturiertes Feedback voranstellen
+        if structured:
+            feedback = structured + feedback
         return feedback
 
     return review_output

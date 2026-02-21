@@ -2,15 +2,17 @@
 """
 Author: rahn
 Datum: 08.02.2026
-Version: 1.0
+Version: 1.1
 Beschreibung: Utility-Funktionen fuer den DevLoop Coder.
               Extrahiert aus dev_loop_coder.py (Regel 1: Max 500 Zeilen).
               Enthaelt: Model-Output-Bereinigung, PatchMode-Erkennung,
               Datei-Extraktion, Code-Dict-Lesen, Rebuild-von-Disk.
+              AENDERUNG 21.02.2026: Fix 59e — Fehlende-Datei-Erkennung.
 """
 
 import logging
 import os
+import posixpath
 import re
 from typing import Dict, List
 
@@ -275,3 +277,74 @@ def rebuild_current_code_from_disk(manager) -> str:
         parts.append(f"### FILENAME: {filepath}\n{code_dict[filepath]}")
 
     return "\n\n".join(parts)
+
+
+# AENDERUNG 21.02.2026: Fix 59e — Fehlende-Datei-Erkennung
+def detect_missing_files(manager) -> List[Dict[str, str]]:
+    """
+    Erkennt Dateien die vom Code referenziert werden aber nicht existieren.
+    Typisch: API-Routen die 404 zurueckgeben, fehlende Imports.
+
+    Returns:
+        Liste von Dicts mit 'file', 'reason', 'referenced_by'
+    """
+    missing = []
+    code_dict = _get_current_code_dict(manager)
+    if not code_dict:
+        return missing
+
+    for filepath, content in code_dict.items():
+        # 1. fetch('/api/xxx') Aufrufe → Route-Datei muss existieren
+        for match in re.finditer(r'''fetch\s*\(\s*['"`](/api/[^'"`\s)]+)['"`]''', content):
+            api_path = match.group(1)
+            # Query-Parameter und Trailing-Slash entfernen
+            api_path = api_path.split('?')[0].rstrip('/')
+            # Dynamische Segmente ignorieren (z.B. /api/bugs/123)
+            # Pruefen ob es ein statischer API-Pfad ist (max 3 Segmente)
+            segments = api_path.strip('/').split('/')
+            if len(segments) > 3 or not all(s.isalpha() or s == 'api' for s in segments):
+                continue
+            route_file = f"app{api_path}/route.js"
+            if route_file not in code_dict:
+                # Auch .ts Variante pruefen
+                route_file_ts = f"app{api_path}/route.ts"
+                if route_file_ts not in code_dict:
+                    missing.append({
+                        "file": route_file,
+                        "reason": f"fetch('{api_path}') in {filepath} aber Route-Datei fehlt",
+                        "referenced_by": filepath
+                    })
+
+        # 2. Import-Pfade pruefen (nur relative Imports)
+        for match in re.finditer(
+            r'''(?:import\s+.*?from\s+|require\s*\(\s*)['"](\./[^'"]+)['"]''',
+            content
+        ):
+            import_path = match.group(1)
+            # Relative Aufloesung gegen filepath
+            dir_of_file = posixpath.dirname(filepath)
+            resolved = posixpath.normpath(posixpath.join(dir_of_file, import_path))
+            # Extensions pruefen
+            found = False
+            for ext in ['', '.js', '.jsx', '.ts', '.tsx', '/index.js', '/index.ts']:
+                if (resolved + ext) in code_dict:
+                    found = True
+                    break
+            if not found and resolved not in code_dict:
+                # Nur wenn der Import nicht ein npm-Package ist
+                if not import_path.startswith('./node_modules'):
+                    missing.append({
+                        "file": resolved + '.js',
+                        "reason": f"Import '{import_path}' in {filepath} aber Datei fehlt",
+                        "referenced_by": filepath
+                    })
+
+    # Deduplizieren nach Datei-Pfad
+    seen = set()
+    unique_missing = []
+    for mf in missing:
+        if mf["file"] not in seen:
+            seen.add(mf["file"])
+            unique_missing.append(mf)
+
+    return unique_missing

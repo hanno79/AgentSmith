@@ -569,6 +569,27 @@ class DevLoop:
             )
             _utds_modified_files.extend(new_utds_files)
 
+            # AENDERUNG 21.02.2026: Fix 59e — Fehlende-Datei-Erkennung
+            # ROOT-CAUSE-FIX:
+            # Symptom: PatchMode kann keine neuen Dateien erstellen → Endlosschleife
+            # Ursache: fetch('/api/ideas') in page.js aber app/api/ideas/route.js fehlt
+            # Loesung: Referenzierte-aber-fehlende Dateien erkennen und ins Feedback einbauen
+            from .dev_loop_coder_utils import detect_missing_files
+            _missing_files = detect_missing_files(manager)
+            if _missing_files:
+                missing_info = "\n\nFEHLENDE DATEIEN (MUESSEN ERSTELLT WERDEN):\n"
+                for mf in _missing_files:
+                    missing_info += f"- {mf['file']}: {mf['reason']}\n"
+                missing_info += "\nWICHTIG: Diese Dateien muessen im NAECHSTEN Output "
+                missing_info += "als ### FILENAME: <pfad> enthalten sein!\n"
+                feedback += missing_info
+                manager._missing_files = _missing_files
+                manager._ui_log("Orchestrator", "MissingFiles",
+                    f"{len(_missing_files)} fehlende Dateien erkannt: "
+                    f"{[mf['file'] for mf in _missing_files[:5]]}")
+            else:
+                manager._missing_files = []
+
             # AENDERUNG 09.02.2026: Fix 35 — Iteration-History und Ping-Pong-Counter
             _feedback_files = extract_filenames_from_feedback(feedback)
             _iteration_history.append({

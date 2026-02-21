@@ -419,13 +419,16 @@ def process_utds_feedback(task_derivation, manager, feedback,
     _utds_modified_files = []
 
     # AENDERUNG 06.02.2026: ROOT-CAUSE-FIX tech_blueprint hinzugefuegt
+    # AENDERUNG 21.02.2026: Fix 59d — database_schema an UTDS durchreichen
     _tech_blueprint = getattr(manager, 'tech_blueprint', {})
+    _database_schema = getattr(manager, 'database_schema', '')
     utds_context = {
         "current_code": manager.current_code,
         "affected_files": created_files or [],
         "tech_stack": _tech_blueprint.get('language', 'unknown'),
         "tech_blueprint": _tech_blueprint,
-        "project_type": _tech_blueprint.get('project_type', 'webapp')
+        "project_type": _tech_blueprint.get('project_type', 'webapp'),
+        "database_schema": _database_schema
     }
 
     # Security als UTDS-Quelle

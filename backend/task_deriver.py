@@ -63,6 +63,7 @@ KONTEXT:
 - Tech-Stack: {tech_stack}
 - Projekt-Typ: {project_type}
 - Aktueller Code vorhanden: {has_code}
+{database_schema_section}
 
 AUSGABE-FORMAT (strikt JSON):
 ```json
@@ -204,6 +205,11 @@ class TaskDeriver:
         # Ursache: LLM erhielt KEINE Liste der tatsaechlich vorhandenen Projekt-Dateien
         # Loesung: existing_files aus current_code-Keys oder Festplatte an LLM uebergeben
         existing_files = _get_existing_project_files(context)
+        # AENDERUNG 21.02.2026: Fix 59d — Database-Schema als Kontext fuer UTDS
+        db_schema = context.get("database_schema", "")
+        schema_section = ""
+        if db_schema and "Kein Datenbank" not in db_schema:
+            schema_section = f"DATENBANK-SCHEMA (EXAKT diese Tabellennamen verwenden!):\n{db_schema[:1500]}"
         prompt = TASK_DERIVER_PROMPT.format(
             source=source,
             feedback=feedback[:4000],  # Truncate fuer Token-Limit
@@ -211,7 +217,8 @@ class TaskDeriver:
             existing_files=", ".join(existing_files) if existing_files else "unbekannt",
             tech_stack=context.get("tech_stack", "unbekannt"),
             project_type=context.get("project_type", "unbekannt"),
-            has_code="Ja" if context.get("current_code") else "Nein"
+            has_code="Ja" if context.get("current_code") else "Nein",
+            database_schema_section=schema_section
         )
 
         try:

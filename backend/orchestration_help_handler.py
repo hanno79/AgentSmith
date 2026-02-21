@@ -72,7 +72,9 @@ def handle_help_needed_events(
             reason_data = json.loads(reason_str)
             action_required = reason_data.get("action_required", "")
         except (json.JSONDecodeError, TypeError) as e:
-            logger.error("[parse_blocked_reasons] reason_str=%s Fehler: %s", reason_str[:200], e, exc_info=True)
+            # AENDERUNG 14.02.2026: None-Guard fuer reason_str (kann None sein)
+            logger.error("[parse_blocked_reasons] reason_str=%s Fehler: %s",
+                         str(reason_str)[:200] if reason_str else "(None)", e, exc_info=True)
             action_required = ""
 
         # STUFE 1: Automatische Aktionen basierend auf action_required
@@ -204,6 +206,10 @@ def _run_automatic_test_generator(
         if result_str and "### FILENAME:" in result_str:
             test_files = extract_test_files(result_str)
 
+            # AENDERUNG 21.02.2026: Zaehle erfolgreich geschriebene Dateien
+            # ROOT-CAUSE-FIX: Vorher gab len(test_files)>0 True zurueck,
+            # auch wenn ALLE Dateien blacklisted oder Schreibfehler hatten
+            successfully_created = 0
             for filepath, content in test_files.items():
                 # AENDERUNG 09.02.2026: Fix 36 — System-Level Blacklist
                 if is_forbidden_file(filepath):
@@ -217,13 +223,14 @@ def _run_automatic_test_generator(
                     os.makedirs(dirpath, exist_ok=True)
                     with open(full_path, "w", encoding="utf-8") as f:
                         f.write(content)
+                    successfully_created += 1
                 except (OSError, IOError) as e:
                     logger.warning("Test-Datei konnte nicht geschrieben werden: %s - %s", filepath, e)
                     continue
 
             ui_log_callback("HelpHandler", "Result",
-                           f"Test-Generator hat {len(test_files)} Dateien erstellt")
-            return len(test_files) > 0
+                           f"Test-Generator hat {successfully_created}/{len(test_files)} Dateien erstellt")
+            return successfully_created > 0
 
         # Fallback: Template-Tests
         ui_log_callback("HelpHandler", "Info", "Verwende Template-Tests als Fallback")
