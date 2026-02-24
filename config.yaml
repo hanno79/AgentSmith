@@ -654,7 +654,7 @@ claude_sdk:
     researcher: 10       # CLI-Modus: Research braucht mehrere Turns, aber weniger als async SDK
     techstack_architect: 10
     coder: 10
-    reviewer: 5          # Nur Review, wenig Tool-Use
+    reviewer: 10
     # AENDERUNG 24.02.2026: Fix 76e — Grosszuegige 10 Turns fuer ALLE Rollen (Phase 1: Korrektheit)
     # Erst pruefen ob alle Rollen sauber durchlaufen, dann in Phase 2 optimieren
     designer: 10
