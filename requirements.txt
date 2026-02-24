@@ -25,6 +25,11 @@ pytest-qt>=4.2.0  # PyQt/PySide UI-Tests (headless-fähig)
 # Validation (für Config Validation)
 pydantic>=2.8,<3.0.0
 
+# AENDERUNG 22.02.2026: Fix 73 — litellm[proxy] Abhaengigkeit fuer ColdStorageHandler
+# ROOT-CAUSE-FIX: litellm importiert apscheduler intern bei jedem API-Call via ColdStorageHandler
+# ohne apscheduler → ImportError-Spam in Docker-Logs
+apscheduler>=3.10.4
+
 # Rate Limiting
 slowapi
 

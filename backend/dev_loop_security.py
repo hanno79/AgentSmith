@@ -25,7 +25,7 @@ from .orchestration_helpers import (
     extract_vulnerabilities
 )
 from .heartbeat_utils import run_with_heartbeat
-from .claude_sdk_provider import run_sdk_with_retry
+from .claude_sdk import run_sdk_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -221,3 +221,4 @@ WICHTIG - CVE-REGELN:
                 break
 
     return security_passed, security_rescan_vulns
+

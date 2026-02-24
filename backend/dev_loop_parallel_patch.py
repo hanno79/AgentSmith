@@ -272,7 +272,7 @@ def _run_coder_with_timeout(manager, project_rules, prompt, timeout_seconds):
     """Fuehrt einen Coder-Call mit eigenem Timeout aus. Claude SDK zuerst, CrewAI als Fallback."""
     # Claude SDK Versuch (Haiku fuer einfache Patch-Aufgaben)
     try:
-        from .claude_sdk_provider import run_sdk_with_retry
+        from .claude_sdk import run_sdk_with_retry
         sdk_result = run_sdk_with_retry(
             manager, role="fix", prompt=prompt,
             timeout_seconds=timeout_seconds,
@@ -498,3 +498,4 @@ def run_parallel_patch(
         f"{len(affected_files) - len(all_results)} noch offen")
 
     return merged_current_code, created_files
+

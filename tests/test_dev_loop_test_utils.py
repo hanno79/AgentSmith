@@ -694,21 +694,19 @@ class TestEnsureTestsExist:
 
     @patch("backend.dev_loop_test_utils.run_test_generator")
     def test_tech_blueprint_none_mit_code_crasht(self, mock_run_gen, mock_manager, tmp_path):
-        """tech_blueprint=None + Code-Dateien + iteration>0 → AttributeError.
+        """tech_blueprint=None + Code-Dateien + iteration>0 darf nicht crashen.
 
-        Hinweis: manager.tech_blueprint.get() auf Zeile 205 crasht bei None
-        wenn run_test_generator fehlschlaegt und Fallback versucht wird.
-        get_test_config_for_project Zeile 148 faengt None korrekt ab,
-        aber Zeile 205 nutzt manager.tech_blueprint direkt.
+        Nach dem Fix wird project_type None-safe ermittelt und auf
+        'python_script' zurueckgefallen.
         """
         # Arrange
         mock_manager.tech_blueprint = None
         (tmp_path / "app.py").write_text("def main(): pass")
         mock_run_gen.return_value = False  # Generator fehlgeschlagen → Fallback
 
-        # Assert — Zeile 205: manager.tech_blueprint.get() auf None
-        with pytest.raises(AttributeError):
-            ensure_tests_exist(mock_manager, iteration=1)
+        # Assert: kein Crash bei None-tech_blueprint
+        ergebnis = ensure_tests_exist(mock_manager, iteration=1)
+        assert isinstance(ergebnis, bool)
 
     def test_mehrere_test_dateien_in_tests_dir(self, mock_manager, tmp_path):
         """Mehrere Test-Dateien → korrekte Anzahl wird geloggt."""

@@ -337,22 +337,41 @@ class TaskDispatcher:
                     "title": task.title[:100]
                 })
 
-            # CrewAI Task erstellen
-            crew_task = Task(
-                description=self._build_task_description(task),
-                expected_output="Korrigierter Code oder Loesung",
-                agent=agent
-            )
+            # AENDERUNG 24.02.2026: Fix 76b — Claude SDK CLI-Modus fuer UTDS-Tasks
+            # SDK-First: Schneller und direkter als CrewAI, Fallback auf CrewAI bei Fehler
+            task_description = self._build_task_description(task)
+            sdk_result_text = None
+            agent_role = task.target_agent.value
+            try:
+                from backend.claude_sdk import run_sdk_with_retry
+                if hasattr(self.manager, "claude_provider") and self.manager.claude_provider:
+                    sdk_result_text = run_sdk_with_retry(
+                        self.manager, role=agent_role, prompt=task_description,
+                        timeout_seconds=300, agent_display_name=f"UTDS-{agent_role.capitalize()}"
+                    )
+            except Exception as sdk_err:
+                logger.debug("[UTDS] SDK-Versuch fuer %s fehlgeschlagen: %s", agent_role, sdk_err)
 
-            # Crew ausfuehren
-            crew = Crew(
-                agents=[agent],
-                tasks=[crew_task],
-                verbose=False
-            )
+            if sdk_result_text:
+                result_text = sdk_result_text
+                logger.info("[UTDS] Task %s via Claude SDK erfolgreich (%d Zeichen)", task.id, len(result_text))
+            else:
+                # Fallback: CrewAI Task erstellen
+                crew_task = Task(
+                    description=task_description,
+                    expected_output="Korrigierter Code oder Loesung",
+                    agent=agent
+                )
 
-            result = crew.kickoff()
-            result_text = str(result) if result else ""
+                # Crew ausfuehren
+                crew = Crew(
+                    agents=[agent],
+                    tasks=[crew_task],
+                    verbose=False
+                )
+
+                result = crew.kickoff()
+                result_text = str(result) if result else ""
 
             # AENDERUNG 07.02.2026: existing_files fuer Dateiname-Validierung (Fix 20)
             existing_files = []

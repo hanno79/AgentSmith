@@ -94,17 +94,41 @@ def restore_session(request: RestoreSessionRequest):
 
 
 @router.post("/session/reset")
-def reset_session():
+async def reset_session():
     """
     Setzt die aktuelle Session zurueck.
     Nuetzlich wenn Frontend einen sauberen Zustand braucht.
 
+    AENDERUNG 22.02.2026: Fix 68d — Stop laufenden Run + WebSocket-Broadcast
+    ROOT-CAUSE-FIX:
+    Symptom: Button bleibt nach Reset ausgegraut (Frontend weiss nicht dass Run gestoppt)
+    Ursache: reset() loeschte nur das Dict, Background-Task lief weiter; kein WS-Event
+    Loesung: Stop-Flag + WebSocket "Stopped" Event damit Frontend Button freischaltet
+
     Returns:
         Bestaetigung
     """
+    import json
+    from datetime import datetime
+    from ..app_state import manager as orch_manager, ws_manager
+
+    # 1. Stop-Flag setzen (beendet DevLoop-Iteration kooperativ)
+    if hasattr(orch_manager, 'stop'):
+        orch_manager.stop()
+
+    # 2. Session-Dict zuruecksetzen
     session_mgr = get_session_manager_instance()
     if session_mgr:
         session_mgr.reset()
+
+    # 3. Frontend ueber Stop informieren → Button wird freigegeben
+    payload = json.dumps({
+        "agent": "System",
+        "event": "Stopped",
+        "message": "Run wurde durch Reset gestoppt",
+        "timestamp": str(datetime.now())
+    }, ensure_ascii=False)
+    await ws_manager.broadcast(payload)
 
     return {"status": "ok", "message": "Session zurueckgesetzt"}
 

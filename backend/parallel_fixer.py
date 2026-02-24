@@ -226,7 +226,42 @@ class ParallelFixer:
         start_time = datetime.now()
 
         try:
-            # Fix-Agent erstellen
+            # AENDERUNG 24.02.2026: Fix 76b — Claude SDK CLI-Modus fuer Fix-Agent
+            # SDK-First: Schneller und direkter als CrewAI, Fallback auf CrewAI bei Fehler
+            sdk_output = None
+            try:
+                from backend.claude_sdk import run_sdk_with_retry
+                if hasattr(self.manager, "claude_provider") and self.manager.claude_provider:
+                    fix_prompt = build_fix_prompt(
+                        file_path=error.file_path,
+                        current_content=current_content,
+                        error_type=error.error_type,
+                        error_message=error.error_message,
+                        line_numbers=error.line_numbers,
+                        context_files=context_files
+                    )
+                    sdk_output = run_sdk_with_retry(
+                        self.manager, role="fix", prompt=fix_prompt,
+                        timeout_seconds=300, agent_display_name="Fix"
+                    )
+            except Exception as sdk_err:
+                logger.debug("Fix SDK-Versuch fehlgeschlagen: %s", sdk_err)
+
+            if sdk_output:
+                corrected_content = extract_corrected_content(sdk_output, error.file_path)
+                duration = (datetime.now() - start_time).total_seconds()
+                if corrected_content:
+                    logger.info(f"Fix via Claude SDK erfolgreich: {error.file_path}")
+                    return FixResult(
+                        file_path=error.file_path,
+                        success=True,
+                        new_content=corrected_content,
+                        duration_seconds=duration,
+                        original_error=error
+                    )
+                logger.warning("Fix SDK: Korrektur nicht extrahierbar, Fallback auf CrewAI")
+
+            # Fallback: CrewAI Fix-Agent
             agent = create_fix_agent(
                 config=self.config,
                 project_rules=project_rules,

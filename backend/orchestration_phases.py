@@ -26,7 +26,7 @@ from .heartbeat_utils import run_with_heartbeat
 from .orchestration_utils import _repair_json, _extract_json_from_text, _infer_blueprint_from_requirements
 from .orchestration_budget import set_current_agent
 from .quality_gate import QualityGate
-from .claude_sdk_provider import run_sdk_with_retry
+from .claude_sdk import run_sdk_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -102,8 +102,29 @@ def run_techstack_phase(
 
     # AENDERUNG 21.02.2026: Fix 59g — Claude SDK Integration fuer TechArchitect (Opus)
     techstack_result = None
+    # AENDERUNG 21.02.2026: Fix 60 — Diagnostik: Pruefen ob manager ankommt
+    ui_log_callback("TechStack", "Debug",
+        f"SDK-Check: manager={manager is not None}, "
+        f"claude_provider={hasattr(manager, 'claude_provider') and bool(manager.claude_provider) if manager else 'N/A'}")
     if manager:
-        sdk_prompt = f"Entscheide TechStack für: {user_goal}{template_hint}"
+        # AENDERUNG 22.02.2026: Fix 72 — TechStack SDK-Prompt mit JSON-Format-Anweisung
+        # ROOT-CAUSE: Prompt ohne JSON-Anweisung → Opus antwortet kurz ohne Format (17 Zeichen)
+        # LOESUNG: Template-Liste + explizites JSON-Format direkt im Prompt
+        try:
+            from techstack_templates.template_loader import get_template_summary_for_prompt
+            _ts_summary = get_template_summary_for_prompt() or ""
+        except Exception:
+            _ts_summary = "TEMPLATES: nextjs_tailwind, nextjs_sqlite, flask_webapp, fastapi_api, python_cli, react_vite"
+        sdk_prompt = (
+            f"{_ts_summary}\n\n"
+            "Analysiere die Anforderungen und waehle das passende Template.\n"
+            "ANTWORTE NUR MIT VALIDEM JSON (kein anderer Text):\n"
+            '{"selected_template": "nextjs_tailwind", '
+            '"additional_dependencies": {}, '
+            '"customizations": {"database": "none", "server_port": 3000}, '
+            '"reasoning": "kurze Begruendung"}\n\n'
+            f"Anforderungen: {user_goal}{template_hint}"
+        )
         sdk_result = run_sdk_with_retry(
             manager, role="techstack_architect", prompt=sdk_prompt,
             timeout_seconds=agent_timeout, agent_display_name="TechStack"
@@ -111,6 +132,8 @@ def run_techstack_phase(
         if sdk_result:
             ui_log_callback("TechStack", "Info", "TechStack via Claude SDK (Opus) erfolgreich")
             techstack_result = sdk_result
+        elif manager:
+            ui_log_callback("TechStack", "Warning", "SDK returned None — Fallback auf OpenRouter")
 
     # Fallback: CrewAI/OpenRouter Retry-Schleife (nur wenn SDK kein Ergebnis lieferte)
     # ÄNDERUNG 02.02.2026: MAX_TECHSTACK_RETRIES erhöht von 3 auf 7 (Bug #3 Fix)
@@ -267,8 +290,24 @@ def run_db_designer_phase(
             timeout_seconds=agent_timeout, agent_display_name="DB-Designer"
         )
         if sdk_result:
-            ui_log_callback("DBDesigner", "Info", "Schema via Claude SDK (Sonnet) erfolgreich")
-            database_schema = sdk_result
+            # AENDERUNG 22.02.2026: Fix 74c — Semantische Schema-Validierung
+            # ROOT-CAUSE-FIX:
+            # Symptom: SDK liefert Reasoning-Text ("Let me design...") statt SQL
+            # Ursache: Extended Thinking Output wird als Ergebnis akzeptiert
+            # Loesung: Pruefen ob SQL-Keywords vorhanden, sonst OpenRouter-Fallback
+            schema_lower = sdk_result.lower()
+            has_sql = any(kw in schema_lower for kw in [
+                "create table", "create index", "integer", "text not null",
+                "primary key", "varchar", "boolean"
+            ])
+            if has_sql:
+                ui_log_callback("DBDesigner", "Info", "Schema via Claude SDK (Sonnet) erfolgreich")
+                database_schema = sdk_result
+            else:
+                ui_log_callback("DBDesigner", "Warning",
+                    f"SDK-Schema enthielt kein SQL ({len(sdk_result)} Zeichen Reasoning-Text), "
+                    "Fallback auf OpenRouter")
+                sdk_result = None
 
     # Fallback: CrewAI/OpenRouter Retry-Schleife (nur wenn SDK kein Ergebnis lieferte)
     # AENDERUNG 21.02.2026: 3→7 damit alle konfigurierten Modelle + dynamischer Fallback probiert werden
@@ -365,8 +404,24 @@ def run_designer_phase(
             timeout_seconds=agent_timeout, agent_display_name="Designer"
         )
         if sdk_result:
-            ui_log_callback("Designer", "Info", "Design via Claude SDK (Sonnet) erfolgreich")
-            design_concept = sdk_result
+            # AENDERUNG 22.02.2026: Fix 74c — Semantische Design-Validierung
+            # ROOT-CAUSE-FIX:
+            # Symptom: SDK liefert Reasoning-Text ("Let me check...") statt Design-Konzept
+            # Ursache: Extended Thinking Output wird als Ergebnis akzeptiert
+            # Loesung: Pruefen ob Design-Keywords vorhanden, sonst OpenRouter-Fallback
+            concept_lower = sdk_result.lower()
+            has_design = any(kw in concept_lower for kw in [
+                "farb", "color", "layout", "font", "gradient", "palette",
+                "hintergrund", "background", "#", "rgb", "hsl", "design"
+            ])
+            if has_design:
+                ui_log_callback("Designer", "Info", "Design via Claude SDK (Sonnet) erfolgreich")
+                design_concept = sdk_result
+            else:
+                ui_log_callback("Designer", "Warning",
+                    f"SDK-Design enthielt kein Konzept ({len(sdk_result)} Zeichen Reasoning-Text), "
+                    "Fallback auf OpenRouter")
+                sdk_result = None
 
     # Fallback: CrewAI/OpenRouter Retry-Schleife (nur wenn SDK kein Ergebnis lieferte)
     # AENDERUNG 21.02.2026: 3→7 damit alle konfigurierten Modelle + dynamischer Fallback probiert werden
@@ -474,3 +529,4 @@ def run_waisen_check_phase(
         logger.warning(f"Waisen-Check Fehler: {e}")
         ui_log_callback("Validator", "WaisenError", f"Waisen-Check fehlgeschlagen: {e}")
         return None
+

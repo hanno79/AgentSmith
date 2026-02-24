@@ -17,6 +17,13 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 from datetime import datetime
 
+# AENDERUNG 22.02.2026: Fix 70 — litellm fuer direkten LLM-Call (ersetzt LangChain .invoke())
+try:
+    import litellm
+    LITELLM_AVAILABLE = True
+except ImportError:
+    LITELLM_AVAILABLE = False
+
 from backend.task_models import (
     DerivedTask, TaskCategory, TaskPriority, TargetAgent, TaskStatus,
     TaskDerivationResult, sort_tasks_by_priority
@@ -121,16 +128,18 @@ class TaskDeriver:
     Tester, Security) und zerlegt es in einzelne, ausfuehrbare Tasks.
     """
 
-    def __init__(self, model_router=None, config: Dict[str, Any] = None):
+    def __init__(self, model_router=None, config: Dict[str, Any] = None, manager=None):
         """
         Initialisiert den TaskDeriver.
 
         Args:
             model_router: ModelRouter fuer LLM-Zugriff
             config: Anwendungskonfiguration
+            manager: Optional - OrchestrationManager fuer Claude SDK Zugriff
         """
         self.model_router = model_router
         self.config = config or {}
+        self.manager = manager
         self._task_counter = 0
 
     def derive_tasks(
@@ -222,12 +231,38 @@ class TaskDeriver:
         )
 
         try:
-            # AENDERUNG 07.02.2026: Eigene Modell-Rolle statt meta_orchestrator (Fix 14)
-            model = self.model_router.get_model("task_deriver")
-            response = model.invoke(prompt)
+            # AENDERUNG 24.02.2026: Fix 76b — Claude SDK CLI-Modus fuer TaskDeriver
+            # SDK-First: Schneller und direkter als LiteLLM/OpenRouter
+            sdk_response = None
+            try:
+                from backend.claude_sdk import run_sdk_with_retry
+                if self.manager and hasattr(self.manager, "claude_provider") and self.manager.claude_provider:
+                    sdk_response = run_sdk_with_retry(
+                        self.manager, role="task_deriver", prompt=prompt,
+                        timeout_seconds=300, agent_display_name="TaskDeriver"
+                    )
+            except Exception as sdk_err:
+                logger.debug("[TaskDeriver] SDK-Versuch fehlgeschlagen: %s", sdk_err)
 
-            # Response parsen
-            response_text = response.content if hasattr(response, 'content') else str(response)
+            if sdk_response:
+                logger.info("[TaskDeriver] Antwort via Claude SDK (%d Zeichen)", len(sdk_response))
+                return self._parse_llm_response(sdk_response, source)
+
+            # Fallback: LiteLLM/OpenRouter
+            # AENDERUNG 07.02.2026: Eigene Modell-Rolle statt meta_orchestrator (Fix 14)
+            # AENDERUNG 22.02.2026: Fix 70 — litellm.completion() statt .invoke()
+            if not LITELLM_AVAILABLE:
+                logger.warning("[TaskDeriver] litellm nicht verfuegbar, ueberspringe LLM-Ableitung")
+                return []
+
+            model_id = self.model_router.get_model("task_deriver")
+            timeout = (self.config or {}).get("agent_timeouts", {}).get("task_deriver", 300)
+            llm_response = litellm.completion(
+                model=model_id,
+                messages=[{"role": "user", "content": prompt}],
+                timeout=timeout
+            )
+            response_text = llm_response.choices[0].message.content or ""
             return self._parse_llm_response(response_text, source)
 
         except Exception as e:

@@ -7,6 +7,7 @@ Beschreibung: Quality Gate Anforderungs-Extraktion.
               Extrahiert aus quality_gate.py (Regel 1: Max 500 Zeilen)
 """
 
+import re
 from typing import Dict, Any
 
 from backend.qg_constants import (
@@ -15,6 +16,24 @@ from backend.qg_constants import (
     FRAMEWORK_KEYWORDS,
     UI_TYPE_KEYWORDS
 )
+
+
+def _keyword_matches(keyword: str, text: str) -> bool:
+    """
+    Prueft ob keyword als eigenstaendiges Wort in text vorkommt.
+
+    AENDERUNG 22.02.2026: Fix 64 — Word-Boundary-Match verhindert False Positives
+    ROOT-CAUSE: Substring-Match `"go" in "kategorie"` → True (False Positive!)
+    LOESUNG: `\bgo\b` matcht nur eigenstaendiges Wort (nicht in "Kategorie", "Logo" etc.)
+
+    Args:
+        keyword: Das zu suchende Schluesselwort
+        text: Lowercase-Text in dem gesucht wird
+
+    Returns:
+        True wenn keyword als eigenstaendiges Wort gefunden
+    """
+    return bool(re.search(r'\b' + re.escape(keyword) + r'\b', text))
 
 
 def extract_requirements(user_goal: str) -> Dict[str, Any]:
@@ -33,21 +52,22 @@ def extract_requirements(user_goal: str) -> Dict[str, Any]:
     goal_lower = user_goal.lower()
     requirements: Dict[str, Any] = {}
 
-    # Datenbank-Vorgaben
+    # Datenbank-Vorgaben — Word-Boundary-Match (Fix 64)
     for keyword, db_type in DB_KEYWORDS.items():
-        if keyword in goal_lower:
+        if _keyword_matches(keyword, goal_lower):
             requirements["database"] = db_type
             break
 
-    # Sprach-Vorgaben
+    # Sprach-Vorgaben — Word-Boundary-Match (Fix 64)
+    # Verhindert False Positives: "go" in "Kategorie", "node" in "nodejs" etc.
     for keyword, lang in LANG_KEYWORDS.items():
-        if keyword in goal_lower:
+        if _keyword_matches(keyword, goal_lower):
             requirements["language"] = lang
             break
 
-    # Framework-Vorgaben
+    # Framework-Vorgaben — Word-Boundary-Match (Fix 64)
     for keyword, fw in FRAMEWORK_KEYWORDS.items():
-        if keyword in goal_lower:
+        if _keyword_matches(keyword, goal_lower):
             requirements["framework"] = fw
             break
 

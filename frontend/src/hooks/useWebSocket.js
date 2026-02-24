@@ -53,9 +53,10 @@ import { useWebSocketHelp } from './useWebSocketHelp';
  * @param {Function} setActiveAgents - Setter fuer Agenten-Status
  * @param {Function} setAgentData - Setter fuer strukturierte Agenten-Daten
  * @param {Function} setStatus - Setter fuer globalen Status
+ * @param {Function} [onReconnect] - Optionaler Callback nach erfolgreicher Wiederverbindung
  * @returns {Object} { ws, isConnected, reconnectAttempts, helpRequests, dismissHelpRequest, clearHelpRequests }
  */
-const useWebSocket = (setLogs, activeAgents, setActiveAgents, setAgentData, setStatus) => {
+const useWebSocket = (setLogs, activeAgents, setActiveAgents, setAgentData, setStatus, onReconnect) => {
   const ws = useRef(null);
   const reconnectAttempts = useRef(0);
   const reconnectTimeout = useRef(null);
@@ -195,6 +196,9 @@ const useWebSocket = (setLogs, activeAgents, setActiveAgents, setAgentData, setS
       // Globalen Status aktualisieren
       if (data.agent === 'System' && data.event === 'Success') setStatus('Success');
       if (data.agent === 'System' && data.event === 'Failure') setStatus('Error');
+      // AENDERUNG 22.02.2026: Fix 68e — Stopped-Event → Button freigeben (nach Reset)
+      // ROOT-CAUSE-FIX: Backend sendet 'Stopped' nach /session/reset → Frontend setzt Status auf Idle
+      if (data.agent === 'System' && data.event === 'Stopped') setStatus('Idle');
 
       // Agent-Status zuruecksetzen bei System Completion
       if (data.agent === 'System' && (data.event === 'Success' || data.event === 'Failure')) {
@@ -247,6 +251,13 @@ const useWebSocket = (setLogs, activeAgents, setActiveAgents, setAgentData, setS
       ws.current.onopen = () => {
         console.log('[WebSocket] Verbindung hergestellt');
         setIsConnected(true);
+
+        // AENDERUNG 22.02.2026: Fix 74 — Reconnect-Erkennung VOR Counter-Reset
+        // ROOT-CAUSE-FIX:
+        // Symptom: Nach Backend-Neustart keine Ausgaben im Global Output Loop
+        // Ursache: Events waehrend Disconnect gehen verloren, kein Re-Fetch von Session-History
+        // Loesung: isReconnect-Flag VOR Counter-Reset bestimmen → onReconnect() Callback → Session-History geladen
+        const isReconnect = hasConnectedOnce.current;
         reconnectAttempts.current = 0;
 
         // Heartbeat starten
@@ -259,17 +270,22 @@ const useWebSocket = (setLogs, activeAgents, setActiveAgents, setAgentData, setS
           }
         }, HEARTBEAT_INTERVAL);
 
-        // System-Log nur bei ERSTER Verbindung oder nach Reconnection
-        if (!hasConnectedOnce.current || reconnectAttempts.current > 0) {
+        // System-Log bei ERSTER Verbindung oder nach Reconnection
+        if (!hasConnectedOnce.current || isReconnect) {
           setLogs(prev => [...prev, {
             agent: 'System',
             event: 'Connected',
-            message: hasConnectedOnce.current
+            message: isReconnect
               ? 'WebSocket-Verbindung wiederhergestellt'
               : 'WebSocket-Verbindung hergestellt',
             timestamp: new Date().toISOString()
           }]);
           hasConnectedOnce.current = true;
+        }
+
+        // AENDERUNG 22.02.2026: Fix 74 — Session-History nach Reconnect laden
+        if (isReconnect && typeof onReconnect === 'function') {
+          onReconnect();
         }
       };
 
@@ -323,13 +339,21 @@ const useWebSocket = (setLogs, activeAgents, setActiveAgents, setAgentData, setS
             connect();
           }, delay);
         } else if (reconnectAttempts.current >= MAX_RECONNECT_ATTEMPTS) {
-          console.error('[WebSocket] Maximale Reconnection-Versuche erreicht');
+          // AENDERUNG 22.02.2026: Fix 63d — Reset statt Aufgeben
+          // ROOT-CAUSE: Nach Docker-Neustart gab Frontend nach 10 Versuchen auf.
+          //             Nutzer musste Browser manuell neu laden.
+          // LOESUNG: Counter zuruecksetzen, nach 60s erneut versuchen (niemals aufgeben)
+          console.warn('[WebSocket] Maximale Versuche erreicht, warte 60s und versuche erneut...');
           setLogs(prev => [...prev, {
             agent: 'System',
-            event: 'Error',
-            message: 'WebSocket-Verbindung konnte nicht wiederhergestellt werden. Bitte Seite neu laden.',
+            event: 'Reconnecting',
+            message: 'WebSocket: Maximale Versuche erreicht. Warte 60s, dann erneuter Versuch...',
             timestamp: new Date().toISOString()
           }]);
+          reconnectAttempts.current = 0;
+          triedHostFallbackRef.current = false;
+          wsHostRef.current = window.location.hostname;
+          reconnectTimeout.current = setTimeout(() => { connect(); }, 60000);
         }
       };
 

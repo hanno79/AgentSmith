@@ -1,0 +1,30 @@
+[run]
+source =
+    .
+    backend
+    agents
+omit =
+    venv/*
+    .venv/*
+    tests/*
+    */node_modules/*
+    */__pycache__/*
+    */techstack_templates/templates/*
+    setup.py
+    conftest.py
+branch = True
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    if __name__ == .__main__
+    raise NotImplementedError
+    pass
+    except ImportError
+show_missing = True
+precision = 1
+fail_under = 0
+
+[html]
+directory = htmlcov

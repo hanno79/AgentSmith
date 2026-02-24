@@ -630,9 +630,51 @@ claude_sdk:
   enabled: true
   default_model: sonnet
   max_retries: 3
+  # AENDERUNG 22.02.2026: Fix 72b — Tier-2 (Opus) max 1 Versuch, dann sofort OpenRouter-Fallback
+  # ROOT-CAUSE-FIX:
+  # Symptom: 3x Opus-Retry = ~10 Min Zeitverlust, alle scheitern wegen TPM-Limit
+  # Ursache: Opus hat ~10x strengere TPM-Limits als Sonnet — bei langen Outputs immer Rate-Limit
+  # Loesung: Max 1 Versuch fuer Tier-2, sofort Fallback statt 3 Fehlversuche
+  max_retries_tier2: 1
+  # AENDERUNG 22.02.2026: Fix 74d — Tier-1 Non-Coder max 2 Versuche
+  # ROOT-CAUSE-FIX: DB-Designer 3x 750s = 37.5 Min Worst-Case
+  max_retries_tier1_non_coder: 2
+  # AENDERUNG 22.02.2026: Fix 74a — Mindestlaenge fuer SDK-Antworten
+  # ROOT-CAUSE-FIX: SDK liefert 111/169 Zeichen Reasoning-Text statt Ergebnis
+  min_response_chars: 200
+  # AENDERUNG 22.02.2026: Fix 71 — max_turns pro Rolle (Extended Thinking + Tool Use)
+  # ROOT-CAUSE-FIX:
+  # Symptom: Leere Antwort vom SDK (error_max_turns)
+  # Ursache: max_turns=1 reicht nicht fuer Extended Thinking + Tool Use (braucht 3+ Turns)
+  # Loesung: Konfigurierbare max_turns pro Rolle
+  default_max_turns: 10
+  max_turns_by_role:
+    # AENDERUNG 24.02.2026: Fix 76a — CLI-Rollen max_turns angepasst (vorher ignoriert wegen hardcoded 1)
+    researcher: 10       # CLI-Modus: Research braucht mehrere Turns, aber weniger als async SDK
+    techstack_architect: 10
+    coder: 10
+    reviewer: 5          # Nur Review, wenig Tool-Use
+    # AENDERUNG 22.02.2026: Fix 74b — DB-Designer/Designer max_turns reduziert
+    # ROOT-CAUSE-FIX: 10 Turns Extended Thinking = 750s Timeout fuer einfache Aufgaben
+    designer: 3          # Design-Konzept braucht max 2-3 Turns
+    db_designer: 3       # Schema-Design braucht max 2-3 Turns
+    planner: 10
+    documentation_manager: 5
+    security: 5
+    fix: 5               # Einfache Fixes
+    tester: 5            # Einfache Tests
+    # AENDERUNG 24.02.2026: Fix 76b — Neue Rollen fuer SDK-Migration
+    task_deriver: 3      # Strukturierte JSON-Ausgabe, einfach
+    analyst: 5           # Anforderungsanalyse
+    konzepter: 5         # Feature-Konzeption
   agent_models:
-    # Tier 1: Opus — Komplexe Denkaufgaben
-    researcher: opus
+    # Tier 1: Opus — Komplexe Denkaufgaben (nur techstack_architect bleibt, kurze Ausgabe)
+    # AENDERUNG 22.02.2026: Fix 72a — researcher: opus → sonnet (TPM-Rate-Limit-Fix)
+    # ROOT-CAUSE-FIX:
+    # Symptom: Researcher SDK-Versuche scheitern alle (~10 Min Zeitverlust)
+    # Ursache: Opus TPM-Limits bei langen Research-Outputs erschoepft
+    # Loesung: Sonnet fuer Researcher (10x hoehere Limits, weiterhin hohe Qualitaet)
+    researcher: sonnet
     techstack_architect: opus
     # Tier 2: Sonnet — Standard-Aufgaben
     coder: sonnet
@@ -645,3 +687,27 @@ claude_sdk:
     # Tier 3: Haiku — Einfache/schnelle Aufgaben
     fix: haiku
     tester: haiku
+    task_deriver: haiku
+    # AENDERUNG 24.02.2026: Fix 76b — Analyst/Konzepter auf Sonnet (Analyse braucht Qualitaet)
+    analyst: sonnet
+    konzepter: sonnet
+  # AENDERUNG 22.02.2026: Fix 75 — CLI-Modus fuer einfache Rollen
+  # ROOT-CAUSE-FIX:
+  # Symptom: DB-Designer/Designer brauchen 2+ Min fuer einfache Aufgaben
+  # Ursache: allowed_tools=[] im SDK = ALLE Tools → Claude liest Dateien statt zu antworten
+  # Loesung: `claude -p` Subprozess mit --max-turns 1 → keine Tools, direkte Antwort
+  # NICHT in cli_mode: coder, reviewer (brauchen Tool-Use im SDK async-Modus)
+  # AENDERUNG 24.02.2026: Fix 76b — Neue Rollen hinzugefuegt
+  cli_mode_roles:
+    - db_designer
+    - designer
+    - researcher
+    - techstack_architect
+    - security
+    - planner
+    - documentation_manager
+    - fix
+    - tester
+    - task_deriver
+    - analyst
+    - konzepter

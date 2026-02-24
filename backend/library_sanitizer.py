@@ -90,6 +90,16 @@ def sanitize_text(text: str) -> str:
     # User-IDs anonymisieren
     sanitized = re.sub(r'("user_id"\s*:\s*")[^"]+(")', r'\1<REDACTED_USER>\2', sanitized)
     sanitized = re.sub(r"(user_id\s*[:=]\s*)([A-Za-z0-9_\-]+)", r"\1<REDACTED_USER>", sanitized)
+    sanitized = re.sub(
+        r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}",
+        "[REDACTED_EMAIL]",
+        sanitized,
+    )
+    sanitized = re.sub(
+        r"Request ID:\s*[0-9a-fA-F-]{8,}",
+        "Request ID: [REDACTED_REQUEST_ID]",
+        sanitized,
+    )
 
     sanitized = sanitize_paths(sanitized)
     sanitized = redact_stack_traces(sanitized)

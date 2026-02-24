@@ -1,0 +1,25 @@
+# ===================================================================
+# Author: rahn
+# Datum: 22.02.2026
+# Version: 1.0
+# Beschreibung: Frontend-Container fuer AgentSmith (React + Vite).
+#
+# Fix 62: Docker-Containerisierung von AgentSmith Backend + Frontend
+# ===================================================================
+
+FROM node:22-slim
+
+WORKDIR /app
+
+# AENDERUNG 22.02.2026: Nur package.json kopieren (NICHT package-lock.json)
+# ROOT-CAUSE: package-lock.json enthält Windows-spezifische Rollup-Binaries
+#             (@rollup/rollup-win32-x64-msvc) → npm install schlägt auf Linux fehl.
+# LOESUNG:    Nur package.json → npm löst Dependencies frisch für Linux auf.
+COPY frontend/package.json ./
+
+RUN npm install
+
+EXPOSE 5173
+
+# --host 0.0.0.0 damit Vite aus dem Container erreichbar ist
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

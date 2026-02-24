@@ -85,11 +85,12 @@ def run_test_generator(manager, code_files: Dict[str, str], iteration: int) -> b
         )
 
         # Erstelle Task
+        tech_blueprint = manager.tech_blueprint or {}
         task = create_test_generation_task(
             test_agent,
             code_files,
-            manager.tech_blueprint.get("project_type", "python_script"),
-            manager.tech_blueprint
+            tech_blueprint.get("project_type", "python_script"),
+            tech_blueprint
         )
 
         # Führe Task aus
@@ -202,7 +203,7 @@ def ensure_tests_exist(manager, iteration: int) -> bool:
 
     # Versuch 2: Template-basierte Tests
     manager._ui_log("Tester", "Info", "Verwende Template-Tests als Fallback...")
-    project_type = manager.tech_blueprint.get("project_type", "python_script")
+    project_type = (manager.tech_blueprint or {}).get("project_type", "python_script")
     created = create_fallback_tests(manager.project_path, project_type)
 
     if created:

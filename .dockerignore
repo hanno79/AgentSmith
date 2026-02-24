@@ -1,0 +1,57 @@
+# ===================================================================
+# Author: rahn
+# Datum: 22.02.2026
+# Beschreibung: Docker Build-Ausschlüsse fuer AgentSmith.
+#               Verhindert dass grosse/sensible Verzeichnisse in den
+#               Build-Context kopiert werden.
+# Fix 62: Docker-Containerisierung von AgentSmith
+# ===================================================================
+
+# Python-Umgebung (im Container via requirements.txt installiert)
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Git
+.git/
+.gitignore
+
+# Frontend (wird via Volume gemountet, nicht kopiert)
+frontend/node_modules/
+
+# Generierte Projekte (via Volume gemountet)
+projects/
+
+# Daten (via Volume gemountet)
+budget_data/
+library/
+
+# Logs
+crew_log.jsonl
+crew_log.jsonl.*
+server_output.log
+*.log
+
+# Datenbanken (via Volume gemountet)
+model_stats.db
+*.db
+*.db-shm
+*.db-wal
+
+# IDE und OS
+.vscode/
+.idea/
+*.DS_Store
+Thumbs.db
+
+# Tests und Coverage
+tests/
+.coveragerc
+pytest.ini
+coverage_report.txt
+
+# Dokumentation (nicht benoetigt im Container)
+documentation/
+to_delete/

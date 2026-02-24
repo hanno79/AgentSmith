@@ -86,6 +86,16 @@ def run_file_by_file_phase(manager, user_goal, project_rules):
             # Setze current_code aus erstellten Dateien
             all_code = ""
             for filepath in created_files:
+                # AENDERUNG 22.02.2026: Fix 75 — None-Guard gegen Race-Condition bei Stop
+                # ROOT-CAUSE-FIX:
+                # Symptom: "File-by-File fehlgeschlagen... NoneType" (4x in crew_log.jsonl)
+                # Ursache: manager.project_path = None wenn User Run stoppt waehrend
+                #          _run_parallel_generation() noch laeuft (Race-Condition)
+                # Loesung: Guard bricht Datei-Lade-Loop graceful ab statt NoneType-Crash
+                if not manager.project_path:
+                    manager._ui_log("DevLoop", "Warning",
+                                   "project_path ist None (Run gestoppt?), Datei-Lade-Loop abgebrochen")
+                    break
                 full_path = os.path.join(manager.project_path, filepath)
                 if os.path.exists(full_path):
                     with open(full_path, "r", encoding="utf-8") as f:

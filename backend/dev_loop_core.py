@@ -179,6 +179,13 @@ class DevLoop:
         manager._sdk_tier_escalation = None
 
         while iteration < max_retries:
+            # AENDERUNG 22.02.2026: Fix 68b — Stop-Check am Anfang jeder Iteration
+            # ROOT-CAUSE-FIX: Reset setzt Stop-Flag, DevLoop prueft es kooperativ
+            if hasattr(manager, 'is_stop_requested') and manager.is_stop_requested():
+                logger.info("DevLoop: Stop-Signal erkannt, beende Run nach Iteration %d", iteration)
+                manager._ui_log("System", "Stopped", "Run wurde durch Reset gestoppt")
+                return False, "Run gestoppt"
+
             manager.iteration = iteration
             manager.max_retries = max_retries
             manager._ui_log("Coder", "Iteration", f"{iteration + 1} / {max_retries}")

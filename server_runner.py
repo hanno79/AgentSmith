@@ -153,6 +153,16 @@ def detect_server_port(tech_blueprint: Dict[str, Any]) -> int:
     return DEFAULT_PORT
 
 
+# AENDERUNG 22.02.2026: Fix 63b — host.docker.internal fuer Docker-Container
+# ROOT-CAUSE: Wenn Backend in Docker laeuft, zeigt 'localhost' auf den Backend-Container
+#             selbst, NICHT auf den Host wo Sibling-Container ihre Ports publizieren.
+# LOESUNG: /.dockerenv vorhanden → Backend laeuft in Docker → host.docker.internal nutzen
+def _get_server_host() -> str:
+    """Gibt den korrekten Hostnamen fuer Server-URLs zurueck."""
+    import os
+    return 'host.docker.internal' if os.path.exists('/.dockerenv') else 'localhost'
+
+
 def detect_test_url(tech_blueprint: Dict[str, Any], port: int) -> str:
     """
     Ermittelt die Test-URL aus dem tech_blueprint.
@@ -174,8 +184,8 @@ def detect_test_url(tech_blueprint: Dict[str, Any], port: int) -> str:
     if project_type == "static_html":
         return None
 
-    # Server-basierte Projekte
-    return f"http://localhost:{port}"
+    # AENDERUNG 22.02.2026: Fix 63b — host.docker.internal wenn Backend in Docker laeuft
+    return f"http://{_get_server_host()}:{port}"
 
 
 def requires_server(tech_blueprint: Dict[str, Any]) -> bool:
@@ -262,6 +272,32 @@ def _detect_framework_key(tech_blueprint: Dict[str, Any]) -> str:
         if "python" in key or key in ["flask", "fastapi", "django"]:
             return "python"
     return "default"
+
+
+def _strip_pause_from_bat(bat_path: str) -> None:
+    """
+    AENDERUNG 14.02.2026: Entfernt 'pause' Kommandos aus run.bat.
+    ROOT-CAUSE-FIX: LLM generiert 'pause' oder 'pause > nul' in run.bat.
+    In einem subprocess.Popen() Hintergrund-Prozess wartet 'pause' endlos auf
+    Tastatureingabe → Deadlock im server_runner und Tester-Agent.
+    """
+    try:
+        with open(bat_path, "r", encoding="utf-8", errors="ignore") as f:
+            lines = f.readlines()
+        cleaned = []
+        changed = False
+        for line in lines:
+            stripped = line.strip().lower()
+            if stripped in ("pause", "pause > nul", "pause >nul", "pause>nul"):
+                changed = True
+                continue
+            cleaned.append(line)
+        if changed:
+            with open(bat_path, "w", encoding="utf-8") as f:
+                f.writelines(cleaned)
+            logger.info("run.bat: pause-Kommandos entfernt (Deadlock-Praevention)")
+    except (OSError, IOError) as e:
+        logger.warning(f"run.bat pause-Strip fehlgeschlagen: {e}")
 
 
 def _normalize_package_json_versions(project_path: str) -> None:
@@ -509,6 +545,11 @@ def start_server(project_path: str, tech_blueprint: Dict[str, Any],
     run_cmd = tech_blueprint.get("run_command", "")
 
     if os.path.exists(run_bat):
+        # AENDERUNG 14.02.2026: pause-Kommandos aus run.bat entfernen
+        # ROOT-CAUSE-FIX: LLM generiert 'pause' in run.bat → blockiert subprocess.Popen()
+        # weil pause auf Tastatureingabe wartet die es in einem Hintergrund-Prozess nie gibt.
+        # System-Level Fix: Dreifach-Schutz (Prompt-Verbot + Autofix + Timeout)
+        _strip_pause_from_bat(run_bat)
         cmd = run_bat
         shell = True
     elif os.path.exists(run_sh):
@@ -565,17 +606,24 @@ def start_server(project_path: str, tech_blueprint: Dict[str, Any],
             logger.info(f"Server gestartet auf {url}")
             return ServerInfo(process=process, port=port, url=url, project_path=project_path)
         else:
-            # ÄNDERUNG 06.02.2026: stderr-Capture fuer bessere Fehler-Diagnostik
+            # ROOT-CAUSE-FIX 14.02.2026:
+            # Symptom: DevLoop haengt 20+ Minuten beim Tester-Agent
+            # Ursache: process.stderr.read(500) ist ein BLOCKIERENDER Read auf einer Pipe.
+            #          Wenn der Subprocess (run.bat → npm) noch laeuft und <500 Bytes auf
+            #          stderr geschrieben hat, wartet read() UNENDLICH auf Daten oder EOF.
+            #          stop_server() wurde NACH read() aufgerufen → kam nie dran → Deadlock.
+            # Loesung: Erst Prozess stoppen (schliesst Pipe → EOF), DANN stderr lesen.
+            server_info = ServerInfo(process=process, port=port, url=url, project_path=project_path)
+            stop_server(server_info)
             stderr_output = ""
             try:
                 if process.stderr:
-                    stderr_output = process.stderr.read(500).decode("utf-8", errors="ignore")
+                    stderr_output = process.stderr.read(2000).decode("utf-8", errors="ignore")
             except Exception:
                 pass
-            stop_server(ServerInfo(process=process, port=port, url=url, project_path=project_path))
             error_msg = f"Server-Start fehlgeschlagen (Timeout nach {startup_timeout}s)"
             if stderr_output:
-                error_msg += f". stderr: {stderr_output.strip()}"
+                error_msg += f". stderr: {stderr_output.strip()[:500]}"
             logger.error(error_msg)
             return None
 

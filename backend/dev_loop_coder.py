@@ -51,7 +51,7 @@ def run_coder_task(manager, project_rules: Dict[str, Any], c_prompt: str, agent_
     CODER_TIMEOUT_SECONDS = agent_timeouts.get("coder", 750)
 
     # AENDERUNG 21.02.2026: Multi-Tier Claude SDK (zentrale Helper-Funktion)
-    from .claude_sdk_provider import run_sdk_with_retry
+    from .claude_sdk import run_sdk_with_retry
     sdk_result = run_sdk_with_retry(
         manager, role="coder", prompt=c_prompt,
         timeout_seconds=CODER_TIMEOUT_SECONDS,
@@ -324,3 +324,4 @@ def save_coder_output(manager, current_code: str, output_path: str, iteration: i
 
     # AENDERUNG 31.01.2026: Gebe auch truncated_files zurueck fuer Modellwechsel-Logik
     return created_files, truncated_files
+

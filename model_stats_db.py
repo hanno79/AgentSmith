@@ -46,7 +46,12 @@ class ModelStatsDB:
         """Thread-lokale Connection (SQLite ist nicht thread-safe)."""
         if not hasattr(self._local, 'conn') or self._local.conn is None:
             self._local.conn = sqlite3.connect(self.db_path, timeout=10)
-            self._local.conn.execute("PRAGMA journal_mode=WAL")
+            # AENDERUNG 22.02.2026: Fix 71 — journal_mode=DELETE statt WAL (Docker overlay filesystem)
+            # ROOT-CAUSE-FIX:
+            # Symptom: ModelStatsDB disk I/O error im Docker-Container
+            # Ursache: WAL erfordert POSIX-File-Locking das Docker overlay filesystem nicht korrekt unterstuetzt
+            # Loesung: journal_mode=DELETE (Standard) nutzt einfache Datei-Locks die Docker-kompatibel sind
+            self._local.conn.execute("PRAGMA journal_mode=DELETE")
             self._local.conn.execute("PRAGMA busy_timeout=5000")
             self._local.conn.row_factory = sqlite3.Row
         return self._local.conn

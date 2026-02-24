@@ -1,0 +1,57 @@
+# ===================================================================
+# Author: rahn
+# Datum: 22.02.2026
+# Version: 1.0
+# Beschreibung: Backend-Container fuer AgentSmith.
+#               Python 3.12 + Node.js 22 + Docker CLI + Claude Code CLI + Playwright.
+#
+# Fix 62: Docker-Containerisierung von AgentSmith Backend + Frontend
+# ROOT-CAUSE: Generierte Projekte benoetigen Tech-Stacks (Go, Ruby, Rust...)
+#             die auf dem Windows-Host nicht installiert sind.
+# LOESUNG:    AgentSmith selbst in Docker → alle Deps verfuegbar im Container.
+# ===================================================================
+
+FROM python:3.12-slim
+
+WORKDIR /app
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app \
+    DEBIAN_FRONTEND=noninteractive
+
+# System-Pakete: curl + gnupg fuer NodeSource und Docker-Repo
+RUN apt-get update && apt-get install -y \
+    curl \
+    git \
+    ca-certificates \
+    gnupg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Node.js 22 (fuer Claude SDK CLI + generierte Node-Projekte)
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# Docker CLI (fuer generierte Projekt-Container via Docker Socket)
+# KEIN Docker-in-Docker! Backend nutzt den Host-Docker-Daemon via Socket-Mount.
+RUN curl -fsSL https://download.docker.com/linux/debian/gpg \
+      | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg \
+    && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] \
+       https://download.docker.com/linux/debian bookworm stable" \
+       > /etc/apt/sources.list.d/docker.list \
+    && apt-get update && apt-get install -y docker-ce-cli \
+    && rm -rf /var/lib/apt/lists/*
+
+# Claude Code CLI (fuer claude-agent-sdk Subprozess)
+# claude-agent-sdk startet den Claude subprocess (claude binary) im Container
+RUN npm install -g @anthropic-ai/claude-code
+
+# Python-Dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Playwright + Chromium (fuer Smoke-Tests der generierten Projekte)
+RUN playwright install chromium --with-deps
+
+EXPOSE 8000
+
+CMD ["python", "-m", "uvicorn", "backend.api:app", "--host", "0.0.0.0", "--port", "8000"]

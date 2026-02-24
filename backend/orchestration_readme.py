@@ -15,7 +15,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional, Callable
 
 from crewai import Task
-from .claude_sdk_provider import run_sdk_with_retry
+from .claude_sdk import run_sdk_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -208,3 +208,4 @@ def generate_readme_with_agent(
         ui_log_callback("DocumentationManager", "Warning",
                        f"Agent-Generierung fehlgeschlagen: {agent_err}, verwende Template")
         return generate_simple_readme(project_path, tech_blueprint, discovery_briefing, doc_service)
+

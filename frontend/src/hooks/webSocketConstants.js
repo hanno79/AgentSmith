@@ -10,10 +10,14 @@
  */
 
 // Reconnection-Konfiguration
-export const MAX_RECONNECT_ATTEMPTS = 10;
+// ÄNDERUNG 22.02.2026: Fix 63d — Höhere Reconnect-Limits nach Docker-Migration
+// Ursache: Backend wird bei Deployments mehrfach neu gestartet → Frontend erschoepfte
+//             10 Versuche → gab auf ohne je wieder zu verbinden (ohne Browser-Reload)
+// Loesung: 50 Versuche + 60s Max-Delay + Reset-statt-Aufgeben in useWebSocket.js
+export const MAX_RECONNECT_ATTEMPTS = 50;
 export const HEARTBEAT_INTERVAL = 30000;  // 30 Sekunden
 export const BASE_RECONNECT_DELAY = 1000;  // 1 Sekunde
-export const MAX_RECONNECT_DELAY = 30000;  // 30 Sekunden
+export const MAX_RECONNECT_DELAY = 60000;  // 60 Sekunden (war 30s)
 
 // Events die anzeigen dass ein Agent arbeitet
 // AENDERUNG 02.02.2026: 'Heartbeat' ENTFERNT - Heartbeats duerfen Status nicht aendern

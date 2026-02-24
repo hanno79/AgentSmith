@@ -196,6 +196,9 @@ const App = () => {
   // AENDERUNG 13.02.2026: Feature-Tracking State fuer Kanban-Board
   const [featureData, setFeatureData] = useState([]);
   const [currentRunId, setCurrentRunId] = useState(null);
+  // AENDERUNG 22.02.2026: Fix 69 — Pending-Feature-Event bei Race-Condition
+  // ROOT-CAUSE-FIX: FeaturesCreated kommt an bevor currentRunId aus ProjectStart gesetzt wurde
+  const [pendingFeatureEvent, setPendingFeatureEvent] = useState(false);
   // AENDERUNG 14.02.2026: Celebration-Overlay State
   const [showCelebration, setShowCelebration] = useState(false);
 
@@ -232,13 +235,47 @@ const App = () => {
     };
   }, [isDragging]);
 
+  // AENDERUNG 22.02.2026: Fix 74 — Session-History nach WebSocket-Reconnect wiederherstellen
+  // ROOT-CAUSE-FIX:
+  // Symptom: Nach Backend-Neustart keine Ausgaben im Global Output Loop
+  // Ursache: Events waehrend Disconnect gehen verloren; Frontend fetcht /session/current nur beim Mount
+  // Loesung: handleReconnect() wird von useWebSocket nach erfolgreicher Wiederverbindung aufgerufen,
+  //          fetcht Session-History und fuegt fehlende Logs ein (Duplikate per Timestamp gefiltert)
+  const handleReconnect = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_BASE}/session/current`);
+      if (response.ok) {
+        const sessionData = await response.json();
+        if (sessionData.recent_logs?.length > 0) {
+          const restoredLogs = sessionData.recent_logs.map(log => ({
+            agent: log.agent,
+            event: log.event,
+            message: log.message,
+            timestamp: log.timestamp
+          }));
+          // Nur neue Logs hinzufuegen (Duplikate per Timestamp vermeiden)
+          setLogs(prev => {
+            const existingTimestamps = new Set(prev.map(l => l.timestamp));
+            const newLogs = restoredLogs.filter(l => !existingTimestamps.has(l.timestamp));
+            if (newLogs.length > 0) {
+              console.log(`[Reconnect] ${newLogs.length} fehlende Logs aus Session-History wiederhergestellt`);
+            }
+            return [...prev, ...newLogs];
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('[Reconnect] Session-History Fetch fehlgeschlagen:', err);
+    }
+  }, []);
+
   // Custom Hooks für WebSocket und Konfiguration
   // ÄNDERUNG 30.01.2026: HELP_NEEDED Support aus useWebSocket
   const {
     helpRequests,
     dismissHelpRequest,
     clearHelpRequests
-  } = useWebSocket(setLogs, activeAgents, setActiveAgents, setAgentData, setStatus);
+  } = useWebSocket(setLogs, activeAgents, setActiveAgents, setAgentData, setStatus, handleReconnect);
   // ÄNDERUNG 08.02.2026: researchTimeoutMinutes + handleResearchTimeoutChange entfernt (pro Agent im ModelModal)
   const {
     maxRetriesConfig,
@@ -248,8 +285,37 @@ const App = () => {
   } = useConfig(setAgentData);
 
   // ÄNDERUNG 28.01.2026: Session-Recovery nach Browser-Refresh
+  // AENDERUNG 14.02.2026: currentRunId + Features aus wiederhergestellten Logs extrahieren
+  // ROOT-CAUSE-FIX: Kanban zeigte "Kein aktiver Run" nach Page-Refresh weil
+  // currentRunId nicht aus den wiederhergestellten Logs extrahiert wurde
   // Lädt aktiven State vom Backend oder aus localStorage
   useEffect(() => {
+    // Hilfsfunktion: Letztes ProjectStart-Event aus Logs finden und currentRunId setzen
+    const restoreRunIdFromLogs = (restoredLogs) => {
+      for (let i = restoredLogs.length - 1; i >= 0; i--) {
+        const log = restoredLogs[i];
+        if (log.agent === 'Library' && log.event === 'ProjectStart') {
+          const match = log.message?.match(/Protokollierung gestartet:\s*(\S+)/);
+          if (match) {
+            const runId = match[1];
+            console.log('[Session] currentRunId wiederhergestellt:', runId);
+            setCurrentRunId(runId);
+            // Features fuer diese Run-ID laden
+            fetch(`${API_BASE}/features/${runId}`)
+              .then(res => res.json())
+              .then(data => {
+                if (data.status === 'ok' && Array.isArray(data.features) && data.features.length > 0) {
+                  setFeatureData(data.features);
+                  console.log(`[Session] ${data.features.length} Features wiederhergestellt`);
+                }
+              })
+              .catch(() => {});
+            return;
+          }
+        }
+      }
+    };
+
     const loadPersistedState = async () => {
       try {
         // 1. Prüfe ob Backend eine aktive Session hat
@@ -261,20 +327,27 @@ const App = () => {
           if (sessionData.is_active || sessionData.session?.status !== 'Idle') {
             console.log('[Session] Backend-Session gefunden:', sessionData.session?.status);
 
-            // State aus Backend übernehmen
-            if (sessionData.session?.goal) {
-              setGoal(sessionData.session.goal);
-            }
-            if (sessionData.session?.status) {
+            // AENDERUNG 22.02.2026: Fix 73 — Goal-Contamination verhindern
+          // ROOT-CAUSE-FIX:
+          // Symptom: Goal-Feld wird mit Fehlermeldungen vorheriger Runs belegt
+          // Ursache: Backend-Session speichert das gesendete Goal, inkl. Fehlertexte.
+          //          Beim Reload wurde dieses verschmutzte Goal im Input wiederhergestellt.
+          // Loesung: Goal NICHT aus Backend-Session wiederherstellen.
+          //          Goal = Benutzereingabe → nur aus localStorage (Zeile ~380 unten).
+          // NOTE: Status und Logs werden weiterhin vom Backend übernommen (korrekt).
+          if (sessionData.session?.status) {
               setStatus(sessionData.session.status);
             }
             if (sessionData.recent_logs?.length > 0) {
-              setLogs(sessionData.recent_logs.map(log => ({
+              const restoredLogs = sessionData.recent_logs.map(log => ({
                 agent: log.agent,
                 event: log.event,
                 message: log.message,
                 timestamp: log.timestamp
-              })));
+              }));
+              setLogs(restoredLogs);
+              // AENDERUNG 14.02.2026: currentRunId aus wiederhergestellten Logs extrahieren
+              restoreRunIdFromLogs(restoredLogs);
             }
 
             // Agent-Data aus Snapshots wiederherstellen
@@ -313,7 +386,12 @@ const App = () => {
             if (savedProjectName) setProjectName(savedProjectName);
             // ÄNDERUNG 28.01.2026: Status wiederherstellen für Reset-Button
             if (savedStatus && savedStatus !== 'Idle') setStatus(savedStatus);
-            if (savedLogs?.length > 0) setLogs(savedLogs.slice(-100));
+            if (savedLogs?.length > 0) {
+              const restoredLogs = savedLogs.slice(-100);
+              setLogs(restoredLogs);
+              // AENDERUNG 14.02.2026: currentRunId aus wiederhergestellten Logs extrahieren
+              restoreRunIdFromLogs(restoredLogs);
+            }
           } else {
             // Alten State löschen
             localStorage.removeItem('agent_office_state');
@@ -372,16 +450,23 @@ const App = () => {
     if (latest.event === 'FeaturesCreated' || latest.event === 'FeatureStats') {
       try {
         const statsData = JSON.parse(latest.message);
-        if (statsData.total > 0 && currentRunId) {
-          // Features vom Backend neu laden
-          fetch(`${API_BASE}/features/${currentRunId}`)
-            .then(res => res.json())
-            .then(data => {
-              if (data.status === 'ok' && Array.isArray(data.features)) {
-                setFeatureData(data.features);
-              }
-            })
-            .catch(() => {});
+        if (statsData.total > 0) {
+          if (currentRunId) {
+            // Features vom Backend neu laden (currentRunId bereits bekannt)
+            fetch(`${API_BASE}/features/${currentRunId}`)
+              .then(res => res.json())
+              .then(data => {
+                if (data.status === 'ok' && Array.isArray(data.features)) {
+                  setFeatureData(data.features);
+                }
+              })
+              .catch(() => {});
+          } else {
+            // AENDERUNG 22.02.2026: Fix 69 — Pending-Flag setzen wenn currentRunId noch fehlt
+            // ROOT-CAUSE-FIX: Race-Condition — FeaturesCreated kommt VOR ProjectStart
+            // Loesung: Flag speichern, wird nachgeholt sobald currentRunId gesetzt wird
+            setPendingFeatureEvent(true);
+          }
         }
       } catch {
         // JSON-Parse fehlgeschlagen - ignorieren
@@ -399,6 +484,22 @@ const App = () => {
       }
     }
   }, [logs, currentRunId]);
+
+  // AENDERUNG 22.02.2026: Fix 69 — Pending-Features nachholen nach currentRunId-Setzen
+  // ROOT-CAUSE-FIX: Falls FeaturesCreated VOR ProjectStart ankam, hier nachholen
+  useEffect(() => {
+    if (currentRunId && pendingFeatureEvent && featureData.length === 0) {
+      fetch(`${API_BASE}/features/${currentRunId}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.status === 'ok' && Array.isArray(data.features) && data.features.length > 0) {
+            setFeatureData(data.features);
+            setPendingFeatureEvent(false);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [currentRunId, pendingFeatureEvent]);
 
   // AENDERUNG 14.02.2026: Celebration bei Success anzeigen (Auto-Dismiss nach 6s)
   useEffect(() => {
@@ -455,7 +556,27 @@ const App = () => {
       if (projectName.trim()) {
         payload.project_name = projectName.trim();
       }
-      await axios.post(`${API_BASE}/run`, payload);
+      const response = await axios.post(`${API_BASE}/run`, payload);
+
+      // AENDERUNG 22.02.2026: Fix 68e — 409 Handling bei bereits laufendem Run
+      // ROOT-CAUSE-FIX: Backend gibt already_running zurück wenn Session aktiv ist
+      // Loesung: Dialog → Benutzer entscheidet ob laufender Run beendet werden soll
+      if (response.data?.status === 'already_running') {
+        setStatus('Idle');  // Button sofort wieder freigeben
+        const currentGoal = response.data.goal || '(unbekannt)';
+        const confirmed = window.confirm(
+          `Ein Run läuft bereits:\n"${currentGoal}"\n\nLaufenden Run beenden und neu starten?`
+        );
+        if (confirmed) {
+          await axios.post(`${API_BASE}/session/reset`);
+          // Kurz warten damit Stop-Signal propagiert und WebSocket-Status aktualisiert
+          await new Promise(r => setTimeout(r, 1500));
+          setStatus('Working');
+          setLogs([]);
+          await axios.post(`${API_BASE}/run`, payload);
+        }
+        return;
+      }
     } catch (err) {
       console.error("Backend-Verbindung fehlgeschlagen:", err);
       setLogs(prev => [...prev, { agent: 'System', event: 'Error', message: 'Keine Verbindung zum Backend.' }]);

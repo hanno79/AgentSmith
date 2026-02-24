@@ -1,0 +1,66 @@
+# ===================================================================
+# Author: rahn
+# Datum: 22.02.2026
+# Version: 1.0
+# Beschreibung: Docker Compose fuer AgentSmith Backend + Frontend.
+#
+# Fix 62: Docker-Containerisierung von AgentSmith Backend + Frontend
+# ROOT-CAUSE: Generierte Projekte benoetigen beliebige Tech-Stacks
+#             (Go, Ruby, Rust...) die auf dem Windows-Host fehlen.
+# LOESUNG:    Beide Services in Docker → Tech-Stacks im Container verfuegbar.
+#
+# Wichtige Designentscheidungen:
+# - KEIN Docker-in-Docker: Backend nutzt Host-Docker via Socket-Mount
+# - HOST_PROJECTS_BASE_PATH: Sibling-Container brauchen Host-Pfad fuer Volume-Mounts
+# - Volume-Mounts fuer Code: Hot-Reload ohne Rebuild (ausser requirements.txt)
+# - Anonymous Volume /app/node_modules: Schuetzt Container-node_modules vor Override
+# ===================================================================
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    ports:
+      - "8000:8000"
+      # AENDERUNG 22.02.2026: Fix 63a — Port-Range ENTFERNT
+      # ROOT-CAUSE: Backend-Container belegte 3000-3009 → Sibling-Container konnten Port 3000 nicht
+      #             publizieren → "Bind for 0.0.0.0:3000 failed: port is already allocated"
+      # LOESUNG: Sibling-Container (generierte Projekte) publizieren ihre Ports selbst direkt an Host.
+    volumes:
+      # AENDERUNG 22.02.2026: Fix 62 — Gesamtes Projekt als /app mounten
+      # ROOT-CAUSE: Viele Root-Level Python-Module (logger_utils.py, model_router.py etc.)
+      #             werden von backend/ imports benoetigt. Einzelne Datei-Mounts unvollstaendig.
+      # LOESUNG:    ./:/app (full bind mount) statt selektiver Einzelmounts.
+      # HINWEIS:    venv/ ist fuer Linux-Container irrelevant (System-Python verwendet).
+      - ./:/app
+      # Docker Socket: Backend nutzt Host-Docker-Daemon (KEIN Docker-in-Docker!)
+      - /var/run/docker.sock:/var/run/docker.sock
+      # AENDERUNG 22.02.2026: Fix 62b — MAX Plan OAuth Credentials fuer Claude SDK
+      # ROOT-CAUSE: claude CLI im Container hat keine Auth → "Not logged in"
+      # LOESUNG: .credentials.json (claudeAiOauth accessToken) vom Host read-only mounten
+      # KEIN ANTHROPIC_API_KEY noetig — MAX Plan laeuft ueber claude.ai OAuth
+      - ${CLAUDE_CREDENTIALS_PATH}:/root/.claude/.credentials.json:ro
+    env_file: .env
+    environment:
+      - PYTHONPATH=/app
+      # AENDERUNG 22.02.2026: Fix 62 — HOST-Pfad fuer Sibling-Container Volume-Mounts
+      # Backend im Container sieht /app/projects/xxx, Docker braucht den Host-Pfad
+      - HOST_PROJECTS_BASE_PATH=${HOST_PROJECTS_BASE_PATH}
+    working_dir: /app
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      # Gesamtes Frontend mounten fuer Hot-Reload
+      - ./frontend:/app
+      # Anonymous Volume: Schuetzt Container-node_modules vor Override durch Host-Mount
+      - /app/node_modules
+    depends_on:
+      - backend
+    restart: unless-stopped

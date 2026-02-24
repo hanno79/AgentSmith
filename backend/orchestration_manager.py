@@ -155,11 +155,19 @@ class OrchestrationManager:
         self._feature_id_map = {}  # Mapping file_path → feature_id (gesetzt nach Planner)
         self._feature_tracking_db = None  # Lazy-Init bei erstem Zugriff
 
+        # ÄNDERUNG 22.02.2026: Fix 68a — Stop-Flag für Single-Run-Enforcement
+        # ROOT-CAUSE-FIX:
+        # Symptom: Parallele Runs, Button bleibt ausgegraut nach Reset
+        # Ursache: Kein Stop-Mechanismus fuer laufende Background-Tasks
+        # Loesung: threading.Event() als kooperatives Stop-Signal fuer alle Iteration-Loops
+        import threading
+        self._stop_event = threading.Event()
+
         # AENDERUNG 21.02.2026: Claude SDK Provider (zusaetzliches LLM-Backend neben OpenRouter)
         self.claude_provider = None
         if self.config.get("claude_sdk", {}).get("enabled", False):
             try:
-                from .claude_sdk_provider import get_claude_sdk_provider
+                from .claude_sdk import get_claude_sdk_provider
                 self.claude_provider = get_claude_sdk_provider()
                 logger.info("Claude SDK Provider aktiviert (Max Plan Backend)")
             except ImportError as e:
@@ -236,6 +244,20 @@ class OrchestrationManager:
         self.discovery_briefing = briefing
         self._ui_log("System", "DiscoveryBriefing",
                      f"Briefing aktiviert: {briefing.get('projectName', 'unbenannt')}")
+
+    # AENDERUNG 22.02.2026: Fix 68a — Stop-Flag Methoden
+    def stop(self) -> None:
+        """Signalisiert allen laufenden Loops zu stoppen (kooperativ)."""
+        self._stop_event.set()
+        logger.info("OrchestrationManager: Stop-Signal gesetzt")
+
+    def is_stop_requested(self) -> bool:
+        """Prueft ob Stop angefordert wurde."""
+        return self._stop_event.is_set()
+
+    def _clear_stop(self) -> None:
+        """Setzt Stop-Flag zurueck (vor jedem neuen Run)."""
+        self._stop_event.clear()
 
     def get_briefing_context(self) -> str:
         return format_briefing_context(self.discovery_briefing)
@@ -350,6 +372,8 @@ class OrchestrationManager:
 
     # AENDERUNG 09.02.2026: project_name Parameter fuer benutzerdefinierte Projektnamen
     def run_task(self, user_goal: str, project_name: str = None):
+        # AENDERUNG 22.02.2026: Fix 68a — Stop-Flag zuruecksetzen vor neuem Run
+        self._clear_stop()
         try:
             self._ui_log("System", "Task Start", f"Goal: {user_goal}")
             # AENDERUNG 10.02.2026: Fix 47 — User-Goal fuer Doc-Enrichment Keyword-Erkennung
@@ -455,7 +479,7 @@ class OrchestrationManager:
                 # AENDERUNG 21.02.2026: Multi-Tier Claude SDK (Opus fuer Researcher)
                 sdk_research_done = False
                 try:
-                    from .claude_sdk_provider import run_sdk_with_retry
+                    from .claude_sdk import run_sdk_with_retry
                     set_current_agent("Researcher", getattr(self, '_stats_run_id', project_id))
                     self._update_worker_status("researcher", "working", f"Recherche: {research_query[:50]}...", "claude-sdk/opus")
                     sdk_result = run_sdk_with_retry(
@@ -900,3 +924,4 @@ class OrchestrationManager:
             session_mgr.end_session(status="Error")
         except Exception:
             pass
+

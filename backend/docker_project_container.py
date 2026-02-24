@@ -111,13 +111,33 @@ class ProjectContainerManager:
 
     def _get_mount_path(self) -> str:
         """
-        Konvertiert Windows-Pfad fuer Docker-Mount.
-        C:\\Temp\\project → /c/Temp/project
+        Konvertiert Projekt-Pfad fuer Docker-Volume-Mount.
+
+        AENDERUNG 22.02.2026: Fix 62 — HOST_PROJECTS_BASE_PATH fuer Sibling-Container
+        ROOT-CAUSE: Backend im Container hat self.project_path = /app/projects/xxx.
+                    Docker (Host-Daemon!) braucht aber den HOST-Pfad C:/Temp/.../projects/xxx
+                    fuer Volume-Mounts der Sibling-Container.
+        LOESUNG:    HOST_PROJECTS_BASE_PATH env var gibt Windows-Host-Basisverzeichnis an.
+                    Fehlt die Env-Var, wird der alte Windows-Host-Pfad-Code genutzt.
         """
-        mount_path = self.project_path
+        host_base = os.environ.get("HOST_PROJECTS_BASE_PATH")
+        if host_base:
+            # Backend laeuft in Docker → HOST-Pfad fuer Sibling-Container Volume-Mounts nutzen
+            project_name = os.path.basename(self.project_path)
+            # AENDERUNG 22.02.2026: Fix 76 — Windows-Format direkt (KEIN MSYS /C/...)
+            # ROOT-CAUSE-FIX:
+            # Symptom: "Container-Erstellung fehlgeschlagen" bei Backend im Docker
+            # Ursache: Alter Code erzeugte /C/Temp/... (MSYS-Format) statt C:/Temp/...
+            # Docker Desktop auf Windows akzeptiert C:/path direkt (wie docker-compose.yml zeigt:
+            #   "- C:/Users/rahn/.claude/.credentials.json:/root/..."). MSYS-Format wird abgelehnt.
+            # Loesung: Nur Backslash→Forward-Slash, Pfad bleibt C:/Temp/... (Windows-Format)
+            host_path = host_base.rstrip('/\\') + '/' + project_name
+            return host_path.replace('\\', '/')
+        # Windows-Host ohne Docker-Container: C:\Temp\project → /c/Temp/project
         if os.name == 'nt':
-            mount_path = '/' + mount_path.replace(':', '').replace('\\', '/')
-        return mount_path
+            return '/' + self.project_path.replace(':', '').replace('\\', '/')
+        # Linux-Host (kein Backend-in-Docker, kein HOST_PROJECTS_BASE_PATH gesetzt)
+        return self.project_path
 
     def is_docker_available(self) -> bool:
         """Prueft ob Docker installiert und erreichbar ist."""
@@ -435,14 +455,39 @@ class ProjectContainerManager:
         except Exception:
             pass
 
+    def _get_check_host(self) -> str:
+        """
+        Gibt den korrekten Host fuer Port-Checks zurueck.
+
+        AENDERUNG 22.02.2026: Fix 63b — host.docker.internal in Docker-Containern
+        ROOT-CAUSE: Backend laeuft in Docker, Sibling-Container publizieren Port auf HOST.
+                    'localhost' im Backend-Container zeigt auf den Container selbst.
+        LOESUNG: ENV-Override > host.docker.internal > Docker-Bridge-Gateway
+        """
+        explicit = os.getenv("CHECK_HOST") or os.getenv("DOCKER_HOST_GATEWAY")
+        if explicit:
+            return explicit
+
+        if os.path.exists('/.dockerenv'):
+            # Compose-Hinweis: fuer Linux ggf. extra_hosts: ["host.docker.internal:host-gateway"] setzen.
+            try:
+                import socket
+                socket.gethostbyname("host.docker.internal")
+                return "host.docker.internal"
+            except Exception:
+                return os.getenv("DOCKER_BRIDGE_GATEWAY", "172.17.0.1")
+
+        return os.getenv("CHECK_HOST_DEFAULT", "localhost")
+
     def _wait_for_port(self, port: int, timeout: int,
                        interval: float = 0.5) -> bool:
-        """Wartet bis Port auf localhost erreichbar ist."""
+        """Wartet bis Port auf dem richtigen Host erreichbar ist."""
         import socket
+        check_host = self._get_check_host()
         start_time = time.time()
         while time.time() - start_time < timeout:
             try:
-                with socket.create_connection(("localhost", port), timeout=1):
+                with socket.create_connection((check_host, port), timeout=1):
                     logger.info(
                         "Port %d erreichbar nach %.1fs",
                         port, time.time() - start_time

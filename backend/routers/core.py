@@ -15,6 +15,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, BackgroundTasks, 
 from pydantic import BaseModel
 from ..app_state import manager, ws_manager, limiter, WS_RECEIVE_TIMEOUT, WS_MAX_TIMEOUTS
 from ..api_logging import log_event
+from ..session_utils import get_session_manager_instance
 
 router = APIRouter()
 
@@ -29,6 +30,25 @@ class TaskRequest(BaseModel):
 @limiter.limit("10/minute")
 async def run_agent_task(request: Request, task_request: TaskRequest, background_tasks: BackgroundTasks):
     print(f"Received /run request for goal: {task_request.goal}")
+
+    # AENDERUNG 22.02.2026: Fix 68c — Nur einen Run gleichzeitig erlauben
+    # ROOT-CAUSE-FIX:
+    # Symptom: Zweiter Run startet waehrend erster noch laeuft → Race-Condition, Token-Verschwendung
+    # Ursache: Kein Check ob Session bereits aktiv ist
+    # Loesung: Session-Status pruefen -> HTTP 409 wenn aktiv
+    session_mgr = get_session_manager_instance()
+    if session_mgr and session_mgr.is_active():
+        current_goal = session_mgr.current_session.get("goal", "")
+        print(f"[Run] Abgelehnt: Session bereits aktiv (Ziel: {current_goal})")
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "status": "already_running",
+                "message": "Ein Run läuft bereits",
+                "goal": current_goal
+            }
+        )
+
     loop = asyncio.get_running_loop()
 
     try:

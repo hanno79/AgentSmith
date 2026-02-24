@@ -10,7 +10,7 @@ Beschreibung: Unit-Tests fuer ClaudeSDKProvider (backend/claude_sdk_provider.py)
 
 import os
 import sys
-import time
+import types
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 
@@ -25,16 +25,19 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 @pytest.fixture(autouse=True)
 def reset_singleton():
     """Setzt den Provider-Singleton vor jedem Test zurueck."""
-    import backend.claude_sdk_provider as mod
-    mod._provider_instance = None
-    mod._sdk_loaded = False
-    mod._sdk_query = None
-    mod._sdk_options_class = None
-    mod._sdk_assistant_message = None
-    mod._sdk_text_block = None
+    import backend.claude_sdk.loader as loader
+    import backend.claude_sdk.provider as provider_mod
+    provider_mod._provider_instance = None
+    loader._sdk_loaded = False
+    loader._sdk_query = None
+    loader._sdk_options_class = None
+    loader._sdk_assistant_message = None
+    loader._sdk_text_block = None
+    loader._sdk_stream_event = None
+    loader._sdk_result_message = None
     yield
-    mod._provider_instance = None
-    mod._sdk_loaded = False
+    provider_mod._provider_instance = None
+    loader._sdk_loaded = False
 
 
 @pytest.fixture
@@ -44,20 +47,30 @@ def mock_sdk():
     mock_options_class = MagicMock()
     mock_assistant_message = MagicMock()
     mock_text_block = MagicMock()
+    mock_result_message = MagicMock()
+    mock_stream_event = type("StreamEvent", (), {})
+
+    sdk_mod = types.ModuleType("claude_agent_sdk")
+    sdk_mod.query = mock_query
+    sdk_mod.ClaudeAgentOptions = mock_options_class
+    sdk_mod.AssistantMessage = mock_assistant_message
+    sdk_mod.TextBlock = mock_text_block
+    sdk_mod.ResultMessage = mock_result_message
+
+    sdk_types_mod = types.ModuleType("claude_agent_sdk.types")
+    sdk_types_mod.StreamEvent = mock_stream_event
 
     with patch.dict('sys.modules', {
-        'claude_agent_sdk': MagicMock(
-            query=mock_query,
-            ClaudeAgentOptions=mock_options_class,
-            AssistantMessage=mock_assistant_message,
-            TextBlock=mock_text_block
-        )
+        'claude_agent_sdk': sdk_mod,
+        'claude_agent_sdk.types': sdk_types_mod,
     }):
         yield {
             "query": mock_query,
             "options_class": mock_options_class,
             "assistant_message": mock_assistant_message,
             "text_block": mock_text_block,
+            "result_message": mock_result_message,
+            "stream_event": mock_stream_event,
         }
 
 
@@ -130,19 +143,8 @@ class TestSingleton:
 class TestRunAgentSuccess:
     """Tests fuer erfolgreiche run_agent() Aufrufe."""
 
-    @patch('backend.claude_sdk_provider.threading.Thread')
-    def test_run_agent_gibt_text_zurueck(self, mock_thread_cls, provider):
+    def test_run_agent_gibt_text_zurueck(self, provider):
         """Prueft dass run_agent() den Ergebnis-Text zurueckgibt."""
-        # Thread simulieren: Ergebnis direkt setzen
-        def fake_start(self_thread):
-            # Simuliere Thread-Ausfuehrung
-            pass
-
-        mock_thread_instance = MagicMock()
-        mock_thread_instance.is_alive.return_value = False
-        mock_thread_cls.return_value = mock_thread_instance
-
-        # Provider-internes result_container manipulieren
         with patch.object(provider, '_run_sync', return_value="Generierter Code hier"):
             result = provider.run_agent(
                 prompt="Erstelle eine Hello-World App",
@@ -376,23 +378,23 @@ class TestLazyLoading:
 
     def test_sdk_wird_nicht_beim_import_geladen(self):
         """Prueft dass das SDK erst beim ersten Aufruf geladen wird."""
-        import backend.claude_sdk_provider as mod
-        assert mod._sdk_loaded is False, "SDK darf beim Import noch NICHT geladen sein"
+        import backend.claude_sdk.loader as loader
+        assert loader._sdk_loaded is False, "SDK darf beim Import noch NICHT geladen sein"
 
     def test_sdk_wird_bei_ensure_geladen(self, mock_sdk):
         """Prueft dass _ensure_sdk_loaded() das SDK laedt."""
-        import backend.claude_sdk_provider as mod
-        mod._ensure_sdk_loaded()
-        assert mod._sdk_loaded is True
+        import backend.claude_sdk.loader as loader
+        loader._ensure_sdk_loaded()
+        assert loader._sdk_loaded is True
 
     def test_import_error_bei_fehlendem_sdk(self):
         """Prueft dass ImportError geworfen wird wenn SDK nicht installiert."""
-        import backend.claude_sdk_provider as mod
+        import backend.claude_sdk.loader as loader
         # Sicherstellen dass kein echtes claude_agent_sdk verfuegbar
-        with patch.dict('sys.modules', {'claude_agent_sdk': None}):
-            mod._sdk_loaded = False
+        with patch.dict('sys.modules', {'claude_agent_sdk': None, 'claude_agent_sdk.types': None}):
+            loader._sdk_loaded = False
             with pytest.raises(ImportError, match="claude-agent-sdk"):
-                mod._ensure_sdk_loaded()
+                loader._ensure_sdk_loaded()
 
 
 # =========================================================================
@@ -431,23 +433,34 @@ class TestRateLimitEventHandling:
     """Tests fuer graceful Behandlung von unbekannten Message-Typen im Stream."""
 
     def test_rate_limit_event_mit_text_gibt_text_zurueck(self, provider):
-        """rate_limit_event nach bereits empfangenem Text → Text zurueckgeben."""
-        import anyio
+        """StreamEvent nach Text wird ignoriert und liefert den bereits empfangenen Text."""
 
-        # Simuliere: Text kommt, dann rate_limit_event Exception
+        import backend.claude_sdk.loader as loader
+
+        class DummyTextBlock:
+            def __init__(self, text):
+                self.text = text
+
+        class DummyAssistantMessage:
+            def __init__(self, text):
+                self.error = None
+                self.content = [DummyTextBlock(text)]
+
+        class DummyStreamEvent:
+            def __init__(self, event):
+                self.event = event
+
         async def fake_query_gen(prompt, options):
-            # AssistantMessage mit Text
-            msg = MagicMock()
-            msg.result = None
-            msg.content = [MagicMock(text="### FILENAME: app/page.js\nexport default function Home() {}")]
-            yield msg
-            # Dann Exception (unbekannter Message-Typ)
-            raise Exception("Unknown message type: rate_limit_event")
+            yield DummyAssistantMessage("### FILENAME: app/page.js\nexport default function Home() {}")
+            yield DummyStreamEvent({"type": "rate_limit_event"})
 
-        import backend.claude_sdk_provider as mod
-        mod._sdk_query = fake_query_gen
-        mod._sdk_options_class = MagicMock()
-        mod._sdk_loaded = True
+        loader._sdk_query = fake_query_gen
+        loader._sdk_options_class = MagicMock()
+        loader._sdk_assistant_message = DummyAssistantMessage
+        loader._sdk_text_block = DummyTextBlock
+        loader._sdk_stream_event = DummyStreamEvent
+        loader._sdk_result_message = type("DummyResultMessage", (), {})
+        loader._sdk_loaded = True
         provider._initialized = True
 
         with patch.object(provider, '_record_success'):
@@ -459,15 +472,22 @@ class TestRateLimitEventHandling:
 
     def test_rate_limit_event_ohne_text_wirft_runtime_error(self, provider):
         """rate_limit_event OHNE vorherigen Text → RuntimeError mit klarer Meldung (Fix 59d)."""
-        async def fake_query_gen(prompt, options):
-            # Sofort Exception, kein Text vorher
-            raise Exception("Unknown message type: rate_limit_event")
-            yield  # pragma: no cover — macht es zum async generator
+        import backend.claude_sdk.loader as loader
 
-        import backend.claude_sdk_provider as mod
-        mod._sdk_query = fake_query_gen
-        mod._sdk_options_class = MagicMock()
-        mod._sdk_loaded = True
+        class DummyStreamEvent:
+            def __init__(self, event):
+                self.event = event
+
+        async def fake_query_gen(prompt, options):
+            yield DummyStreamEvent({"type": "rate_limit_event"})
+
+        loader._sdk_query = fake_query_gen
+        loader._sdk_options_class = MagicMock()
+        loader._sdk_assistant_message = type("DummyAssistant", (), {})
+        loader._sdk_text_block = type("DummyTextBlock", (), {})
+        loader._sdk_stream_event = DummyStreamEvent
+        loader._sdk_result_message = type("DummyResultMessage", (), {})
+        loader._sdk_loaded = True
         provider._initialized = True
 
         with patch.object(provider, '_record_failure'):
@@ -479,14 +499,19 @@ class TestRateLimitEventHandling:
 
     def test_andere_stream_fehler_werden_weitergeleitet(self, provider):
         """Nicht-rate_limit Fehler im Stream → Exception unveraendert weiterleiten."""
+        import backend.claude_sdk.loader as loader
+
         async def fake_query_gen(prompt, options):
             raise ConnectionError("API connection lost")
             yield  # pragma: no cover
 
-        import backend.claude_sdk_provider as mod
-        mod._sdk_query = fake_query_gen
-        mod._sdk_options_class = MagicMock()
-        mod._sdk_loaded = True
+        loader._sdk_query = fake_query_gen
+        loader._sdk_options_class = MagicMock()
+        loader._sdk_assistant_message = type("DummyAssistant", (), {})
+        loader._sdk_text_block = type("DummyTextBlock", (), {})
+        loader._sdk_stream_event = type("DummyStreamEvent", (), {})
+        loader._sdk_result_message = type("DummyResultMessage", (), {})
+        loader._sdk_loaded = True
         provider._initialized = True
 
         with patch.object(provider, '_record_failure'):

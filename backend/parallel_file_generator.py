@@ -226,6 +226,17 @@ async def run_parallel_file_generation(
                 if filename.endswith("requirements.txt"):
                     content = _ensure_test_dependencies(content, file_list)
 
+                # ÄNDERUNG 22.02.2026: Fix 65 — None-Guard für manager.project_path
+                # Ursache:
+                # Symptom: TypeError: expected str, bytes or os.PathLike object, not NoneType
+                # Ursache: Zweiter Run reinitalisiert manager.project_path = None waehrend
+                #          File-by-File-Generierung noch laeuft (Race-Condition)
+                # Loesung: Abbruch wenn project_path None ist
+                if not manager.project_path:
+                    errors.append((filename, "project_path ist None (Run wurde gestoppt)"))
+                    manager._ui_log("ParallelGen", "Skipped", f"{filename}: project_path ist None, uebersprungen")
+                    continue
+
                 results[filename] = content
 
                 # Speichere Datei

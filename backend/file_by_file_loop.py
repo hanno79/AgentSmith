@@ -210,7 +210,7 @@ async def run_planner(
         # AENDERUNG 21.02.2026: Multi-Tier Claude SDK (Sonnet fuer Planner)
         result = None
         try:
-            from backend.claude_sdk_provider import run_sdk_with_retry
+            from backend.claude_sdk import run_sdk_with_retry
             sdk_result = run_sdk_with_retry(
                 manager, role="planner", prompt=task.description,
                 timeout_seconds=timeout,
@@ -381,7 +381,7 @@ def run_single_file_coder(
 
     # AENDERUNG 21.02.2026: Multi-Tier Claude SDK (Haiku fuer Einzeldateien)
     try:
-        from backend.claude_sdk_provider import run_sdk_with_retry
+        from backend.claude_sdk import run_sdk_with_retry
         sdk_result = run_sdk_with_retry(
             manager, role="fix", prompt=prompt,
             timeout_seconds=timeout,
@@ -1000,3 +1000,4 @@ def merge_repaired_files(existing_code: str, repaired_content: Dict[str, str]) -
             result = new_result
 
     return result
+

@@ -183,12 +183,17 @@ Wenn der Code FEHLERFREI ist und alle Tests bestanden: Antworte mit "OK"
     REVIEWER_TIMEOUT_SECONDS = agent_timeouts.get("reviewer", 1200)
 
     # AENDERUNG 21.02.2026: Multi-Tier Claude SDK (zentrale Helper-Funktion)
-    from .claude_sdk_provider import run_sdk_with_retry
-    sdk_result = run_sdk_with_retry(
-        manager, role="reviewer", prompt=r_prompt,
-        timeout_seconds=REVIEWER_TIMEOUT_SECONDS,
-        agent_display_name="Reviewer"
-    )
+    from .claude_sdk import run_sdk_with_retry
+    sdk_result = None
+    try:
+        sdk_result = run_sdk_with_retry(
+            manager, role="reviewer", prompt=r_prompt,
+            timeout_seconds=REVIEWER_TIMEOUT_SECONDS,
+            agent_display_name="Reviewer"
+        )
+    except Exception as sdk_error:
+        manager._ui_log("Reviewer", "Error", f"Reviewer SDK error: {sdk_error}")
+        manager._update_worker_status("reviewer", "idle")
     if sdk_result and not is_empty_or_invalid_response(sdk_result):
         # Claude SDK Review erfolgreich — Ergebnis-Parsing
         sdk_result = truncate_review_output(sdk_result, max_length=3000)
@@ -390,3 +395,4 @@ Wenn der Code FEHLERFREI ist und alle Tests bestanden: Antworte mit "OK"
     manager._update_worker_status("reviewer", "idle")
 
     return review_output, review_verdict, human_summary
+

@@ -176,12 +176,13 @@ def invalid_html_code():
 
 
 # =========================================================================
-# AENDERUNG 14.02.2026: Phase 0 Test-Coverage-Plan — Neue Fixtures
+# ÄNDERUNG 14.02.2026: Phase 0 Test-Coverage-Plan — Neue Test-Fixtures ergänzt
 # =========================================================================
 
 @pytest.fixture
 def sample_tech_blueprint():
     """Beispiel Next.js Tech-Blueprint fuer DevLoop-Tests."""
+    # DUMMY-WERT: Nur für Tests - NICHT produktiv verwenden!
     return {
         "project_type": "webapp",
         "framework": "Next.js",
@@ -195,6 +196,7 @@ def sample_tech_blueprint():
 @pytest.fixture
 def sample_code_dict():
     """Beispiel code_dict mit typischen Next.js Projekt-Dateien."""
+    # DUMMY-WERT: Nur für Tests - NICHT produktiv verwenden!
     return {
         "app/page.js": """'use client'
 import { useState, useEffect } from 'react'
@@ -238,6 +240,7 @@ export async function POST(request) {
 @pytest.fixture
 def sample_feedback():
     """Beispiel Reviewer-Feedback mit [DATEI:xxx] Markern."""
+    # DUMMY-WERT: Nur für Tests - NICHT produktiv verwenden!
     return """REVIEW-ERGEBNIS: NICHT BESTANDEN
 
 BETROFFENE DATEIEN:
@@ -254,6 +257,7 @@ DETAILS:
 @pytest.fixture
 def sample_coder_output():
     """Beispiel Multi-File Coder-Output mit ### FILENAME: Markern."""
+    # DUMMY-WERT: Nur für Tests - NICHT produktiv verwenden!
     return """### FILENAME: app/page.js
 'use client'
 import { useState, useEffect } from 'react'
@@ -276,6 +280,7 @@ export function getItems() { return db.prepare('SELECT * FROM items').all() }
 @pytest.fixture
 def mock_manager(temp_dir):
     """Mock-Manager mit allen DevLoop-relevanten Attributen."""
+    # DUMMY-WERT: Nur für Tests - NICHT produktiv verwenden!
     from unittest.mock import MagicMock
     manager = MagicMock()
     manager.project_path = temp_dir

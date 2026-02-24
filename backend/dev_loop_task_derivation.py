@@ -56,7 +56,8 @@ class DevLoopTaskDerivation:
 
         # Deriver initialisieren (mit ModelRouter wenn verfuegbar)
         router = getattr(manager, 'model_router', None)
-        self.deriver = TaskDeriver(model_router=router, config=self.config)
+        # AENDERUNG 24.02.2026: Fix 76b — Manager an TaskDeriver durchreichen fuer Claude SDK
+        self.deriver = TaskDeriver(model_router=router, config=self.config, manager=manager)
 
         # Dispatcher (lazy init)
         self._dispatcher: Optional[TaskDispatcher] = None
