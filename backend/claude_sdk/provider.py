@@ -204,8 +204,14 @@ class ClaudeSDKProvider:
         )
 
         if result.returncode != 0:
+            # AENDERUNG 24.02.2026: Fix 76d — Bessere Fehler-Diagnostik
+            # Manche CLIs schreiben Fehler nach stdout statt stderr
             stderr_excerpt = (result.stderr or "")[:500]
-            raise RuntimeError(f"claude CLI Fehler (Code {result.returncode}): {stderr_excerpt}")
+            stdout_excerpt = (result.stdout or "")[:500]
+            raise RuntimeError(
+                f"claude CLI Fehler (Code {result.returncode}): "
+                f"stderr={stderr_excerpt} stdout={stdout_excerpt}"
+            )
 
         output = result.stdout.strip()
         if not output:

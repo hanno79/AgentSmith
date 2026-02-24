@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+# Author: rahn
+# Datum: 24.02.2026
+# Version: 1.0
+# Beschreibung: Loader fuer Claude SDK Zustand, Model-Mapping und Tier-Konfiguration.
 """Claude SDK Loader-Zustand (thread-safe lazy init)."""
 
 import logging
@@ -61,16 +65,17 @@ def _ensure_sdk_loaded():
 
 
 CLAUDE_MODEL_MAP = {
-    "opus": "claude-opus-4-6",
-    "sonnet": "claude-sonnet-4-6",
-    "haiku": "claude-haiku-4-5",
+    "opus": "claude-opus-4-1-20250805",
+    "sonnet": "claude-sonnet-4-20250514",
+    "haiku": "claude-3-5-haiku-20241022",
 }
 
 # AENDERUNG 24.02.2026: Fix 76b — Neue Rollen hinzugefuegt
 _SDK_TIER_ORDER = {
     "fix": 0,
     "tester": 0,
-    "task_deriver": 0,       # Einfache strukturierte JSON-Ausgabe
+    # AENDERUNG 24.02.2026: Fix 76d — TaskDeriver auf Tier 2 (Opus, wie researcher/techstack)
+    "task_deriver": 2,       # Opus: Komplexe Ziel-Dekomposition
     "coder": 1,
     "reviewer": 1,
     "planner": 1,

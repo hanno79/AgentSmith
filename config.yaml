@@ -7,7 +7,7 @@ max_retries: 50
 max_model_attempts: 5
 parallel_file_generation:
   enabled: true
-  max_workers: null
+  max_workers:
 targeted_fix:
   enabled: true
   max_files: 7
@@ -494,7 +494,8 @@ templates:
     - 'WICHTIG: Nutze ''with app.app_context():'' statt ''@app.before_first_request''
       (Flask 2.3+ deprecated).'
     - 'WICHTIG: Importiere Markup von ''markupsafe'', NICHT von ''flask''.'
-    - Stelle sicher, dass 'enumerate' in Templates verfügbar ist (z.B. app.jinja_env.globals.update(enumerate=enumerate)).
+    - Stelle sicher, dass 'enumerate' in Templates verfügbar ist (z.B. 
+      app.jinja_env.globals.update(enumerate=enumerate)).
     reviewer:
     - Prüfe Code auf XSS/CSRF-Schutz und saubere API-Trennung.
     designer:
@@ -656,15 +657,21 @@ claude_sdk:
     reviewer: 5          # Nur Review, wenig Tool-Use
     # AENDERUNG 22.02.2026: Fix 74b — DB-Designer/Designer max_turns reduziert
     # ROOT-CAUSE-FIX: 10 Turns Extended Thinking = 750s Timeout fuer einfache Aufgaben
-    designer: 3          # Design-Konzept braucht max 2-3 Turns
-    db_designer: 3       # Schema-Design braucht max 2-3 Turns
+    # AENDERUNG 24.02.2026: Fix 76d — max_turns=1 fuer reine Text-Rollen (kein Tool-Use)
+    # ROOT-CAUSE-FIX:
+    # Symptom: Designer/DB-Designer liefern 28 Zeichen (Tool-Use statt Text-Ausgabe)
+    # Ursache: max_turns>1 erlaubt Tool-Use, Claude nutzt Tools statt Text zu generieren
+    # Loesung: max_turns=1 erzwingt direkte Text-Antwort ohne Tool-Use
+    designer: 1          # Reines Text-Design, kein Tool-Use noetig
+    db_designer: 1       # Reines SQL-Schema, kein Tool-Use noetig
     planner: 10
     documentation_manager: 5
-    security: 5
+    security: 1          # Reiner Security-Report, kein Tool-Use noetig
     fix: 5               # Einfache Fixes
     tester: 5            # Einfache Tests
     # AENDERUNG 24.02.2026: Fix 76b — Neue Rollen fuer SDK-Migration
-    task_deriver: 3      # Strukturierte JSON-Ausgabe, einfach
+    # AENDERUNG 24.02.2026: Fix 76d — TaskDeriver auf 5 Turns (Opus braucht mehr fuer komplexe Ziele)
+    task_deriver: 5      # Opus: Komplexe Ziel-Analyse braucht mehr Raum
     analyst: 5           # Anforderungsanalyse
     konzepter: 5         # Feature-Konzeption
   agent_models:
@@ -687,7 +694,12 @@ claude_sdk:
     # Tier 3: Haiku — Einfache/schnelle Aufgaben
     fix: haiku
     tester: haiku
-    task_deriver: haiku
+    # AENDERUNG 24.02.2026: Fix 76d — TaskDeriver auf Opus (Grundlage fuer gesamten Workflow)
+    # ROOT-CAUSE-FIX:
+    # Symptom: TaskDeriver mit Haiku erzeugt nur 1 generischen Task
+    # Ursache: Haiku zu schwach fuer komplexe Ziel-Dekomposition
+    # Loesung: Opus fuer hoechste Qualitaet bei der Task-Ableitung
+    task_deriver: opus
     # AENDERUNG 24.02.2026: Fix 76b — Analyst/Konzepter auf Sonnet (Analyse braucht Qualitaet)
     analyst: sonnet
     konzepter: sonnet
@@ -699,15 +711,15 @@ claude_sdk:
   # NICHT in cli_mode: coder, reviewer (brauchen Tool-Use im SDK async-Modus)
   # AENDERUNG 24.02.2026: Fix 76b — Neue Rollen hinzugefuegt
   cli_mode_roles:
-    - db_designer
-    - designer
-    - researcher
-    - techstack_architect
-    - security
-    - planner
-    - documentation_manager
-    - fix
-    - tester
-    - task_deriver
-    - analyst
-    - konzepter
+  - db_designer
+  - designer
+  - researcher
+  - techstack_architect
+  - security
+  - planner
+  - documentation_manager
+  - fix
+  - tester
+  - task_deriver
+  - analyst
+  - konzepter
