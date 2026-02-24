@@ -655,25 +655,18 @@ claude_sdk:
     techstack_architect: 10
     coder: 10
     reviewer: 5          # Nur Review, wenig Tool-Use
-    # AENDERUNG 22.02.2026: Fix 74b — DB-Designer/Designer max_turns reduziert
-    # ROOT-CAUSE-FIX: 10 Turns Extended Thinking = 750s Timeout fuer einfache Aufgaben
-    # AENDERUNG 24.02.2026: Fix 76d — max_turns=1 fuer reine Text-Rollen (kein Tool-Use)
-    # ROOT-CAUSE-FIX:
-    # Symptom: Designer/DB-Designer liefern 28 Zeichen (Tool-Use statt Text-Ausgabe)
-    # Ursache: max_turns>1 erlaubt Tool-Use, Claude nutzt Tools statt Text zu generieren
-    # Loesung: max_turns=1 erzwingt direkte Text-Antwort ohne Tool-Use
-    designer: 1          # Reines Text-Design, kein Tool-Use noetig
-    db_designer: 1       # Reines SQL-Schema, kein Tool-Use noetig
+    # AENDERUNG 24.02.2026: Fix 76e — Grosszuegige 10 Turns fuer ALLE Rollen (Phase 1: Korrektheit)
+    # Erst pruefen ob alle Rollen sauber durchlaufen, dann in Phase 2 optimieren
+    designer: 10
+    db_designer: 10
     planner: 10
-    documentation_manager: 5
-    security: 1          # Reiner Security-Report, kein Tool-Use noetig
-    fix: 5               # Einfache Fixes
-    tester: 5            # Einfache Tests
-    # AENDERUNG 24.02.2026: Fix 76b — Neue Rollen fuer SDK-Migration
-    # AENDERUNG 24.02.2026: Fix 76d — TaskDeriver auf 5 Turns (Opus braucht mehr fuer komplexe Ziele)
-    task_deriver: 5      # Opus: Komplexe Ziel-Analyse braucht mehr Raum
-    analyst: 5           # Anforderungsanalyse
-    konzepter: 5         # Feature-Konzeption
+    documentation_manager: 10
+    security: 10
+    fix: 10
+    tester: 10
+    task_deriver: 10
+    analyst: 10
+    konzepter: 10
   agent_models:
     # Tier 1: Opus — Komplexe Denkaufgaben (nur techstack_architect bleibt, kurze Ausgabe)
     # AENDERUNG 22.02.2026: Fix 72a — researcher: opus → sonnet (TPM-Rate-Limit-Fix)
