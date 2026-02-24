@@ -1,5 +1,10 @@
 # -*- coding: utf-8 -*-
-"""Claude SDK Retry/Heartbeat-Logik."""
+"""
+Author: rahn
+Datum: 24.02.2026
+Version: 1.0
+Beschreibung: Claude SDK Retry/Heartbeat-Logik.
+"""
 
 import logging
 from typing import Optional
@@ -41,16 +46,18 @@ def run_sdk_with_retry(
         role, sdk_config.get("default_model", "sonnet")
     )
     display_name = agent_display_name or role.capitalize()
-    retries = max_retries or sdk_config.get("max_retries", 3)
+    configured_retries = sdk_config.get("max_retries", 3)
+    retries = max_retries if max_retries is not None else configured_retries
+    base_retries = retries
     sdk_max_turns = sdk_config.get("max_turns_by_role", {}).get(
         role, sdk_config.get("default_max_turns", 10)
     )
 
-    sdk_tier = state._SDK_TIER_ORDER.get(role, 1)
+    sdk_tier = state._SDK_TIER_ORDER.get(role, 0)
     if sdk_tier >= 2:
         max_retries_tier2 = sdk_config.get("max_retries_tier2", 1)
         retries = min(retries, max_retries_tier2)
-        if retries < (max_retries or sdk_config.get("max_retries", 3)):
+        if retries < base_retries:
             logger.info(
                 "SDK Tier-2 (%s): max_retries auf %d begrenzt (schneller Fallback)",
                 role,
@@ -59,7 +66,7 @@ def run_sdk_with_retry(
     elif sdk_tier == 1 and role not in ("coder", "reviewer"):
         max_retries_t1 = sdk_config.get("max_retries_tier1_non_coder", 2)
         retries = min(retries, max_retries_t1)
-        if retries < (max_retries or sdk_config.get("max_retries", 3)):
+        if retries < base_retries:
             logger.info(
                 "SDK Tier-1 Non-Coder (%s): max_retries auf %d begrenzt", role, retries
             )
@@ -83,6 +90,23 @@ def run_sdk_with_retry(
     # Loesung: cli_mode_roles in config.yaml → `claude -p` Subprozess ohne Tools
     cli_roles = sdk_config.get("cli_mode_roles", [])
     use_cli = role in cli_roles
+
+    # AENDERUNG 24.02.2026: Fix 78 — Pre-Call Cooldown fuer Token-intensive Rollen
+    # ROOT-CAUSE-FIX:
+    # Symptom: Planner/Reviewer treffen IMMER auf rate_limit_event im async SDK
+    # Ursache: Nach 5+ CLI-Aufrufen (TaskDeriver+Researcher+TechStack+DBDesigner+Designer)
+    #          ist das TPM-Limit erreicht bevor Planner/Reviewer dran sind
+    # Loesung: Konfigurierbarer Pre-Call Cooldown laesst Token-Budget sich erholen
+    pre_call_cooldown = sdk_config.get("pre_call_cooldown", {}).get(role, 0)
+    if pre_call_cooldown > 0:
+        manager._ui_log(
+            display_name,
+            "Info",
+            f"Pre-Call Cooldown: Warte {pre_call_cooldown}s (TPM-Limit Schutz)...",
+        )
+        import time
+
+        time.sleep(pre_call_cooldown)
 
     for sdk_attempt in range(retries):
         try:
@@ -122,6 +146,14 @@ def run_sdk_with_retry(
                     f"Retry {sdk_attempt + 1}/{retries}...",
                 )
                 continue
+            if raw_output:
+                manager._ui_log(
+                    display_name,
+                    "Warning",
+                    f"Claude SDK cleaned output empty after cleaning "
+                    f"({sdk_attempt + 1}/{retries}, raw_len={len(raw_output)})",
+                )
+                continue
 
         except Exception as sdk_error:
             error_str = str(sdk_error)
@@ -132,7 +164,9 @@ def run_sdk_with_retry(
             )
             if sdk_attempt < retries - 1:
                 if "rate_limit" in error_str.lower() or "429" in error_str:
-                    backoff_seconds = (sdk_attempt + 1) * 30
+                    # AENDERUNG 24.02.2026: Fix 78 — Erhoehter Backoff (konfigurierbar)
+                    base_backoff = sdk_config.get("rate_limit_backoff_base", 45)
+                    backoff_seconds = (sdk_attempt + 1) * base_backoff
                     manager._ui_log(
                         display_name,
                         "Info",

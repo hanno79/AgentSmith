@@ -82,8 +82,13 @@ _SDK_TIER_ORDER = {
     # AENDERUNG 24.02.2026: Fix 76d — TaskDeriver auf Tier 2 (Opus, wie researcher/techstack)
     "task_deriver": 2,       # Opus: Komplexe Ziel-Dekomposition
     "coder": 1,
-    "reviewer": 1,
-    "planner": 1,
+    # AENDERUNG 24.02.2026: Fix 78 — Reviewer/Planner auf Tier 2 (Opus)
+    # ROOT-CAUSE-FIX:
+    # Symptom: Reviewer/Planner treffen IMMER auf rate_limit_event im async SDK
+    # Ursache: Als Tier-1 hatten sie max_retries_tier1_non_coder=2, zu wenig mit Cooldown
+    # Loesung: Tier 2 mit max_retries_tier2=2, passend zu Opus-Modell und Pre-Call Cooldown
+    "reviewer": 2,
+    "planner": 2,
     "designer": 1,
     "db_designer": 1,
     "security": 1,
