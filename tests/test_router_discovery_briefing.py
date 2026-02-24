@@ -380,12 +380,8 @@ class TestGenerateBriefingMarkdown:
 
     def test_markdown_enthaelt_projektname(self, sample_briefing):
         """Generiertes Markdown enthaelt den Projektnamen."""
-        try:
-            md = generate_briefing_markdown(sample_briefing)
-            assert "MeinProjekt" in md, "Erwartet: Projektname im Markdown"
-        except Exception as e:
-            logging.error("Fehler beim Test test_markdown_enthaelt_projektname: %s", e)
-            pytest.fail(str(e))
+        md = generate_briefing_markdown(sample_briefing)
+        assert "MeinProjekt" in md, "Erwartet: Projektname im Markdown"
 
     def test_markdown_enthaelt_datum(self, sample_briefing):
         """Generiertes Markdown enthaelt das Datum."""

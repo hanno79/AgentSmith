@@ -67,7 +67,7 @@ def _ensure_sdk_loaded():
 CLAUDE_MODEL_MAP = {
     "opus": "claude-opus-4-1-20250805",
     "sonnet": "claude-sonnet-4-20250514",
-    # AENDERUNG 24.02.2026: Fix 77 — Haiku Model-ID aktualisiert
+    # ÄNDERUNG 24.02.2026: Fix 77 — Haiku Model-ID aktualisiert
     # ROOT-CAUSE-FIX:
     # Symptom: "There's an issue with the selected model" bei allen role="fix" Aufrufen
     # Ursache: claude-3-5-haiku-20241022 von Claude CLI 2.1.39 nicht mehr akzeptiert

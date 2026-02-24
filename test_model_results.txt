@@ -1,0 +1,6 @@
+opus-4-6        | claude-opus-4-6                     | TIMEOUT
+sonnet-4-6      | claude-sonnet-4-6                   | OK         | out=OK
+haiku-4-5       | claude-haiku-4-5-20251001           | OK         | out=OK
+old-haiku       | claude-3-5-haiku-20241022           | FAIL(rc=1) | out=There's an issue with the selected model (claude-3-5-haiku-20241022). It may not
+old-opus        | claude-opus-4-1-20250805            | OK         | out=OK
+old-sonnet      | claude-sonnet-4-20250514            | OK         | out=OK

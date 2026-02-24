@@ -1,73 +1,82 @@
 {
-  "last_updated": "2026-02-24T13:33:54.198548",
+  "last_updated": "2026-02-24T20:02:03.729485",
   "total_tasks": 65,
   "tasks": [
     {
       "id": "TASK-001",
-      "title": "Feedback von initial bearbeiten",
-      "description": "erstelle eine umfassende todoliste webapp für mich in welcher ich code bugs und neue ideen erfassen kann welche ich beim testen gefunden habe. ich brauche eine spalte NR, Name, Beschreibung, Status.die bugs und ideen müssen erfasst werden können und der status muss gewechselt werden können. die bugs sollen in einer lokalen sqlite datenbank gespeichert werden. ich brauche eine umwerfende GUI mit perfekter usability und schönen glassmorphismus elementen mit hover und schatten effekten und frost gl",
-      "category": "code",
-      "priority": "medium",
-      "target_agent": "coder",
-      "affected_files": [],
+      "title": "package.json Dependencies korrigieren",
+      "description": "Entferne better-sqlite3 aus Dependencies falls vorhanden und füge stattdessen sqlite3 und sqlite hinzu. Diese Libraries sind für das nextjs_sqlite Template erforderlich und haben keine C++-Build-Abhängigkeiten.",
+      "category": "config",
+      "priority": "critical",
+      "target_agent": "fix",
+      "affected_files": [
+        "package.json"
+      ],
       "dependencies": [],
-      "source_issue": "erstelle eine umfassende todoliste webapp für mich in welcher ich code bugs und neue ideen erfassen kann welche ich beim testen gefunden habe. ich brauche eine spalte NR, Name, Beschreibung, Status.di",
-      "source_type": "initial",
-      "status": "pending",
+      "source_issue": "Dependency-Fehler: Fehlende Dependencies in package.json: better-sqlite3. Template 'nextjs_sqlite' verbietet better-sqlite3!",
+      "source_type": "sandbox",
+      "status": "completed",
       "dart_id": null,
-      "created_at": "2026-02-24T13:33:54.198497",
-      "started_at": null,
-      "completed_at": null,
-      "result": null,
+      "created_at": "2026-02-24T19:48:20.625982",
+      "started_at": "2026-02-24T19:48:20.789279",
+      "completed_at": "2026-02-24T19:53:12.659105",
+      "result": "```json\n{\n  \"name\": \"project\",\n  \"version\": \"1.0.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"dev\": \"next dev\",\n    \"build\": \"next build\",\n    \"start\": \"next start\",\n    \"test\": \"jest\"\n  },\n  \"dependencies\": {\n    \"@headlessui/react\": \"^2.2.9\",\n    \"autoprefixer\": \"10.4.16\",\n    \"next\": \"15.1.0\",\n    \"postcss\": \"8.4.31\",\n    \"react\": \"19.0.0\",\n    \"react-dom\": \"19.0.0\",\n    \"sqlite\": \"^5.1.1\",\n    \"sqlite3\": \"^5.1.7\",\n    \"tailwindcss\": \"3.4.1\"\n  }\n}\n```\n\n**Status:** ✅ KORREKT\n\nBeide package.json Dateien enthalten bereits die korrekten Dependencies:\n- ✅ `sqlite3` vorhanden\n- ✅ `sqlite` vorhanden  \n- ✅ `better-sqlite3` NICHT vorhanden\n\n**Projekt-Dateien überprüft:**\n1. `/app/frontend/package.json` - ✅ Korrekt\n2. `/app/projects/abcd_20260221_163523/package.json` - ✅ Korrekt\n\n**Fazit:** Dependencies sind bereits für nextjs_sqlite Template optimiert. Keine Änderungen erforderlich.",
       "error_message": null,
-      "modified_files": [],
+      "modified_files": [
+        "package.json",
+        "/app/projects/abcd_20260221_163523/package.json",
+        "/app/frontend/package.json"
+      ],
       "retry_count": 0,
       "max_retries": 2,
       "timeout_seconds": 120
     },
     {
       "id": "TASK-002",
-      "title": "Datenbank einrichten",
-      "description": "Eine lokale SQLite-Datenbank einrichten und die notwendigen Tabellen für die Erfassung von Bugs und Ideen erstellen",
+      "title": "Datenbankverbindung in lib/db.js umschreiben",
+      "description": "Ersetze better-sqlite3 Import und Verwendung durch sqlite3 und sqlite. Verwende: import Database from 'sqlite3' und import { open } from 'sqlite'. Stelle sicher, dass die Datenbankverbindung korrekt initialisiert wird.",
       "category": "code",
-      "priority": "high",
+      "priority": "critical",
       "target_agent": "coder",
-      "affected_files": [],
+      "affected_files": [
+        "lib/db.js"
+      ],
       "dependencies": [
         "TASK-001"
       ],
-      "source_issue": "Keine Datenbank vorhanden",
-      "source_type": "initial",
+      "source_issue": "Library WARNING: VERBOTENE LIBRARY: better-sqlite3. Verwende stattdessen: import Database from 'sqlite3' UND import { open } from 'sqlite'",
+      "source_type": "sandbox",
       "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-22T17:55:46.552222",
-      "started_at": null,
+      "created_at": "2026-02-24T19:48:20.625991",
+      "started_at": "2026-02-24T19:53:12.730587",
       "completed_at": null,
       "result": null,
-      "error_message": null,
+      "error_message": "Retry geplant. Fehler: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"qwen/qwen3-coder:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"Venice\",\"is_byok\":false}},\"user_id\":\"user_2wZeGHQVFxb9G0hgVpIfdJPrjvI\"}",
       "modified_files": [],
-      "retry_count": 0,
+      "retry_count": 1,
       "max_retries": 2,
       "timeout_seconds": 120
     },
     {
       "id": "TASK-003",
-      "title": "GUI-Komponenten erstellen",
-      "description": "Die notwendigen GUI-Komponenten wie Spalten für NR, Name, Beschreibung und Status erstellen und mit Tailwind und Shad/cn stylen",
+      "title": "API-Route item_attachments auf sqlite3 migrieren",
+      "description": "Ersetze better-sqlite3 Imports und Datenbankzugriffe in app/api/item_attachments/route.js durch sqlite3/sqlite. Nutze die aktualisierte lib/db.js Datenbankverbindung.",
       "category": "code",
       "priority": "high",
-      "target_agent": "coder",
-      "affected_files": [],
+      "target_agent": "fix",
+      "affected_files": [
+        "app/api/item_attachments/route.js"
+      ],
       "dependencies": [
-        "TASK-001",
         "TASK-002"
       ],
-      "source_issue": "Keine GUI-Komponenten vorhanden",
-      "source_type": "initial",
-      "status": "pending",
+      "source_issue": "Library WARNING: VERBOTENE LIBRARY: better-sqlite3 in app/api/item_attachments/route.js",
+      "source_type": "sandbox",
+      "status": "in_progress",
       "dart_id": null,
-      "created_at": "2026-02-22T17:55:46.552225",
-      "started_at": null,
+      "created_at": "2026-02-24T19:48:20.625994",
+      "started_at": "2026-02-24T20:02:03.616584",
       "completed_at": null,
       "result": null,
       "error_message": null,
@@ -78,21 +87,23 @@
     },
     {
       "id": "TASK-004",
-      "title": "Glassmorphismus-Elemente implementieren",
-      "description": "Die Glassmorphismus-Elemente wie Hover- und Schatten-Effekte und Frost-Glas-Elemente implementieren",
+      "title": "API-Route item_status_history auf sqlite3 migrieren",
+      "description": "Ersetze better-sqlite3 Imports und Datenbankzugriffe in app/api/item_status_history/route.js durch sqlite3/sqlite. Nutze die aktualisierte lib/db.js Datenbankverbindung.",
       "category": "code",
-      "priority": "medium",
-      "target_agent": "coder",
-      "affected_files": [],
-      "dependencies": [
-        "TASK-003"
+      "priority": "high",
+      "target_agent": "fix",
+      "affected_files": [
+        "app/api/item_status_history/route.js"
       ],
-      "source_issue": "Keine Glassmorphismus-Elemente vorhanden",
-      "source_type": "initial",
-      "status": "pending",
+      "dependencies": [
+        "TASK-002"
+      ],
+      "source_issue": "Library WARNING: VERBOTENE LIBRARY: better-sqlite3 in app/api/item_status_history/route.js",
+      "source_type": "sandbox",
+      "status": "in_progress",
       "dart_id": null,
-      "created_at": "2026-02-22T17:55:46.552227",
-      "started_at": null,
+      "created_at": "2026-02-24T19:48:20.625996",
+      "started_at": "2026-02-24T20:02:03.639886",
       "completed_at": null,
       "result": null,
       "error_message": null,
@@ -103,21 +114,23 @@
     },
     {
       "id": "TASK-005",
-      "title": "Farbschema implementieren",
-      "description": "Das Farbschema mit den Primärfarben Blau (#2b336a), Rot (#870010) und Grau (#7c7c6b) implementieren",
+      "title": "API-Route statuses auf sqlite3 migrieren",
+      "description": "Ersetze better-sqlite3 Imports und Datenbankzugriffe in app/api/statuses/route.js durch sqlite3/sqlite. Nutze die aktualisierte lib/db.js Datenbankverbindung.",
       "category": "code",
-      "priority": "low",
-      "target_agent": "coder",
-      "affected_files": [],
-      "dependencies": [
-        "TASK-003"
+      "priority": "high",
+      "target_agent": "fix",
+      "affected_files": [
+        "app/api/statuses/route.js"
       ],
-      "source_issue": "Kein Farbschema vorhanden",
-      "source_type": "initial",
-      "status": "pending",
+      "dependencies": [
+        "TASK-002"
+      ],
+      "source_issue": "Library WARNING: VERBOTENE LIBRARY: better-sqlite3 in app/api/statuses/route.js",
+      "source_type": "sandbox",
+      "status": "in_progress",
       "dart_id": null,
-      "created_at": "2026-02-22T17:55:46.552229",
-      "started_at": null,
+      "created_at": "2026-02-24T19:48:20.625998",
+      "started_at": "2026-02-24T20:02:03.683102",
       "completed_at": null,
       "result": null,
       "error_message": null,
@@ -128,22 +141,23 @@
     },
     {
       "id": "TASK-006",
-      "title": "Bugs und Ideen erfassen",
-      "description": "Die Funktionalität zum Erfassen von Bugs und Ideen implementieren und mit der Datenbank verbinden",
+      "title": "API-Route items auf sqlite3 migrieren",
+      "description": "Ersetze better-sqlite3 Imports und Datenbankzugriffe in app/api/items/route.js durch sqlite3/sqlite. Nutze die aktualisierte lib/db.js Datenbankverbindung.",
       "category": "code",
       "priority": "high",
-      "target_agent": "coder",
-      "affected_files": [],
-      "dependencies": [
-        "TASK-002",
-        "TASK-003"
+      "target_agent": "fix",
+      "affected_files": [
+        "app/api/items/route.js"
       ],
-      "source_issue": "Keine Funktionalität zum Erfassen von Bugs und Ideen vorhanden",
-      "source_type": "initial",
-      "status": "pending",
+      "dependencies": [
+        "TASK-002"
+      ],
+      "source_issue": "Library WARNING: VERBOTENE LIBRARY: better-sqlite3. Betroffene Dateien: app/api/items/route.js",
+      "source_type": "sandbox",
+      "status": "in_progress",
       "dart_id": null,
-      "created_at": "2026-02-22T17:55:46.552231",
-      "started_at": null,
+      "created_at": "2026-02-24T19:48:20.626001",
+      "started_at": "2026-02-24T20:02:03.729483",
       "completed_at": null,
       "result": null,
       "error_message": null,
@@ -154,20 +168,24 @@
     },
     {
       "id": "TASK-007",
-      "title": "Status ändern",
-      "description": "Die Funktionalität zum Ändern des Status von Bugs und Ideen implementieren",
+      "title": "Hauptlayout mit Navigation und Header",
+      "description": "Erstelle das Hauptlayout der App mit einem glassmorphischen Header, App-Titel 'BugTracker', Aktions-Buttons für 'Neuer Eintrag'. Implementiere ein responsives Grid-Layout mit Glassmorphismus-Background und animierten Gradient-Overlays für visuelles Interesse",
       "category": "code",
-      "priority": "high",
+      "priority": "medium",
       "target_agent": "coder",
-      "affected_files": [],
-      "dependencies": [
-        "TASK-006"
+      "affected_files": [
+        "app/page.tsx",
+        "app/layout.tsx",
+        "components/header.tsx"
       ],
-      "source_issue": "Keine Funktionalität zum Ändern des Status vorhanden",
+      "dependencies": [
+        "TASK-004"
+      ],
+      "source_issue": "eine umwerfende GUI mit perfekter usability",
       "source_type": "initial",
       "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-22T17:55:46.552233",
+      "created_at": "2026-02-24T19:19:46.703791",
       "started_at": null,
       "completed_at": null,
       "result": null,
@@ -179,20 +197,23 @@
     },
     {
       "id": "TASK-008",
-      "title": "Unit-Tests erstellen",
-      "description": "Unit-Tests für die Funktionen erstellen, um sicherzustellen, dass sie korrekt funktionieren",
-      "category": "test",
-      "priority": "high",
-      "target_agent": "tester",
-      "affected_files": [],
-      "dependencies": [
-        "TASK-007"
+      "title": "State Management mit React Query",
+      "description": "Implementiere Tanstack React Query für effizientes State Management. Erstelle custom hooks: useGetTasks, useCreateTask, useUpdateTask, useDeleteTask. Implementiere optimistic updates für bessere UX beim Status-Wechsel",
+      "category": "code",
+      "priority": "medium",
+      "target_agent": "coder",
+      "affected_files": [
+        "lib/hooks/use-tasks.ts",
+        "app/providers.tsx"
       ],
-      "source_issue": "Unit-Tests sind erforderlich",
+      "dependencies": [
+        "TASK-003"
+      ],
+      "source_issue": "der status muss gewechselt werden können",
       "source_type": "initial",
       "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-22T17:18:54.592628",
+      "created_at": "2026-02-24T19:19:46.703794",
       "started_at": null,
       "completed_at": null,
       "result": null,
@@ -204,20 +225,24 @@
     },
     {
       "id": "TASK-009",
-      "title": "Integration-Tests erstellen",
-      "description": "Integration-Tests erstellen, um sicherzustellen, dass die Funktionen korrekt miteinander interagieren",
-      "category": "test",
-      "priority": "high",
-      "target_agent": "tester",
-      "affected_files": [],
-      "dependencies": [
-        "TASK-008"
+      "title": "Animations und Micro-Interactions",
+      "description": "Füge Framer Motion Animationen hinzu: Smooth transitions beim Status-Wechsel, Hover-Animationen für Glassmorphismus-Cards, Stagger-Animation beim Laden der Task-Liste, Success/Error Toast-Notifications. Implementiere subtle parallax effects für depth",
+      "category": "code",
+      "priority": "low",
+      "target_agent": "coder",
+      "affected_files": [
+        "components/animations.tsx",
+        "lib/motion-variants.ts"
       ],
-      "source_issue": "Integration-Tests sind erforderlich",
+      "dependencies": [
+        "TASK-005",
+        "TASK-006"
+      ],
+      "source_issue": "umwerfende GUI mit perfekter usability und schönen glassmorphismus elementen mit hover",
       "source_type": "initial",
       "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-22T17:18:54.592631",
+      "created_at": "2026-02-24T19:19:46.703796",
       "started_at": null,
       "completed_at": null,
       "result": null,
@@ -229,20 +254,26 @@
     },
     {
       "id": "TASK-010",
-      "title": "Dokumentation erstellen",
-      "description": "Eine Dokumentation erstellen, die die Funktionalität und die Verwendung der Anwendung beschreibt",
-      "category": "docs",
-      "priority": "low",
-      "target_agent": "docs",
-      "affected_files": [],
-      "dependencies": [
-        "TASK-009"
+      "title": "Responsive Design und Mobile Optimierung",
+      "description": "Optimiere alle Komponenten für Mobile, Tablet und Desktop. Implementiere touch-friendly Interactions, angepasste Glassmorphismus-Effekte für Mobile Performance, Swipe-to-delete für Mobile Tasks, responsive Typography Scale",
+      "category": "refactor",
+      "priority": "medium",
+      "target_agent": "coder",
+      "affected_files": [
+        "components/task-table.tsx",
+        "components/task-dialog.tsx",
+        "app/globals.css"
       ],
-      "source_issue": "Eine Dokumentation ist erforderlich",
+      "dependencies": [
+        "TASK-005",
+        "TASK-006",
+        "TASK-007"
+      ],
+      "source_issue": "perfekter usability",
       "source_type": "initial",
       "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-22T17:18:54.592634",
+      "created_at": "2026-02-24T19:19:46.703798",
       "started_at": null,
       "completed_at": null,
       "result": null,
@@ -254,36 +285,8 @@
     },
     {
       "id": "TASK-011",
-      "title": "Fehlende Datei-Referenz beheben",
-      "description": "In der Datei index.html die fehlende Referenz auf das Script '/src/client/main.jsx' hinzufügen",
-      "category": "code",
-      "priority": "critical",
-      "target_agent": "fix",
-      "affected_files": [
-        "index.html"
-      ],
-      "dependencies": [],
-      "source_issue": "HTML 'index.html': Script '/src/client/main.jsx' nicht gefunden",
-      "source_type": "sandbox",
-      "status": "completed",
-      "dart_id": null,
-      "created_at": "2026-02-22T14:54:12.325942",
-      "started_at": "2026-02-22T14:54:12.788802",
-      "completed_at": "2026-02-22T14:54:17.916972",
-      "result": "### CORRECTION: index.html\n```\n<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"UTF-8\">\n  <title>React SPA</title>\n</head>\n<body>\n  <div id=\"root\"></div>\n\n  <!-- Added script reference to the main React entry point -->\n  <script type=\"module\" src=\"/src/client/main.jsx\"></script>\n</body>\n</html>\n```",
-      "error_message": null,
-      "modified_files": [
-        "index.html",
-        "/src/client/main.jsx"
-      ],
-      "retry_count": 0,
-      "max_retries": 2,
-      "timeout_seconds": 120
-    },
-    {
-      "id": "TASK-012",
-      "title": "Fehlende Dependency hinzufügen",
-      "description": "In der Datei package.json die fehlende Dependency '@playwright/test' hinzufügen",
+      "title": "Package.json Dependencies korrigieren",
+      "description": "Prüfe und korrigiere die Dependencies in package.json. Stelle sicher, dass alle benötigten Pakete korrekt definiert sind und keine Versionskonflikte bestehen. Führe npm install aus und verifiziere, dass keine Fehler auftreten.",
       "category": "config",
       "priority": "critical",
       "target_agent": "fix",
@@ -291,17 +294,42 @@
         "package.json"
       ],
       "dependencies": [],
-      "source_issue": "Fehlende Dependencies in package.json: @playwright/test",
-      "source_type": "sandbox",
+      "source_issue": "[TASK-008] Package.json Dependencies prüfen und korrigieren: Server konnte nicht gestartet werden",
+      "source_type": "reviewer",
+      "status": "pending",
+      "dart_id": null,
+      "created_at": "2026-02-24T16:14:46.941682",
+      "started_at": "2026-02-24T16:14:47.150031",
+      "completed_at": null,
+      "result": null,
+      "error_message": "Retry geplant. Fehler: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"openai/gpt-oss-120b:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"OpenInference\",\"is_byok\":false}},\"user_id\":\"user_2wZeGHQVFxb9G0hgVpIfdJPrjvI\"}",
+      "modified_files": [],
+      "retry_count": 1,
+      "max_retries": 2,
+      "timeout_seconds": 120
+    },
+    {
+      "id": "TASK-012",
+      "title": "API-Route status_types Syntax-Fehler beheben",
+      "description": "Analysiere app/api/status_types/route.js auf Syntax-Fehler. Prüfe korrekte Export-Statements für GET/POST/PUT/DELETE Handler, validiere async/await Syntax und stelle sicher, dass alle Response-Objekte korrekt formatiert sind.",
+      "category": "code",
+      "priority": "critical",
+      "target_agent": "fix",
+      "affected_files": [
+        "app/api/status_types/route.js"
+      ],
+      "dependencies": [],
+      "source_issue": "[TASK-010] API-Route status_types Syntax prüfen: Server konnte nicht gestartet werden",
+      "source_type": "reviewer",
       "status": "completed",
       "dart_id": null,
-      "created_at": "2026-02-22T14:54:12.325946",
-      "started_at": "2026-02-22T14:54:12.844038",
-      "completed_at": "2026-02-22T14:54:21.383317",
-      "result": "### CORRECTION: package.json\n```\n{\n  \"name\": \"my-app\",\n  \"version\": \"1.0.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"start\": \"react-scripts start\",\n    \"build\": \"react-scripts build\",\n    \"test\": \"react-scripts test\",\n    \"eject\": \"react-scripts eject\"\n  },\n  \"dependencies\": {\n    \"react\": \"^18.2.0\",\n    \"react-dom\": \"^18.2.0\",\n    \"react-scripts\": \"5.0.1\"\n  },\n  \"devDependencies\": {\n    \"@playwright/test\": \"^1.0.0\"\n  }\n}\n```",
+      "created_at": "2026-02-24T16:14:46.941692",
+      "started_at": "2026-02-24T16:14:47.168286",
+      "completed_at": "2026-02-24T16:15:24.841911",
+      "result": "### CORRECTION: app/api/status_types/route.js\n```javascript\nimport { open } from 'sqlite';\nimport sqlite3 from 'sqlite3';\n\n/**\n * Helper to get a SQLite database connection.\n */\nasync function getDb() {\n  return open({\n    filename: './database.sqlite',\n    driver: sqlite3.Database,\n  });\n}\n\n/**\n * GET handler – returns all status types.\n */\nexport async function GET(request) {\n  try {\n    const db = await getDb();\n    const rows = await db.all('SELECT * FROM status_types');\n    await db.close();\n\n    return new Response(JSON.stringify(rows), {\n      status: 200,\n      headers: { 'Content-Type': 'application/json' },\n    });\n  } catch (error) {\n    return new Response(JSON.stringify({ error: error.message }), {\n      status: 500,\n      headers: { 'Content-Type': 'application/json' },\n    });\n  }\n}\n\n/**\n * POST handler – creates a new status type.\n * Expects a JSON body: { name: string }\n */\nexport async function POST(request) {\n  try {\n    const { name } = await request.json();\n    if (!name) {\n      return new Response(JSON.stringify({ error: 'Missing name' }), {\n        status: 400,\n        headers: { 'Content-Type': 'application/json' },\n      });\n    }\n\n    const db = await getDb();\n    const result = await db.run('INSERT INTO status_types (name) VALUES (?)', name);\n    await db.close();\n\n    return new Response(JSON.stringify({ id: result.lastID, name }), {\n      status: 201,\n      headers: { 'Content-Type': 'application/json' },\n    });\n  } catch (error) {\n    return new Response(JSON.stringify({ error: error.message }), {\n      status: 500,\n      headers: { 'Content-Type': 'application/json' },\n    });\n  }\n}\n\n/**\n * PUT handler – updates an existing status type.\n * Expects a JSON body: { id: number, name: string }\n */\nexport async function PUT(request) {\n  try {\n    const { id, name } = await request.json();\n    if (!id || !name) {\n      return new Response(JSON.stringify({ error: 'Missing id or name' }), {\n        status: 400,\n        headers: { 'Content-Typ",
       "error_message": null,
       "modified_files": [
-        "package.json"
+        "app/api/status_types/route.js"
       ],
       "retry_count": 0,
       "max_retries": 2,
@@ -309,54 +337,49 @@
     },
     {
       "id": "TASK-013",
-      "title": "Server-Startprobleme beheben",
-      "description": "Den Fehler beheben, der den Server-Start verhindert, indem die betroffenen Dateien wie vite.config.js, package.json, src/client/main.jsx, src/database.js, src/client/hooks/useEntries.js, src/api/index.js, src/server.js, app/api/items/route.js, src/routes/lookups.js überprüft werden",
-      "category": "code",
-      "priority": "critical",
-      "target_agent": "coder",
+      "title": "Server-Start-Skript debuggen",
+      "description": "Überprüfe run.bat auf korrekte Befehle und Pfade. Stelle sicher, dass npm run dev oder npm start korrekt aufgerufen wird. Füge Error-Handling und Logging hinzu, um Start-Probleme besser zu diagnostizieren.",
+      "category": "config",
+      "priority": "high",
+      "target_agent": "fix",
       "affected_files": [
-        "vite.config.js",
-        "package.json",
-        "src/client/main.jsx",
-        "src/database.js",
-        "src/client/hooks/useEntries.js",
-        "src/api/index.js",
-        "src/server.js",
-        "app/api/items/route.js",
-        "src/routes/lookups.js"
+        "run.bat"
       ],
-      "dependencies": [],
-      "source_issue": "Testergebnis: ERROR. Probleme: Server konnte nicht gestartet werden",
-      "source_type": "sandbox",
-      "status": "pending",
+      "dependencies": [
+        "TASK-001",
+        "TASK-002"
+      ],
+      "source_issue": "Server konnte nicht gestartet werden",
+      "source_type": "reviewer",
+      "status": "completed",
       "dart_id": null,
-      "created_at": "2026-02-22T14:54:12.325948",
-      "started_at": "2026-02-22T14:54:12.897320",
-      "completed_at": null,
-      "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"qwen/qwen3-coder:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"Venice\",\"is_byok\":false}},\"user_id\":\"user_2wZeGHQVFxb9G0hgVpIfdJPrjvI\"}",
-      "modified_files": [],
-      "retry_count": 1,
+      "created_at": "2026-02-24T16:14:46.941697",
+      "started_at": "2026-02-24T16:17:17.756107",
+      "completed_at": "2026-02-24T16:17:47.107243",
+      "result": "### CORRECTION: run.bat\n```\n@echo off\nrem Change to the directory where this script resides\ncd /d \"%~dp0\"\n\necho Starting Next.js development server...\nnpm run dev\n\nrem Check if the npm command succeeded\nif %errorlevel% neq 0 (\n    echo Error: Failed to start the server (exit code %errorlevel%).\n) else (\n    echo Server started successfully.\n)\n\npause\n```",
+      "error_message": null,
+      "modified_files": [
+        "run.bat"
+      ],
+      "retry_count": 0,
       "max_retries": 2,
       "timeout_seconds": 120
     },
     {
       "id": "TASK-014",
-      "title": "Farbwert ersetzen",
-      "description": "Ersetze alle Vorkommen von 'purple' durch einen erlaubten Farbwert, z. B. 'blue' oder 'indigo' in src/utils/constants.js",
-      "category": "code",
+      "title": "API-Verbindung für Review-Modelle prüfen",
+      "description": "Überprüfe die API-Konfiguration für litellm/OpenRouter. Verifiziere API-Keys, Endpoints und Rate-Limits. Implementiere Retry-Logik und Fallback-Mechanismen für RateLimitErrors.",
+      "category": "config",
       "priority": "medium",
       "target_agent": "coder",
-      "affected_files": [
-        "src/utils/constants.js"
-      ],
+      "affected_files": [],
       "dependencies": [],
-      "source_issue": "Farbverletzung (Regel 19): 'purple' gefunden — keine blue-purple Gradients verwenden",
+      "source_issue": "litellm.RateLimitError: RateLimitError: OpenrouterException - Provider returned",
       "source_type": "reviewer",
       "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-22T14:54:33.023183",
-      "started_at": "2026-02-22T14:54:33.582767",
+      "created_at": "2026-02-24T16:14:46.941701",
+      "started_at": "2026-02-24T16:14:47.213782",
       "completed_at": null,
       "result": null,
       "error_message": "Retry geplant. Fehler: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"qwen/qwen3-coder:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"Venice\",\"is_byok\":false}},\"user_id\":\"user_2wZeGHQVFxb9G0hgVpIfdJPrjvI\"}",
@@ -367,25 +390,26 @@
     },
     {
       "id": "TASK-015",
-      "title": "Root-Verzeichnis setzen",
-      "description": "Setze in vite.config.js explizit den Root oder passe den Script-Pfad in index.html an",
+      "title": "Server-Startproblem diagnostizieren und beheben",
+      "description": "Analysiere warum der Next.js Server nicht startet. Prüfe: 1) package.json auf fehlende Dependencies (next, react, react-dom), 2) Syntax-Fehler in app/layout.js und app/page.js, 3) Port-Konflikte oder Umgebungsvariablen, 4) Node.js Version Kompatibilität",
       "category": "config",
-      "priority": "high",
-      "target_agent": "coder",
+      "priority": "critical",
+      "target_agent": "fix",
       "affected_files": [
-        "vite.config.js",
-        "index.html"
+        "package.json",
+        "app/layout.js",
+        "app/page.js"
       ],
       "dependencies": [],
-      "source_issue": "index.html referenziert /src/client/main.jsx als Einstiegspunkt, jedoch ist diese Datei im Build-Kontext (Vite-Root) nicht auffindbar",
-      "source_type": "reviewer",
+      "source_issue": "Server konnte nicht gestartet werden",
+      "source_type": "sandbox",
       "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-22T14:54:33.023199",
-      "started_at": "2026-02-22T14:54:33.543506",
+      "created_at": "2026-02-24T16:28:27.545286",
+      "started_at": "2026-02-24T16:28:27.757934",
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"qwen/qwen3-coder:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"Venice\",\"is_byok\":false}},\"user_id\":\"user_2wZeGHQVFxb9G0hgVpIfdJPrjvI\"}",
+      "error_message": "Retry geplant. Fehler: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"openai/gpt-oss-120b:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"OpenInference\",\"is_byok\":false}},\"user_id\":\"user_2wZeGHQVFxb9G0hgVpIfdJPrjvI\"}",
       "modified_files": [],
       "retry_count": 1,
       "max_retries": 2,
@@ -393,50 +417,55 @@
     },
     {
       "id": "TASK-016",
-      "title": "Abhängigkeit hinzufügen",
-      "description": "Füge @playwright/test zu devDependencies in package.json hinzu",
+      "title": "run.bat Script auf korrektes Start-Command prüfen",
+      "description": "Verifiziere dass run.bat das korrekte npm/yarn Command zum Starten des Next.js Servers verwendet (npm run dev oder yarn dev). Stelle sicher dass alle Pfade korrekt sind und das Script ausführbar ist",
       "category": "config",
-      "priority": "critical",
-      "target_agent": "coder",
+      "priority": "high",
+      "target_agent": "fix",
       "affected_files": [
-        "package.json"
+        "run.bat"
       ],
-      "dependencies": [],
-      "source_issue": "Fehlende Dependencies in package.json: @playwright/test",
-      "source_type": "reviewer",
-      "status": "pending",
+      "dependencies": [
+        "TASK-001"
+      ],
+      "source_issue": "Server konnte nicht gestartet werden",
+      "source_type": "sandbox",
+      "status": "completed",
       "dart_id": null,
-      "created_at": "2026-02-22T14:54:33.023206",
-      "started_at": "2026-02-22T14:54:33.451451",
-      "completed_at": null,
-      "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"qwen/qwen3-coder:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"Venice\",\"is_byok\":false}},\"user_id\":\"user_2wZeGHQVFxb9G0hgVpIfdJPrjvI\"}",
-      "modified_files": [],
-      "retry_count": 1,
+      "created_at": "2026-02-24T16:28:27.545302",
+      "started_at": "2026-02-24T16:30:49.268926",
+      "completed_at": "2026-02-24T16:33:06.801033",
+      "result": "### CORRECTION: run.bat\n```\n@echo off\nrem Change to the directory where this script resides\ncd /d \"%~dp0\"\n\nrem Start the Next.js development server\nnpm run dev\n\nrem If the command fails, output an error message and exit with the same code\nif %errorlevel% neq 0 (\n  echo Error: Failed to start the Next.js server.\n  exit /b %errorlevel%\n)\n```",
+      "error_message": null,
+      "modified_files": [
+        "run.bat"
+      ],
+      "retry_count": 0,
       "max_retries": 2,
       "timeout_seconds": 120
     },
     {
       "id": "TASK-017",
-      "title": "Server-Startprobleme beheben",
-      "description": "Korrigiere den Import in src/api/index.js auf den korrekten relativen Pfad und registriere alle Router in src/server.js",
+      "title": "API Route auf Syntax-Fehler prüfen",
+      "description": "Überprüfe app/api/status_types/route.js auf Syntax-Fehler, fehlende Exports oder falsche Handler-Definitionen. Stelle sicher dass GET/POST Handler korrekt exportiert sind",
       "category": "code",
-      "priority": "critical",
-      "target_agent": "coder",
+      "priority": "high",
+      "target_agent": "fix",
       "affected_files": [
-        "src/server.js",
-        "src/api/index.js"
+        "app/api/status_types/route.js"
       ],
-      "dependencies": [],
-      "source_issue": "Server-Startprobleme: Testergebnis: ERROR. Probleme: Server konnte nicht gestartet werden",
-      "source_type": "reviewer",
+      "dependencies": [
+        "TASK-001"
+      ],
+      "source_issue": "Server konnte nicht gestartet werden",
+      "source_type": "sandbox",
       "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-22T14:54:33.023212",
-      "started_at": "2026-02-22T14:54:33.492933",
+      "created_at": "2026-02-24T16:28:27.545306",
+      "started_at": "2026-02-24T16:33:07.008376",
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"qwen/qwen3-coder:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"Venice\",\"is_byok\":false}},\"user_id\":\"user_2wZeGHQVFxb9G0hgVpIfdJPrjvI\"}",
+      "error_message": "Retry geplant. Fehler: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"openai/gpt-oss-120b:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"OpenInference\",\"is_byok\":false}},\"user_id\":\"user_2wZeGHQVFxb9G0hgVpIfdJPrjvI\"}",
       "modified_files": [],
       "retry_count": 1,
       "max_retries": 2,
@@ -444,22 +473,24 @@
     },
     {
       "id": "TASK-018",
-      "title": "Server/Start-Problem beheben",
-      "description": "Serverstart-Problem oder Sandbox-Fehler beheben\n\nOriginal: Sandbox-Fehler",
+      "title": "Datenbankverbindung in lib/db.js erstellen und prüfen",
+      "description": "Erstelle die fehlende lib/db.js Datei mit korrekter SQLite-Verbindung. Implementiere die getDb-Funktion mit sqlite3 und sqlite Modulen. Stelle sicher, dass die Datenbankdatei './database.sqlite' korrekt referenziert wird und die async/await Syntax korrekt ist.",
       "category": "code",
-      "priority": "high",
-      "target_agent": "fix",
-      "affected_files": [],
+      "priority": "critical",
+      "target_agent": "coder",
+      "affected_files": [
+        "lib/db.js"
+      ],
       "dependencies": [],
-      "source_issue": "Sandbox-Fehler",
-      "source_type": "sandbox",
+      "source_issue": "Server konnte nicht gestartet werden - getDb-Funktion fehlt oder hat Syntaxfehler",
+      "source_type": "reviewer",
       "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-22T14:58:49.534124",
-      "started_at": "2026-02-22T14:58:50.000060",
+      "created_at": "2026-02-24T16:36:01.206461",
+      "started_at": "2026-02-24T16:36:01.388198",
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"openai/gpt-oss-120b:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"OpenInference\",\"is_byok\":false}},\"user_id\":\"user_2wZeGHQVFxb9G0hgVpIfdJPrjvI\"}",
+      "error_message": "Retry geplant. Fehler: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"qwen/qwen3-coder:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"Venice\",\"is_byok\":false}},\"user_id\":\"user_2wZeGHQVFxb9G0hgVpIfdJPrjvI\"}",
       "modified_files": [],
       "retry_count": 1,
       "max_retries": 2,
@@ -467,74 +498,81 @@
     },
     {
       "id": "TASK-019",
-      "title": "Server/Start-Problem beheben",
-      "description": "Serverstart-Problem oder Sandbox-Fehler beheben\n\nOriginal: Server konnte nicht gestartet werden",
-      "category": "code",
-      "priority": "high",
+      "title": "SQLite-Dependencies in package.json hinzufügen",
+      "description": "Überprüfe und ergänze die package.json mit den erforderlichen SQLite-Dependencies: 'sqlite3' und 'sqlite'. Stelle sicher, dass die Versionen kompatibel mit Next.js sind. Füge auch eventuelle Build-Dependencies für native Module hinzu.",
+      "category": "config",
+      "priority": "critical",
       "target_agent": "fix",
-      "affected_files": [],
+      "affected_files": [
+        "package.json"
+      ],
       "dependencies": [],
-      "source_issue": "Server konnte nicht gestartet werden",
-      "source_type": "sandbox",
-      "status": "pending",
-      "dart_id": null,
-      "created_at": "2026-02-22T14:58:49.534142",
-      "started_at": "2026-02-22T14:58:50.055198",
-      "completed_at": null,
-      "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"openai/gpt-oss-120b:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"OpenInference\",\"is_byok\":false}},\"user_id\":\"user_2wZeGHQVFxb9G0hgVpIfdJPrjvI\"}",
-      "modified_files": [],
-      "retry_count": 1,
-      "max_retries": 2,
-      "timeout_seconds": 120
-    },
-    {
-      "id": "TASK-020",
-      "title": "Server/Start-Problem beheben",
-      "description": "Serverstart-Problem oder Sandbox-Fehler beheben\n\nOriginal: Sandbox-Fehler",
-      "category": "code",
-      "priority": "high",
-      "target_agent": "fix",
-      "affected_files": [],
-      "dependencies": [],
-      "source_issue": "Sandbox-Fehler",
+      "source_issue": "SQLite3-Kompilierungsfehler aufgrund fehlender Build-Tools",
       "source_type": "reviewer",
       "status": "completed",
       "dart_id": null,
-      "created_at": "2026-02-22T14:58:52.508306",
-      "started_at": "2026-02-22T14:58:52.911057",
-      "completed_at": "2026-02-22T14:58:56.927254",
-      "result": "Um das Server‑Start‑Problem zu beheben, benötige ich den aktuellen Inhalt der Datei(en), die den Server starten (z. B. `server.js`, `index.js`, `webpack.config.js` oder ähnliche Konfigurations‑/Start‑Dateien). Bitte stellen Sie den vollständigen Code dieser Datei(en) zur Verfügung, damit ich den konkreten Fehler lokalisieren und gezielt korrigieren kann.",
+      "created_at": "2026-02-24T16:36:01.206479",
+      "started_at": "2026-02-24T16:36:01.403408",
+      "completed_at": "2026-02-24T16:38:26.103857",
+      "result": "### CORRECTION: package.json\n```json\n{\n  \"name\": \"my-next-app\",\n  \"version\": \"1.0.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"dev\": \"next dev\",\n    \"build\": \"next build\",\n    \"start\": \"next start\"\n  },\n  \"dependencies\": {\n    \"next\": \"latest\",\n    \"react\": \"latest\",\n    \"react-dom\": \"latest\",\n    \"sqlite3\": \"^5.1.6\",\n    \"sqlite\": \"^4.2.0\"\n  }\n}\n```",
       "error_message": null,
       "modified_files": [
-        "index.js",
-        "server.js"
+        "package.json"
       ],
       "retry_count": 0,
       "max_retries": 2,
       "timeout_seconds": 120
     },
     {
+      "id": "TASK-020",
+      "title": "Next.js Konfigurationsdatei erstellen",
+      "description": "Erstelle eine next.config.js Datei mit korrekter Konfiguration für experimentelle App-Directory Unterstützung und API-Rewrites. Stelle sicher, dass die Konfiguration mit dem aktuellen Next.js Setup kompatibel ist.",
+      "category": "config",
+      "priority": "high",
+      "target_agent": "coder",
+      "affected_files": [
+        "next.config.js"
+      ],
+      "dependencies": [],
+      "source_issue": "Fehlende Next.js-Konfiguration könnte Server-Start verhindern",
+      "source_type": "reviewer",
+      "status": "pending",
+      "dart_id": null,
+      "created_at": "2026-02-24T16:36:01.206483",
+      "started_at": "2026-02-24T16:36:01.446910",
+      "completed_at": null,
+      "result": null,
+      "error_message": "Retry geplant. Fehler: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"qwen/qwen3-coder:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"Venice\",\"is_byok\":false}},\"user_id\":\"user_2wZeGHQVFxb9G0hgVpIfdJPrjvI\"}",
+      "modified_files": [],
+      "retry_count": 1,
+      "max_retries": 2,
+      "timeout_seconds": 120
+    },
+    {
       "id": "TASK-021",
-      "title": "Server/Start-Problem beheben",
-      "description": "Serverstart-Problem oder Sandbox-Fehler beheben\n\nOriginal: Server konnte nicht gestartet werden",
+      "title": "API Route status_types auf Datenbankverbindung prüfen",
+      "description": "Überprüfe app/api/status_types/route.js auf korrekte Import-Statements der getDb-Funktion. Stelle sicher, dass alle async/await Calls korrekt sind und Fehlerbehandlung implementiert ist. Prüfe, ob die Route korrekt exportiert wird.",
       "category": "code",
       "priority": "high",
       "target_agent": "fix",
-      "affected_files": [],
-      "dependencies": [],
-      "source_issue": "Server konnte nicht gestartet werden",
+      "affected_files": [
+        "app/api/status_types/route.js"
+      ],
+      "dependencies": [
+        "TASK-001"
+      ],
+      "source_issue": "API Route könnte Syntaxfehler haben die Server-Start verhindern",
       "source_type": "reviewer",
       "status": "completed",
       "dart_id": null,
-      "created_at": "2026-02-22T14:58:52.508319",
-      "started_at": "2026-02-22T14:58:52.961825",
-      "completed_at": "2026-02-22T14:58:57.114058",
-      "result": "Um den Server‑Start‑Fehler zu beheben, benötige ich den aktuellen Inhalt der betroffenen Datei(en) (z. B. `server.js`, `index.js` oder eine ähnliche Datei, die den Server startet). Bitte stellen Sie mir den vollständigen Code dieser Datei(en) zur Verfügung, damit ich die genaue Ursache identifizieren und die minimale Korrektur vornehmen kann.",
+      "created_at": "2026-02-24T16:36:01.206486",
+      "started_at": "2026-02-24T16:38:46.998284",
+      "completed_at": "2026-02-24T16:41:31.392219",
+      "result": "### CORRECTION: app/api/status_types/route.js\n```\nimport { getDb } from '@/lib/db';\n\n/**\n * GET handler – returns all status types.\n */\nexport async function GET(request) {\n  try {\n    const db = await getDb();\n    const rows = await db.all('SELECT * FROM status_types');\n    return new Response(JSON.stringify(rows), {\n      status: 200,\n      headers: { 'Content-Type': 'application/json' },\n    });\n  } catch (error) {\n    console.error('GET /api/status_types error:', error);\n    return new Response(JSON.stringify({ error: 'Internal Server Error' }), {\n      status: 500,\n      headers: { 'Content-Type': 'application/json' },\n    });\n  }\n}\n\n/**\n * POST handler – creates a new status type.\n * Expects a JSON body with a \"name\" field.\n */\nexport async function POST(request) {\n  try {\n    const { name } = await request.json();\n    if (!name) {\n      throw new Error('Missing name');\n    }\n\n    const db = await getDb();\n    const result = await db.run('INSERT INTO status_types (name) VALUES (?)', [name]);\n\n    return new Response(JSON.stringify({ id: result.lastID, name }), {\n      status: 201,\n      headers: { 'Content-Type': 'application/json' },\n    });\n  } catch (error) {\n    console.error('POST /api/status_types error:', error);\n    return new Response(JSON.stringify({ error: 'Bad Request' }), {\n      status: 400,\n      headers: { 'Content-Type': 'application/json' },\n    });\n  }\n}\n```",
       "error_message": null,
       "modified_files": [
-        "index.js",
-        "server.js"
+        "request.json",
+        "app/api/status_types/route.js"
       ],
       "retry_count": 0,
       "max_retries": 2,
@@ -542,27 +580,28 @@
     },
     {
       "id": "TASK-022",
-      "title": "Server/Start-Problem beheben",
-      "description": "Serverstart-Problem oder Sandbox-Fehler beheben\n\nOriginal: Sandbox-Fehler",
+      "title": "Datenbankinitialisierung implementieren",
+      "description": "Erstelle ein Skript zur Datenbankinitialisierung, das die SQLite-Datenbank mit allen erforderlichen Tabellen (todo_items, status_types, activity_log) erstellt. Füge die Initial-Daten für status_types hinzu. Integriere dies in den Server-Start-Prozess.",
       "category": "code",
       "priority": "high",
-      "target_agent": "fix",
-      "affected_files": [],
-      "dependencies": [],
-      "source_issue": "Sandbox-Fehler",
-      "source_type": "sandbox",
-      "status": "completed",
-      "dart_id": null,
-      "created_at": "2026-02-22T15:14:16.112483",
-      "started_at": "2026-02-22T15:14:16.478767",
-      "completed_at": "2026-02-22T15:14:26.369354",
-      "result": "Um den Server‑Start‑ bzw. Sandbox‑Fehler zu beheben, benötige ich den aktuellen Inhalt der Datei, in der der Fehler auftritt (z. B. `server.js`, `index.js` oder eine ähnliche Start‑Datei). Bitte stellen Sie mir den vollständigen Code dieser Datei zur Verfügung, damit ich die genaue Ursache finden und gezielt korrigieren kann.",
-      "error_message": null,
-      "modified_files": [
-        "index.js",
-        "server.js"
+      "target_agent": "coder",
+      "affected_files": [
+        "lib/initDb.js"
       ],
-      "retry_count": 0,
+      "dependencies": [
+        "TASK-001"
+      ],
+      "source_issue": "Fehlende Datenbank oder Tabellen könnten Server-Start verhindern",
+      "source_type": "reviewer",
+      "status": "pending",
+      "dart_id": null,
+      "created_at": "2026-02-24T16:36:01.206488",
+      "started_at": "2026-02-24T16:41:31.961354",
+      "completed_at": null,
+      "result": null,
+      "error_message": "Retry geplant. Fehler: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"qwen/qwen3-coder:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"Venice\",\"is_byok\":false}},\"user_id\":\"user_2wZeGHQVFxb9G0hgVpIfdJPrjvI\"}",
+      "modified_files": [],
+      "retry_count": 1,
       "max_retries": 2,
       "timeout_seconds": 120
     },
@@ -1567,302 +1606,6 @@
     }
   ],
   "sessions": [
-    {
-      "timestamp": "2026-02-20T11:35:55.661703",
-      "source": "sandbox",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.0020041465759277344,
-      "task_ids": [
-        "TASK-018"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T11:35:56.290802",
-      "source": "reviewer",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.0020062923431396484,
-      "task_ids": [
-        "TASK-019"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T11:37:20.957667",
-      "source": "sandbox",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.002006053924560547,
-      "task_ids": [
-        "TASK-020"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T11:37:21.734788",
-      "source": "reviewer",
-      "total_tasks": 2,
-      "tasks_by_category": {
-        "code": 2
-      },
-      "tasks_by_priority": {
-        "critical": 1,
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 2
-      },
-      "derivation_time_seconds": 0.003192424774169922,
-      "task_ids": [
-        "TASK-021",
-        "TASK-022"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T11:39:10.464757",
-      "source": "sandbox",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.002736330032348633,
-      "task_ids": [
-        "TASK-023"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T11:39:11.248777",
-      "source": "reviewer",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.0022351741790771484,
-      "task_ids": [
-        "TASK-024"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T11:40:50.490599",
-      "source": "sandbox",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.0025975704193115234,
-      "task_ids": [
-        "TASK-025"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T11:40:51.139034",
-      "source": "reviewer",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.0021638870239257812,
-      "task_ids": [
-        "TASK-026"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T11:42:22.226700",
-      "source": "sandbox",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.003518819808959961,
-      "task_ids": [
-        "TASK-027"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T11:42:22.984931",
-      "source": "reviewer",
-      "total_tasks": 2,
-      "tasks_by_category": {
-        "code": 2
-      },
-      "tasks_by_priority": {
-        "critical": 1,
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 2
-      },
-      "derivation_time_seconds": 0.0029993057250976562,
-      "task_ids": [
-        "TASK-028",
-        "TASK-029"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T11:44:00.463935",
-      "source": "sandbox",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.002749204635620117,
-      "task_ids": [
-        "TASK-030"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T11:44:01.162261",
-      "source": "reviewer",
-      "total_tasks": 2,
-      "tasks_by_category": {
-        "code": 2
-      },
-      "tasks_by_priority": {
-        "critical": 1,
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 2
-      },
-      "derivation_time_seconds": 0.00511622428894043,
-      "task_ids": [
-        "TASK-031",
-        "TASK-032"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T11:45:37.368491",
-      "source": "sandbox",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.002954721450805664,
-      "task_ids": [
-        "TASK-033"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T11:45:38.181368",
-      "source": "reviewer",
-      "total_tasks": 2,
-      "tasks_by_category": {
-        "code": 2
-      },
-      "tasks_by_priority": {
-        "critical": 1,
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 2
-      },
-      "derivation_time_seconds": 0.003512859344482422,
-      "task_ids": [
-        "TASK-034",
-        "TASK-035"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T11:47:11.401470",
-      "source": "sandbox",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.0022268295288085938,
-      "task_ids": [
-        "TASK-036"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T11:47:12.257647",
-      "source": "reviewer",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.0033180713653564453,
-      "task_ids": [
-        "TASK-037"
-      ]
-    },
     {
       "timestamp": "2026-02-20T11:49:01.795009",
       "source": "sandbox",
@@ -3451,24 +3194,436 @@
       "task_ids": [
         "TASK-001"
       ]
+    },
+    {
+      "timestamp": "2026-02-24T14:03:42.238795",
+      "source": "initial",
+      "total_tasks": 13,
+      "tasks_by_category": {
+        "config": 2,
+        "code": 9,
+        "test": 1,
+        "docs": 1
+      },
+      "tasks_by_priority": {
+        "critical": 3,
+        "high": 6,
+        "medium": 3,
+        "low": 1
+      },
+      "tasks_by_agent": {
+        "coder": 11,
+        "tester": 1,
+        "docs": 1
+      },
+      "derivation_time_seconds": 68.33398532867432,
+      "task_ids": [
+        "TASK-001",
+        "TASK-003",
+        "TASK-004",
+        "TASK-002",
+        "TASK-005",
+        "TASK-006",
+        "TASK-007",
+        "TASK-008",
+        "TASK-012",
+        "TASK-009",
+        "TASK-010",
+        "TASK-011",
+        "TASK-013"
+      ]
+    },
+    {
+      "timestamp": "2026-02-24T14:35:53.838305",
+      "source": "initial",
+      "total_tasks": 5,
+      "tasks_by_category": {
+        "code": 3,
+        "test": 1,
+        "docs": 1
+      },
+      "tasks_by_priority": {
+        "high": 4,
+        "low": 1
+      },
+      "tasks_by_agent": {
+        "coder": 3,
+        "tester": 1,
+        "docs": 1
+      },
+      "derivation_time_seconds": 95.76638221740723,
+      "task_ids": [
+        "TASK-014",
+        "TASK-015",
+        "TASK-016",
+        "TASK-017",
+        "TASK-018"
+      ]
+    },
+    {
+      "timestamp": "2026-02-24T14:45:25.863922",
+      "source": "initial",
+      "total_tasks": 1,
+      "tasks_by_category": {
+        "code": 1
+      },
+      "tasks_by_priority": {
+        "medium": 1
+      },
+      "tasks_by_agent": {
+        "coder": 1
+      },
+      "derivation_time_seconds": 25.75933289527893,
+      "task_ids": [
+        "TASK-001"
+      ]
+    },
+    {
+      "timestamp": "2026-02-24T15:10:40.242406",
+      "source": "initial",
+      "total_tasks": 10,
+      "tasks_by_category": {
+        "config": 2,
+        "code": 8
+      },
+      "tasks_by_priority": {
+        "critical": 2,
+        "high": 5,
+        "medium": 2,
+        "low": 1
+      },
+      "tasks_by_agent": {
+        "coder": 10
+      },
+      "derivation_time_seconds": 67.02920913696289,
+      "task_ids": [
+        "TASK-001",
+        "TASK-002",
+        "TASK-003",
+        "TASK-004",
+        "TASK-005",
+        "TASK-006",
+        "TASK-007",
+        "TASK-008",
+        "TASK-009",
+        "TASK-010"
+      ]
+    },
+    {
+      "timestamp": "2026-02-24T15:56:42.564919",
+      "source": "sandbox",
+      "total_tasks": 3,
+      "tasks_by_category": {
+        "config": 2,
+        "code": 1
+      },
+      "tasks_by_priority": {
+        "critical": 1,
+        "high": 1,
+        "medium": 1
+      },
+      "tasks_by_agent": {
+        "fix": 3
+      },
+      "derivation_time_seconds": 43.5073516368866,
+      "task_ids": [
+        "TASK-001",
+        "TASK-002",
+        "TASK-003"
+      ]
+    },
+    {
+      "timestamp": "2026-02-24T15:58:55.069489",
+      "source": "reviewer",
+      "total_tasks": 4,
+      "tasks_by_category": {
+        "config": 3,
+        "code": 1
+      },
+      "tasks_by_priority": {
+        "critical": 2,
+        "high": 2
+      },
+      "tasks_by_agent": {
+        "fix": 4
+      },
+      "derivation_time_seconds": 43.57927227020264,
+      "task_ids": [
+        "TASK-004",
+        "TASK-005",
+        "TASK-006",
+        "TASK-007"
+      ]
+    },
+    {
+      "timestamp": "2026-02-24T16:11:43.161204",
+      "source": "sandbox",
+      "total_tasks": 3,
+      "tasks_by_category": {
+        "config": 2,
+        "code": 1
+      },
+      "tasks_by_priority": {
+        "critical": 2,
+        "high": 1
+      },
+      "tasks_by_agent": {
+        "fix": 3
+      },
+      "derivation_time_seconds": 43.648364305496216,
+      "task_ids": [
+        "TASK-008",
+        "TASK-009",
+        "TASK-010"
+      ]
+    },
+    {
+      "timestamp": "2026-02-24T16:14:47.035861",
+      "source": "reviewer",
+      "total_tasks": 4,
+      "tasks_by_category": {
+        "config": 3,
+        "code": 1
+      },
+      "tasks_by_priority": {
+        "critical": 2,
+        "high": 1,
+        "medium": 1
+      },
+      "tasks_by_agent": {
+        "fix": 3,
+        "coder": 1
+      },
+      "derivation_time_seconds": 34.23081040382385,
+      "task_ids": [
+        "TASK-011",
+        "TASK-012",
+        "TASK-013",
+        "TASK-014"
+      ]
+    },
+    {
+      "timestamp": "2026-02-24T16:28:27.634732",
+      "source": "sandbox",
+      "total_tasks": 3,
+      "tasks_by_category": {
+        "config": 2,
+        "code": 1
+      },
+      "tasks_by_priority": {
+        "critical": 1,
+        "high": 2
+      },
+      "tasks_by_agent": {
+        "fix": 3
+      },
+      "derivation_time_seconds": 31.559111833572388,
+      "task_ids": [
+        "TASK-015",
+        "TASK-016",
+        "TASK-017"
+      ]
+    },
+    {
+      "timestamp": "2026-02-24T16:36:01.286435",
+      "source": "reviewer",
+      "total_tasks": 5,
+      "tasks_by_category": {
+        "code": 3,
+        "config": 2
+      },
+      "tasks_by_priority": {
+        "critical": 2,
+        "high": 3
+      },
+      "tasks_by_agent": {
+        "coder": 3,
+        "fix": 2
+      },
+      "derivation_time_seconds": 39.309874057769775,
+      "task_ids": [
+        "TASK-018",
+        "TASK-019",
+        "TASK-020",
+        "TASK-021",
+        "TASK-022"
+      ]
+    },
+    {
+      "timestamp": "2026-02-24T16:46:04.612256",
+      "source": "initial",
+      "total_tasks": 8,
+      "tasks_by_category": {
+        "config": 2,
+        "code": 6
+      },
+      "tasks_by_priority": {
+        "critical": 3,
+        "high": 4,
+        "medium": 1
+      },
+      "tasks_by_agent": {
+        "coder": 8
+      },
+      "derivation_time_seconds": 46.72714900970459,
+      "task_ids": [
+        "TASK-001",
+        "TASK-002",
+        "TASK-007",
+        "TASK-003",
+        "TASK-004",
+        "TASK-005",
+        "TASK-006",
+        "TASK-008"
+      ]
+    },
+    {
+      "timestamp": "2026-02-24T18:11:51.267262",
+      "source": "initial",
+      "total_tasks": 10,
+      "tasks_by_category": {
+        "config": 1,
+        "code": 9
+      },
+      "tasks_by_priority": {
+        "critical": 2,
+        "high": 5,
+        "medium": 3
+      },
+      "tasks_by_agent": {
+        "coder": 10
+      },
+      "derivation_time_seconds": 62.28152656555176,
+      "task_ids": [
+        "TASK-001",
+        "TASK-002",
+        "TASK-003",
+        "TASK-004",
+        "TASK-005",
+        "TASK-006",
+        "TASK-007",
+        "TASK-008",
+        "TASK-009",
+        "TASK-010"
+      ]
+    },
+    {
+      "timestamp": "2026-02-24T18:46:33.645489",
+      "source": "security",
+      "total_tasks": 1,
+      "tasks_by_category": {
+        "security": 1
+      },
+      "tasks_by_priority": {
+        "critical": 1
+      },
+      "tasks_by_agent": {
+        "security": 1
+      },
+      "derivation_time_seconds": 56.89069986343384,
+      "task_ids": [
+        "TASK-001"
+      ]
+    },
+    {
+      "timestamp": "2026-02-24T18:57:43.771745",
+      "source": "sandbox",
+      "total_tasks": 4,
+      "tasks_by_category": {
+        "code": 2,
+        "config": 1,
+        "test": 1
+      },
+      "tasks_by_priority": {
+        "critical": 1,
+        "high": 3
+      },
+      "tasks_by_agent": {
+        "fix": 2,
+        "coder": 1,
+        "tester": 1
+      },
+      "derivation_time_seconds": 30.652034282684326,
+      "task_ids": [
+        "TASK-002",
+        "TASK-003",
+        "TASK-004",
+        "TASK-005"
+      ]
+    },
+    {
+      "timestamp": "2026-02-24T19:19:46.703840",
+      "source": "initial",
+      "total_tasks": 10,
+      "tasks_by_category": {
+        "config": 2,
+        "code": 7,
+        "refactor": 1
+      },
+      "tasks_by_priority": {
+        "critical": 2,
+        "high": 4,
+        "medium": 3,
+        "low": 1
+      },
+      "tasks_by_agent": {
+        "coder": 10
+      },
+      "derivation_time_seconds": 75.61929297447205,
+      "task_ids": [
+        "TASK-001",
+        "TASK-002",
+        "TASK-003",
+        "TASK-004",
+        "TASK-005",
+        "TASK-006",
+        "TASK-007",
+        "TASK-008",
+        "TASK-010",
+        "TASK-009"
+      ]
+    },
+    {
+      "timestamp": "2026-02-24T19:48:20.687937",
+      "source": "sandbox",
+      "total_tasks": 6,
+      "tasks_by_category": {
+        "config": 1,
+        "code": 5
+      },
+      "tasks_by_priority": {
+        "critical": 2,
+        "high": 4
+      },
+      "tasks_by_agent": {
+        "fix": 5,
+        "coder": 1
+      },
+      "derivation_time_seconds": 39.62195086479187,
+      "task_ids": [
+        "TASK-001",
+        "TASK-002",
+        "TASK-003",
+        "TASK-004",
+        "TASK-005",
+        "TASK-006"
+      ]
     }
   ],
   "summary": {
     "total": 65,
-    "completed": 7,
+    "completed": 8,
     "failed": 0,
-    "pending": 58,
-    "success_rate": 0.1076923076923077,
+    "pending": 53,
+    "success_rate": 0.12307692307692308,
     "sources": [
-      "reviewer",
       "sandbox",
-      "initial"
+      "initial",
+      "reviewer"
     ],
     "agents_used": [
-      "fix",
-      "tester",
       "coder",
-      "docs"
+      "fix"
     ]
   }
 }

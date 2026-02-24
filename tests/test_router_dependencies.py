@@ -6,6 +6,7 @@ Version: 1.0
 Beschreibung: Tests fuer backend/routers/dependencies.py —
               Whitelist-Validierung und Dependency-Endpoints.
 """
+# ÄNDERUNG 24.02.2026: Header ergänzt und Testabdeckung für get_dependency_agent bei ImportError dokumentiert.
 
 import pytest
 from unittest.mock import MagicMock, patch

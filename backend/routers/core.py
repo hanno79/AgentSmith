@@ -38,7 +38,8 @@ async def run_agent_task(request: Request, task_request: TaskRequest, background
     # Loesung: Session-Status pruefen -> HTTP 409 wenn aktiv
     session_mgr = get_session_manager_instance()
     if session_mgr and session_mgr.is_active():
-        current_goal = session_mgr.current_session.get("goal", "")
+        current_session = getattr(session_mgr, "current_session", None) or {}
+        current_goal = current_session.get("goal", "")
         print(f"[Run] Abgelehnt: Session bereits aktiv (Ziel: {current_goal})")
         raise HTTPException(
             status_code=409,

@@ -90,6 +90,8 @@ def sanitize_text(text: str) -> str:
     # User-IDs anonymisieren
     sanitized = re.sub(r'("user_id"\s*:\s*")[^"]+(")', r'\1<REDACTED_USER>\2', sanitized)
     sanitized = re.sub(r"(user_id\s*[:=]\s*)([A-Za-z0-9_\-]+)", r"\1<REDACTED_USER>", sanitized)
+    # ÄNDERUNG 24.02.2026: Erweiterte Datenschutz-Redaktion fuer sensible Identifikatoren
+    # Redigiert E-Mail-Adressen und externe Request IDs in Log-/Fehlertexten.
     sanitized = re.sub(
         r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}",
         "[REDACTED_EMAIL]",

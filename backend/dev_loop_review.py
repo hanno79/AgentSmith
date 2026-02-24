@@ -193,7 +193,6 @@ Wenn der Code FEHLERFREI ist und alle Tests bestanden: Antworte mit "OK"
         )
     except Exception as sdk_error:
         manager._ui_log("Reviewer", "Error", f"Reviewer SDK error: {sdk_error}")
-        manager._update_worker_status("reviewer", "idle")
     if sdk_result and not is_empty_or_invalid_response(sdk_result):
         # Claude SDK Review erfolgreich — Ergebnis-Parsing
         sdk_result = truncate_review_output(sdk_result, max_length=3000)

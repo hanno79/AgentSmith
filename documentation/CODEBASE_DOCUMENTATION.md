@@ -8,7 +8,7 @@
 
 ## 1. Projektübersicht
 
-Das Multi-Agenten-System ist eine umfassende Entwicklungsplattform, die auf dem Prinzip der verteilten künstlichen Intelligenz basiert. Das System orchestriert verschiedene spezialisierte Agenten, dieTogether verschiedene Aufgaben im Softwareentwicklungsprozess übernehmen. Von der initialen Anforderungsanalyse über die Code-Generierung bis hin zum Testen und der Qualitätssicherung wird der gesamte Entwicklungszyklus durch autonome Agenten gesteuert.
+Das Multi-Agenten-System ist eine umfassende Entwicklungsplattform, die auf dem Prinzip der verteilten künstlichen Intelligenz basiert. Das System orchestriert verschiedene spezialisierte Agenten, die zusammen verschiedene Aufgaben im Softwareentwicklungsprozess übernehmen. Von der initialen Anforderungsanalyse über die Code-Generierung bis hin zum Testen und der Qualitätssicherung wird der gesamte Entwicklungszyklus durch autonome Agenten gesteuert.
 
 Das System zeichnet sich durch mehrere Kernmerkmale aus. Zum einen verfügt es über ein intelligentes Model-Routing, das bei Rate-Limits automatisch auf Fallback-Modelle umschaltet. Zum anderen implementiert es ein Budget-Management, das die Nutzung von kostenpflichtigen KI-Ressourcen kontrolliert und optimiert. Die Discovery-Session ermöglicht eine strukturierte Projektaufnahme, bei der die Anforderungen systematisch erfasst und dokumentiert werden.
 
@@ -30,7 +30,7 @@ Das Claude Agent SDK wird als zusätzliches Backend für komplexe Denkaufgaben e
 
 FastAPI dient als Web-Framework für das Backend. Es bietet hohe Performance durch asynchrone Verarbeitung und eine moderne API-Entwicklung mit automatischer Dokumentation. Die Integration von Uvicorn als ASGI-Server ermöglicht skalierbare und effiziente Server-Prozesse.
 
-Für das Frontend wird Playwright für UI-Tests eingesetzt. Dieses Tool ermöglicht die Automatisierung von Browser-Tests und unterstützt verschiedene Browser-Engines. DieScreenshot-Funktionalität erlaubt visuelle Regressionstests, bei denen Änderungen in der Benutzeroberfläche erkannt werden können.
+Für das Frontend wird Playwright für UI-Tests eingesetzt. Dieses Tool ermöglicht die Automatisierung von Browser-Tests und unterstützt verschiedene Browser-Engines. Die Screenshot‑Funktionalität erlaubt visuelle Regressionstests, bei denen Änderungen in der Benutzeroberfläche erkannt werden können.
 
 ### 2.3 Datenbank und Speicherung
 
@@ -130,7 +130,7 @@ Der Memory-Agent speichert Erkenntnisse aus früheren Entwicklungszyklen. Er ler
 
 Der Orchestration-Manager bildet das Herzstück der Backend-Logik. Er koordiniert alle Phasen des Entwicklungsprozesses von der initialen Anforderungsaufnahme bis zur finalen Dokumentationserstellung. Die Hauptaufgaben umfassen die Initialisierung von Agenten, die Verwaltung des Entwicklungsloops und die Integration aller Subsysteme.
 
-Der Manager implementiertCallbacks für verschiedene Ereignisse wie Worker-Status-Änderungen und Fallback-Wechsel. Er verwaltet auch das Budget-Tracking und die Model-Stats-Datenbank.
+Der Manager implementiert Callbacks für verschiedene Ereignisse wie Worker-Status-Änderungen und Fallback-Wechsel. Er verwaltet auch das Budget-Tracking und die Model-Stats-Datenbank.
 
 ### 5.2 Development-Loop
 
@@ -222,7 +222,7 @@ Das Template-System enthält vordefinierte Projektkonfigurationen für verschied
 
 Das System hat im Laufe der Entwicklung verschiedene Fehlerkategorien erfahren. Die häufigsten Probleme waren Truncation, bei denen kostenlose Modelle ihre Antworten abschneiden, zirkuläre Imports in generiertem Python-Code und Phantom-Dateien, bei denen neue Dateien statt existierende Dateien erstellt wurden.
 
-Weitere Probleme umfassten fehlende Abhängigkeiten in requirements.txt, Template-Config-Dateien, die versehentlich überschrieben wurden, und Security-Issuers in generiertem Code.
+Weitere Probleme umfassten fehlende Abhängigkeiten in requirements.txt, Template-Config-Dateien, die versehentlich überschrieben wurden, und Security‑Issues in generiertem Code.
 
 ### 9.2 Lösungsansätze
 
@@ -240,7 +240,7 @@ Das Fix-System ermöglicht gezielte Korrekturen durch spezialisierte Fix-Agents.
 
 ### 10.1 Architektur
 
-Die Architektur könnte von einer stärkeren Modularisierung profitieren. Einige Module wie der Orchestration-Manager haben über 900 Zeilen Code und sollten nach dem Prinzip der单个Verantwortung in kleinere Einheiten aufgeteilt werden. Die Regel 1 in CLAUDE.md fordert bereits maximal 500 Zeilen pro Datei, wobei einige Dateien diese Grenze überschreiten.
+Die Architektur könnte von einer stärkeren Modularisierung profitieren. Einige Module wie der Orchestration-Manager haben über 900 Zeilen Code und sollten nach dem Prinzip des Single‑Responsibility‑Prinzips in kleinere Einheiten aufgeteilt werden. Die Regel 1 in CLAUDE.md fordert bereits maximal 500 Zeilen pro Datei, wobei einige Dateien diese Grenze überschreiten.
 
 Die Trennung zwischen Agenten und Backend-Logik könnte verbessert werden. Derzeit gibt es Überschneidungen in der Verantwortlichkeit, die zu Komplexität führen.
 
