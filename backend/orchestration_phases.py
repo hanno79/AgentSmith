@@ -284,7 +284,15 @@ def run_db_designer_phase(
 
     # AENDERUNG 21.02.2026: Fix 59g — Claude SDK Integration fuer DB-Designer (Sonnet)
     if manager:
-        sdk_prompt = f"Erstelle ein Datenbank-Schema für: {user_goal}"
+        # AENDERUNG 24.02.2026: Fix 76c — Explizite SQL-Format-Anweisung
+        # ROOT-CAUSE-FIX:
+        # Symptom: DB-Designer liefert ~28 Zeichen (konversationelle Antwort)
+        # Ursache: Prompt zu vage, Claude antwortet kurz ohne Format-Vorgabe
+        # Loesung: Explizite SQL-Ausgabe-Anweisung im Prompt
+        sdk_prompt = (
+            f"Erstelle ein vollstaendiges SQL Datenbank-Schema (CREATE TABLE Statements) fuer: {user_goal}\n\n"
+            "ANTWORTE NUR MIT SQL-Code (CREATE TABLE, CREATE INDEX etc.). Kein anderer Text."
+        )
         sdk_result = run_sdk_with_retry(
             manager, role="db_designer", prompt=sdk_prompt,
             timeout_seconds=agent_timeout, agent_display_name="DB-Designer"
@@ -398,7 +406,18 @@ def run_designer_phase(
         tech_info = f"Tech-Stack: {tech_blueprint.get('project_type', 'webapp')}"
         if tech_blueprint.get('dependencies'):
             tech_info += f", Frameworks: {', '.join(tech_blueprint.get('dependencies', []))}"
-        sdk_prompt = f"Design für: {user_goal}\n{tech_info}"
+        # AENDERUNG 24.02.2026: Fix 76c — Explizite Design-Format-Anweisung
+        # ROOT-CAUSE-FIX:
+        # Symptom: Designer liefert ~28 Zeichen oder Timeout (konversationelle Antwort)
+        # Ursache: Prompt zu vage, Claude antwortet kurz ohne Format-Vorgabe
+        # Loesung: Explizite Design-Konzept-Anweisung im Prompt
+        sdk_prompt = (
+            f"Erstelle ein detailliertes UI/UX Design-Konzept fuer: {user_goal}\n"
+            f"{tech_info}\n\n"
+            "Beschreibe: Farbpalette (KEINE blue-purple Gradients), Layout-Struktur, "
+            "Komponenten-Hierarchie, Typografie und Responsive-Verhalten. "
+            "Gib nur das Design-Konzept zurueck, keine Erklaerungen."
+        )
         sdk_result = run_sdk_with_retry(
             manager, role="designer", prompt=sdk_prompt,
             timeout_seconds=agent_timeout, agent_display_name="Designer"

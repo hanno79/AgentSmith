@@ -92,15 +92,15 @@ class TestClaudeModelMap:
 
     def test_opus_mapping(self):
         from backend.claude_sdk_provider import CLAUDE_MODEL_MAP
-        assert CLAUDE_MODEL_MAP["opus"] == "claude-opus-4-6"
+        assert CLAUDE_MODEL_MAP["opus"] == "claude-opus-4-1-20250805"
 
     def test_sonnet_mapping(self):
         from backend.claude_sdk_provider import CLAUDE_MODEL_MAP
-        assert CLAUDE_MODEL_MAP["sonnet"] == "claude-sonnet-4-6"
+        assert CLAUDE_MODEL_MAP["sonnet"] == "claude-sonnet-4-20250514"
 
     def test_haiku_mapping(self):
         from backend.claude_sdk_provider import CLAUDE_MODEL_MAP
-        assert CLAUDE_MODEL_MAP["haiku"] == "claude-haiku-4-5"
+        assert CLAUDE_MODEL_MAP["haiku"] == "claude-3-5-haiku-20241022"
 
 
 # =========================================================================
@@ -270,7 +270,7 @@ class TestRecordTracking:
     """Tests fuer Budget- und Stats-Tracking."""
 
     def test_record_success_modell_id_format(self, provider):
-        """Prueft dass die Modell-ID als 'claude-sdk/claude-opus-4-6' formatiert wird."""
+        """Prueft dass die Modell-ID als 'claude-sdk/claude-opus-4-1-20250805' formatiert wird."""
         # Lazy-Imports: budget_tracker und model_stats_db werden innerhalb der Methode importiert
         with patch('budget_tracker.get_budget_tracker') as mock_bt, \
              patch('model_stats_db.get_model_stats_db') as mock_stats:
@@ -285,8 +285,8 @@ class TestRecordTracking:
 
             # BudgetTracker Aufruf pruefen
             bt_call = mock_bt.return_value.record_usage.call_args
-            assert "claude-sdk/claude-opus-4-6" in str(bt_call), \
-                f"Erwartet: claude-sdk/claude-opus-4-6, Erhalten: {bt_call}"
+            assert "claude-sdk/claude-opus-4-1-20250805" in str(bt_call), \
+                f"Erwartet: claude-sdk/claude-opus-4-1-20250805, Erhalten: {bt_call}"
 
     def test_record_success_stats_db_aufruf(self, provider):
         """Prueft dass ModelStatsDB.record_call() mit korrekten Parametern aufgerufen wird."""
@@ -305,7 +305,7 @@ class TestRecordTracking:
             # Alternativ: positional args
             if call_kwargs:
                 assert call_kwargs.get("success") is True
-                assert call_kwargs.get("model") == "claude-sdk/claude-sonnet-4-6"
+                assert call_kwargs.get("model") == "claude-sdk/claude-sonnet-4-20250514"
                 assert call_kwargs.get("run_id") == "projekt-42"
 
     def test_record_failure_success_false(self, provider):

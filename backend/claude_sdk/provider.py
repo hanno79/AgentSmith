@@ -1,10 +1,16 @@
 # -*- coding: utf-8 -*-
-"""Claude SDK Provider + Singleton."""
+"""
+Author: rahn
+Datum: 24.02.2026
+Version: 1.0
+Beschreibung: Claude SDK Provider + Singleton fuer CLI/SDK-Ausfuehrung.
+"""
 
 import logging
 import os
 import shutil
 import subprocess
+import sys
 import threading
 import time
 from typing import Callable, Optional
@@ -172,17 +178,28 @@ class ClaudeSDKProvider:
             raise FileNotFoundError("claude CLI nicht im PATH gefunden")
 
         model_full = state.CLAUDE_MODEL_MAP.get(model, model)
-        cmd = [claude_path, "-p", prompt, "--output-format", "text", "--max-turns", str(max_turns)]
+        cmd = [claude_path, "-p", "--output-format", "text", "--max-turns", str(max_turns)]
         cmd.extend(["--model", model_full])
-        if system_prompt:
-            cmd.extend(["--system-prompt", system_prompt])
+        # AENDERUNG 24.02.2026: Fix 76c — Default System-Prompt fuer CLI-Modus
+        # ROOT-CAUSE-FIX:
+        # Symptom: TechStack/DB-Designer/Designer liefern ~28 Zeichen via CLI
+        # Ursache: Kein System-Prompt → Claude antwortet konversationell statt strukturiert
+        # Loesung: Default System-Prompt wie in _run_sync() (Zeile 226-227)
+        effective_system = system_prompt or (
+            "Gib nur den angeforderten Output zurueck. "
+            "Keine Erklaerungen oder Kommentare ausserhalb des angeforderten Formats."
+        )
+        cmd.extend(["--system-prompt", effective_system])
 
         # CLAUDECODE Env-Var entfernen (Nested-Session-Prevention, wie in _run_sync)
         env = os.environ.copy()
         env.pop("CLAUDECODE", None)
 
         result = subprocess.run(
-            cmd, capture_output=True, text=True,
+            cmd,
+            input=prompt,
+            capture_output=True,
+            text=True,
             timeout=timeout_seconds, env=env
         )
 
@@ -209,7 +226,7 @@ class ClaudeSDKProvider:
         """Synchroner Wrapper fuer async claude-agent-sdk query()."""
         import anyio
 
-        result_container = {"text": "", "error": None}
+        result_container = {"text": "", "error": None, "traceback_obj": None}
         stop_event = threading.Event()
 
         async def _async_query():
@@ -298,15 +315,14 @@ class ClaudeSDKProvider:
 
         def _thread_target(cancel_event: threading.Event):
             try:
-                import os
-
-                os.environ.pop("CLAUDECODE", None)
                 result_container["text"] = anyio.run(_async_query)
             except Exception as e:
                 if cancel_event.is_set():
                     logger.warning("Claude SDK Thread nach Cancel beendet: %s", e)
                 result_container["error"] = e
+                result_container["traceback_obj"] = sys.exc_info()[2]
 
+        os.environ.pop("CLAUDECODE", None)
         thread = threading.Thread(target=_thread_target, args=(stop_event,), daemon=True)
         thread.start()
         thread.join(timeout=timeout_seconds)
@@ -319,6 +335,9 @@ class ClaudeSDKProvider:
             )
 
         if result_container["error"]:
+            traceback_obj = result_container.get("traceback_obj")
+            if traceback_obj is not None:
+                raise result_container["error"].with_traceback(traceback_obj)
             raise result_container["error"]
 
         if not result_container["text"]:
