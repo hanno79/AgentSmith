@@ -7,11 +7,19 @@ Beschreibung: Claude SDK Retry/Heartbeat-Logik.
 """
 
 import logging
+import asyncio
+import random
 from typing import Optional
 
 from . import loader as state
 
 logger = logging.getLogger(__name__)
+
+
+def _sleep_with_asyncio(seconds: float) -> None:
+    """Fuehrt eine Delay ueber asyncio.sleep aus (synchroner Aufrufer)."""
+    if seconds > 0:
+        asyncio.run(asyncio.sleep(seconds))
 
 
 def run_sdk_with_retry(
@@ -46,9 +54,12 @@ def run_sdk_with_retry(
         role, sdk_config.get("default_model", "sonnet")
     )
     display_name = agent_display_name or role.capitalize()
-    configured_retries = sdk_config.get("max_retries", 3)
+    configured_retries = sdk_config.get("max_retries", 5)
     retries = max_retries if max_retries is not None else configured_retries
     base_retries = retries
+    rate_limit_backoff_base = sdk_config.get("rate_limit_backoff_base", 45)
+    rate_limit_backoff_jitter_max = sdk_config.get("rate_limit_backoff_jitter_max_seconds", 5.0)
+    rate_limit_backoff_jitter_factor = sdk_config.get("rate_limit_backoff_jitter_factor", 0.25)
     sdk_max_turns = sdk_config.get("max_turns_by_role", {}).get(
         role, sdk_config.get("default_max_turns", 10)
     )
@@ -63,7 +74,21 @@ def run_sdk_with_retry(
                 role,
                 retries,
             )
-    elif sdk_tier == 1 and role not in ("coder", "reviewer"):
+    # AENDERUNG 24.02.2026: Fix 79b — Tier-0 (Fix/Tester) max_retries begrenzen
+    # ROOT-CAUSE-FIX:
+    # Symptom: 4 parallele Haiku Fix-Tasks × 5 Retries × 300s = 25 Min Worst-Case
+    # Ursache: Tier-0 hatte kein Limit, bekam alle 5 Retries bei CLI-Fehlern
+    # Loesung: Konfigurierbares Limit (default 2), dann sofort OpenRouter-Fallback
+    elif sdk_tier == 0:
+        max_retries_t0 = sdk_config.get("max_retries_tier0", 2)
+        retries = min(retries, max_retries_t0)
+        if retries < base_retries:
+            logger.info(
+                "SDK Tier-0 (%s): max_retries auf %d begrenzt (schneller Fallback)",
+                role,
+                retries,
+            )
+    elif sdk_tier == 1 and role not in ("coder",):
         max_retries_t1 = sdk_config.get("max_retries_tier1_non_coder", 2)
         retries = min(retries, max_retries_t1)
         if retries < base_retries:
@@ -104,9 +129,30 @@ def run_sdk_with_retry(
             "Info",
             f"Pre-Call Cooldown: Warte {pre_call_cooldown}s (TPM-Limit Schutz)...",
         )
-        import time
 
-        time.sleep(pre_call_cooldown)
+        _sleep_with_asyncio(pre_call_cooldown)
+
+    # Heartbeat-Marge muss groesser als Worst-Case Zusatzzeit sein, damit kein
+    # vorzeitiger Timeout bei Cooldown/Backoff-bedingter Verzoegerung ausloest.
+    worst_case_backoff = 0.0
+    for attempt in range(max(retries - 1, 0)):
+        attempt_base = rate_limit_backoff_base * (2 ** attempt)
+        attempt_jitter_max = max(
+            float(rate_limit_backoff_jitter_max),
+            attempt_base * float(rate_limit_backoff_jitter_factor),
+        )
+        worst_case_backoff += attempt_base + max(attempt_jitter_max, 0.0)
+    worst_case_overhead = pre_call_cooldown + worst_case_backoff
+    heartbeat_timeout_min_margin = worst_case_overhead + 30
+    configured_heartbeat_margin = sdk_config.get("heartbeat_timeout_margin_seconds")
+    heartbeat_timeout_margin = heartbeat_timeout_min_margin
+    if configured_heartbeat_margin is not None:
+        try:
+            heartbeat_timeout_margin = max(
+                int(configured_heartbeat_margin), heartbeat_timeout_min_margin
+            )
+        except (TypeError, ValueError):
+            heartbeat_timeout_margin = heartbeat_timeout_min_margin
 
     for sdk_attempt in range(retries):
         try:
@@ -126,7 +172,7 @@ def run_sdk_with_retry(
                 agent_name=display_name,
                 task_description=f"Claude SDK ({claude_model}) Versuch {sdk_attempt + 1}/{retries}",
                 heartbeat_interval=heartbeat_interval,
-                timeout_seconds=timeout_seconds + 60,
+                timeout_seconds=timeout_seconds + heartbeat_timeout_margin,
             )
 
             cleaned = _clean_model_output(raw_output)
@@ -150,8 +196,8 @@ def run_sdk_with_retry(
                 manager._ui_log(
                     display_name,
                     "Warning",
-                    f"Claude SDK cleaned output empty after cleaning "
-                    f"({sdk_attempt + 1}/{retries}, raw_len={len(raw_output)})",
+                    f"Claude SDK hat nach Bereinigung eine leere Ausgabe erhalten "
+                    f"(Versuch {sdk_attempt + 1}/{retries}, raw_len={len(raw_output)})",
                 )
                 continue
 
@@ -165,16 +211,20 @@ def run_sdk_with_retry(
             if sdk_attempt < retries - 1:
                 if "rate_limit" in error_str.lower() or "429" in error_str:
                     # AENDERUNG 24.02.2026: Fix 78 — Erhoehter Backoff (konfigurierbar)
-                    base_backoff = sdk_config.get("rate_limit_backoff_base", 45)
-                    backoff_seconds = (sdk_attempt + 1) * base_backoff
+                    base_backoff_seconds = rate_limit_backoff_base * (2 ** sdk_attempt)
+                    jitter_window = max(
+                        float(rate_limit_backoff_jitter_max),
+                        base_backoff_seconds * float(rate_limit_backoff_jitter_factor),
+                    )
+                    jitter_seconds = random.uniform(0.0, max(jitter_window, 0.0))
+                    backoff_seconds = base_backoff_seconds + jitter_seconds
                     manager._ui_log(
                         display_name,
                         "Info",
-                        f"Rate-Limit erkannt, warte {backoff_seconds}s vor Retry...",
+                        f"Rate-Limit erkannt, warte {backoff_seconds:.1f}s vor Retry...",
                     )
-                    import time
 
-                    time.sleep(backoff_seconds)
+                    _sleep_with_asyncio(backoff_seconds)
                 continue
 
             manager._ui_log(

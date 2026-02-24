@@ -16,11 +16,15 @@ enable_file_by_file_mode: true
 agent_timeouts:
   default: 750
   coder: 1800
-  reviewer: 1200
+  # AENDERUNG 24.02.2026: Fix 79 — inkl. Claude SDK Cooldown/Backoff Overhead
+  # reviewer normal 1200s + worst_case_overhead 135s (45 + 2*45) => >1335s
+  reviewer: 1500
   tester: 300
   security: 300
   researcher: 900
-  planner: 900
+  # AENDERUNG 24.02.2026: Fix 79 — inkl. Claude SDK Cooldown/Backoff Overhead
+  # planner normal 900s + worst_case_overhead 135s (45 + 2*45) => >1035s
+  planner: 1200
   designer: 300
   fix: 750
   task_deriver: 300
@@ -644,16 +648,26 @@ claude_sdk:
   # Ursache: TPM-Budget nach TaskDeriver+Researcher+TechStack+DBDesigner+Designer erschoepft
   # Loesung: 2 Versuche + Pre-Call Cooldown + erhoehter Backoff
   max_retries_tier2: 2
+  # AENDERUNG 24.02.2026: Fix 79b — Tier-0 (Fix/Tester) max 2 Versuche
+  # ROOT-CAUSE-FIX:
+  # Symptom: 4 parallele Haiku Fix-Tasks × 5 Retries × 300s = 25 Min Worst-Case
+  # Ursache: Tier-0 hatte kein max_retries-Limit, bekam alle 5 Retries
+  # Loesung: Max 2 Versuche, dann sofort OpenRouter-Fallback
+  max_retries_tier0: 2
   # AENDERUNG 24.02.2026: Fix 78 — Rate-Limit Backoff Basis (vorher hardcoded 30s)
   rate_limit_backoff_base: 45
+  # AENDERUNG 24.02.2026: Fix 79 — Heartbeat-Marge (>= worst_case_overhead + 30s)
+  heartbeat_timeout_margin_seconds: 180
   # AENDERUNG 24.02.2026: Fix 78 — Pre-Call Cooldown in Sekunden (TPM-Limit Schutz)
   # ROOT-CAUSE-FIX:
   # Symptom: Planner/Reviewer treffen IMMER auf rate_limit_event im async SDK
   # Ursache: Nach 5+ CLI-Aufrufen ist das TPM-Limit erreicht bevor Planner/Reviewer dran sind
   # Loesung: Konfigurierbarer Pre-Call Cooldown laesst Token-Budget sich erholen
+  # AENDERUNG 24.02.2026: Fix 79c — Cooldown erhoeht (45→60s) + Coder hinzugefuegt
   pre_call_cooldown:
-    planner: 45
-    reviewer: 45
+    planner: 60
+    reviewer: 60
+    coder: 30
   # AENDERUNG 22.02.2026: Fix 74d — Tier-1 Non-Coder max 2 Versuche
   # ROOT-CAUSE-FIX: DB-Designer 3x 750s = 37.5 Min Worst-Case
   max_retries_tier1_non_coder: 2
@@ -679,8 +693,13 @@ claude_sdk:
     planner: 10
     documentation_manager: 10
     security: 10
-    fix: 10
-    tester: 10
+    # AENDERUNG 24.02.2026: Fix 79a — Fix/Tester max_turns reduziert
+    # ROOT-CAUSE-FIX:
+    # Symptom: Haiku Fix-Tasks brauchen 200-300s und scheitern nach 3+ Versuchen
+    # Ursache: max_turns=10 laesst Haiku in Extended Thinking/Tool-Use Schleifen laufen
+    # Loesung: max_turns=3 fuer einfache Aufgaben (Fix=Einzeldatei-Patch, Tester=Testausfuehrung)
+    fix: 3
+    tester: 3
     task_deriver: 10
     analyst: 10
     konzepter: 10
@@ -731,7 +750,7 @@ claude_sdk:
   - researcher
   - techstack_architect
   - security
-  # AENDERUNG 24.02.2026: Fix 77 — Planner aus CLI-Modus entfernt
+  # ÄNDERUNG 24.02.2026: Fix 77 — Planner aus CLI-Modus entfernt
   # ROOT-CAUSE-FIX:
   # Symptom: Planner liefert 2x leere Antwort via `claude -p`
   # Ursache: Planner braucht komplexen strukturierten JSON-Output, CLI-Modus unzuverlaessig
