@@ -709,7 +709,12 @@ claude_sdk:
   - researcher
   - techstack_architect
   - security
-  - planner
+  # AENDERUNG 24.02.2026: Fix 77 — Planner aus CLI-Modus entfernt
+  # ROOT-CAUSE-FIX:
+  # Symptom: Planner liefert 2x leere Antwort via `claude -p`
+  # Ursache: Planner braucht komplexen strukturierten JSON-Output, CLI-Modus unzuverlaessig
+  # Loesung: Planner nutzt async SDK (_run_sync) fuer robustere JSON-Generierung
+  # - planner  (→ nutzt jetzt async SDK)
   - documentation_manager
   - fix
   - tester

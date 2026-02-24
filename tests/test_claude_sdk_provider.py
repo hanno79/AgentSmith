@@ -100,7 +100,7 @@ class TestClaudeModelMap:
 
     def test_haiku_mapping(self):
         from backend.claude_sdk_provider import CLAUDE_MODEL_MAP
-        assert CLAUDE_MODEL_MAP["haiku"] == "claude-3-5-haiku-20241022"
+        assert CLAUDE_MODEL_MAP["haiku"] == "claude-haiku-4-5-20251001"
 
 
 # =========================================================================
