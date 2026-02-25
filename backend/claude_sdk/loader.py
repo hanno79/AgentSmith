@@ -82,7 +82,12 @@ _SDK_TIER_ORDER = {
     "tester": 0,
     # AENDERUNG 24.02.2026: Fix 76d — TaskDeriver auf Tier 2 (Opus, wie researcher/techstack)
     "task_deriver": 2,       # Opus: Komplexe Ziel-Dekomposition
-    "coder": 1,
+    # AENDERUNG 25.02.2026: Fix 81 — Coder zurueck auf Tier 0 (Haiku)
+    # ROOT-CAUSE-FIX:
+    # Symptom: 197 "Leere Antwort" Fehler bei 16+ parallelen Sonnet CLI-Calls
+    # Ursache: Sonnet hat niedrigere Rate-Limits als Haiku → TPM sofort erschoepft
+    # Loesung: Haiku fuer Erstgenerierung (schnell, hohe Limits), Sonnet nur fuer Fix-Patches
+    "coder": 0,
     # AENDERUNG 24.02.2026: Fix 78 — Reviewer/Planner auf Tier 2 (Opus)
     # ROOT-CAUSE-FIX:
     # Symptom: Reviewer/Planner treffen IMMER auf rate_limit_event im async SDK

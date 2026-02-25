@@ -667,7 +667,7 @@ claude_sdk:
   pre_call_cooldown:
     planner: 60
     reviewer: 60
-    coder: 30
+    # AENDERUNG 25.02.2026: Fix 81 — Coder-Cooldown entfernt (Haiku hat hoehere Rate-Limits)
   # AENDERUNG 22.02.2026: Fix 74d — Tier-1 Non-Coder max 2 Versuche
   # ROOT-CAUSE-FIX: DB-Designer 3x 750s = 37.5 Min Worst-Case
   max_retries_tier1_non_coder: 2
@@ -684,7 +684,8 @@ claude_sdk:
     # AENDERUNG 24.02.2026: Fix 76a — CLI-Rollen max_turns angepasst (vorher ignoriert wegen hardcoded 1)
     researcher: 10       # CLI-Modus: Research braucht mehrere Turns, aber weniger als async SDK
     techstack_architect: 10
-    coder: 10
+    # AENDERUNG 25.02.2026: Fix 81 — Haiku braucht weniger Turns (analog zu Tester)
+    coder: 3
     reviewer: 10
     # AENDERUNG 24.02.2026: Fix 76e — Grosszuegige 10 Turns fuer ALLE Rollen (Phase 1: Korrektheit)
     # Erst pruefen ob alle Rollen sauber durchlaufen, dann in Phase 2 optimieren
@@ -712,8 +713,12 @@ claude_sdk:
     # Loesung: Sonnet fuer Researcher (10x hoehere Limits, weiterhin hohe Qualitaet)
     researcher: sonnet
     techstack_architect: opus
-    # Tier 2: Sonnet — Standard-Aufgaben
-    coder: sonnet
+    # AENDERUNG 25.02.2026: Fix 81 — Coder zurueck auf Haiku (Sonnet-Rate-Limit)
+    # ROOT-CAUSE-FIX:
+    # Symptom: 197 "Leere Antwort" Fehler bei 16+ parallelen Sonnet CLI-Calls
+    # Ursache: Sonnet hat niedrigere Rate-Limits als Haiku → TPM sofort erschoepft
+    # Loesung: Haiku fuer Erstgenerierung (schnell, hohe Limits), Sonnet nur fuer Fix-Patches
+    coder: haiku
     # AENDERUNG 24.02.2026: Fix 78 — Reviewer und Planner auf Opus
     # ROOT-CAUSE-FIX:
     # Symptom: Reviewer/Planner Sonnet liefern unzureichende Ergebnisse bei Rate-Limit Stress
