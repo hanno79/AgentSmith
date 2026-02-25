@@ -684,8 +684,8 @@ claude_sdk:
     # AENDERUNG 24.02.2026: Fix 76a — CLI-Rollen max_turns angepasst (vorher ignoriert wegen hardcoded 1)
     researcher: 10       # CLI-Modus: Research braucht mehrere Turns, aber weniger als async SDK
     techstack_architect: 10
-    # AENDERUNG 25.02.2026: Fix 81 — Haiku braucht weniger Turns (analog zu Tester)
-    coder: 3
+    # AENDERUNG 25.02.2026: Fix 82 — max_turns zurueck auf 10 (Fix 71: "3+ Turns noetig")
+    coder: 10
     reviewer: 10
     # AENDERUNG 24.02.2026: Fix 76e — Grosszuegige 10 Turns fuer ALLE Rollen (Phase 1: Korrektheit)
     # Erst pruefen ob alle Rollen sauber durchlaufen, dann in Phase 2 optimieren
@@ -753,12 +753,18 @@ claude_sdk:
   # Loesung: `claude -p` Subprozess mit --max-turns 1 → keine Tools, direkte Antwort
   # NICHT in cli_mode: coder, reviewer (brauchen Tool-Use im SDK async-Modus)
   # AENDERUNG 24.02.2026: Fix 76b — Neue Rollen hinzugefuegt
+  # AENDERUNG 25.02.2026: Fix 82 — Coder auf CLI-Modus
+  # ROOT-CAUSE-FIX:
+  # Symptom: 14+ "Leere Antwort" Fehler bei paralleler File-by-File Generierung
+  # Ursache: async SDK (anyio.run() im Thread) bei 3+ parallelen Calls → Event-Loop-Konflikte
+  # Loesung: CLI-Modus (subprocess isoliert) — wie 5 andere Rollen bereits erfolgreich nutzen
   cli_mode_roles:
   - db_designer
   - designer
   - researcher
   - techstack_architect
   - security
+  - coder
   # ÄNDERUNG 24.02.2026: Fix 77 — Planner aus CLI-Modus entfernt
   # ROOT-CAUSE-FIX:
   # Symptom: Planner liefert 2x leere Antwort via `claude -p`
