@@ -379,11 +379,15 @@ def run_single_file_coder(
     agent_timeouts = manager.config.get("agent_timeouts", {})
     timeout = agent_timeouts.get("coder", 750)
 
-    # AENDERUNG 21.02.2026: Multi-Tier Claude SDK (Haiku fuer Einzeldateien)
+    # AENDERUNG 25.02.2026: Fix 81b — role="coder" statt "fix" (Haiku fuer Erstgenerierung)
+    # ROOT-CAUSE-FIX:
+    # Symptom: File-by-File nutzt Sonnet statt Haiku → 197 "Leere Antwort" Rate-Limit Fehler
+    # Ursache: role="fix" referenziert seit Fix 80 Sonnet statt Haiku
+    # Loesung: role="coder" verweist korrekt auf Haiku (konfiguriert in config.yaml)
     try:
         from backend.claude_sdk import run_sdk_with_retry
         sdk_result = run_sdk_with_retry(
-            manager, role="fix", prompt=prompt,
+            manager, role="coder", prompt=prompt,
             timeout_seconds=timeout,
             agent_display_name="Coder"
         )
