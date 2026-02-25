@@ -667,6 +667,12 @@ claude_sdk:
   pre_call_cooldown:
     planner: 60
     reviewer: 60
+    # AENDERUNG 25.02.2026: Fix 83 — Pre-Call Cooldown fuer Fix-Rolle
+    # ROOT-CAUSE-FIX:
+    # Symptom: Fix-Rolle (Sonnet) hat ~50% "Leere Antwort" Fehlerrate im PatchMode
+    # Ursache: Kein Cooldown → Fix trifft nach 44+ File-by-File Calls direkt auf TPM-Limit
+    # Loesung: 30s Cooldown (kuerzer als Planner/Reviewer 60s, aber genug fuer TPM-Recovery)
+    fix: 30
     # AENDERUNG 25.02.2026: Fix 81 — Coder-Cooldown entfernt (Haiku hat hoehere Rate-Limits)
   # AENDERUNG 22.02.2026: Fix 74d — Tier-1 Non-Coder max 2 Versuche
   # ROOT-CAUSE-FIX: DB-Designer 3x 750s = 37.5 Min Worst-Case

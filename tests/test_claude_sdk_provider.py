@@ -92,11 +92,13 @@ class TestClaudeModelMap:
 
     def test_opus_mapping(self):
         from backend.claude_sdk_provider import CLAUDE_MODEL_MAP
-        assert CLAUDE_MODEL_MAP["opus"] == "claude-opus-4-1-20250805"
+        # AENDERUNG 25.02.2026: Fix 83 — Aktualisiert auf Opus 4.6
+        assert CLAUDE_MODEL_MAP["opus"] == "claude-opus-4-6"
 
     def test_sonnet_mapping(self):
         from backend.claude_sdk_provider import CLAUDE_MODEL_MAP
-        assert CLAUDE_MODEL_MAP["sonnet"] == "claude-sonnet-4-20250514"
+        # AENDERUNG 25.02.2026: Fix 83 — Aktualisiert auf Sonnet 4.6
+        assert CLAUDE_MODEL_MAP["sonnet"] == "claude-sonnet-4-6"
 
     def test_haiku_mapping(self):
         from backend.claude_sdk_provider import CLAUDE_MODEL_MAP
@@ -285,8 +287,9 @@ class TestRecordTracking:
 
             # BudgetTracker Aufruf pruefen
             bt_call = mock_bt.return_value.record_usage.call_args
-            assert "claude-sdk/claude-opus-4-1-20250805" in str(bt_call), \
-                f"Erwartet: claude-sdk/claude-opus-4-1-20250805, Erhalten: {bt_call}"
+            # AENDERUNG 25.02.2026: Fix 83 — Aktualisiert auf Opus 4.6
+            assert "claude-sdk/claude-opus-4-6" in str(bt_call), \
+                f"Erwartet: claude-sdk/claude-opus-4-6, Erhalten: {bt_call}"
 
     def test_record_success_stats_db_aufruf(self, provider):
         """Prueft dass ModelStatsDB.record_call() mit korrekten Parametern aufgerufen wird."""
@@ -305,7 +308,8 @@ class TestRecordTracking:
             # Alternativ: positional args
             if call_kwargs:
                 assert call_kwargs.get("success") is True
-                assert call_kwargs.get("model") == "claude-sdk/claude-sonnet-4-20250514"
+                # AENDERUNG 25.02.2026: Fix 83 — Aktualisiert auf Sonnet 4.6
+                assert call_kwargs.get("model") == "claude-sdk/claude-sonnet-4-6"
                 assert call_kwargs.get("run_id") == "projekt-42"
 
     def test_record_failure_success_false(self, provider):
