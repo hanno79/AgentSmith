@@ -77,7 +77,8 @@ CLAUDE_MODEL_MAP = {
 
 # AENDERUNG 24.02.2026: Fix 76b — Neue Rollen hinzugefuegt
 _SDK_TIER_ORDER = {
-    "fix": 0,
+    # AENDERUNG 25.02.2026: Fix 80 — Fix auf Tier 1 (Sonnet statt Haiku)
+    "fix": 1,
     "tester": 0,
     # AENDERUNG 24.02.2026: Fix 76d — TaskDeriver auf Tier 2 (Opus, wie researcher/techstack)
     "task_deriver": 2,       # Opus: Komplexe Ziel-Dekomposition

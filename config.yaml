@@ -693,12 +693,12 @@ claude_sdk:
     planner: 10
     documentation_manager: 10
     security: 10
-    # AENDERUNG 24.02.2026: Fix 79a — Fix/Tester max_turns reduziert
+    # AENDERUNG 25.02.2026: Fix 80 — Fix auf Sonnet (max_turns=5), Tester bleibt Haiku (3)
     # ROOT-CAUSE-FIX:
-    # Symptom: Haiku Fix-Tasks brauchen 200-300s und scheitern nach 3+ Versuchen
-    # Ursache: max_turns=10 laesst Haiku in Extended Thinking/Tool-Use Schleifen laufen
-    # Loesung: max_turns=3 fuer einfache Aufgaben (Fix=Einzeldatei-Patch, Tester=Testausfuehrung)
-    fix: 3
+    # Symptom: Haiku Fix-Tasks geben nur 28 Zeichen zurueck (unbrauchbar)
+    # Ursache: Haiku zu schwach fuer Code-Patch-Prompts, Sonnet braucht mehr Turns
+    # Loesung: Fix=Sonnet mit max_turns=5, Tester=Haiku mit max_turns=3
+    fix: 5
     tester: 3
     task_deriver: 10
     analyst: 10
@@ -725,8 +725,12 @@ claude_sdk:
     planner: opus
     documentation_manager: sonnet
     security: sonnet
-    # Tier 3: Haiku — Einfache/schnelle Aufgaben
-    fix: haiku
+    # AENDERUNG 25.02.2026: Fix 80 — Fix-Rolle von Haiku auf Sonnet
+    # ROOT-CAUSE-FIX:
+    # Symptom: Haiku gibt bei UTDS-Fix Tasks konstant nur 28 Zeichen zurueck (unbrauchbar)
+    # Ursache: Haiku zu schwach fuer PatchMode Fix-Prompts mit Code-Kontext
+    # Loesung: Sonnet fuer zuverlaessige Fix-Ergebnisse, Tester bleibt Haiku
+    fix: sonnet
     tester: haiku
     # AENDERUNG 24.02.2026: Fix 76d — TaskDeriver auf Opus (Grundlage fuer gesamten Workflow)
     # ROOT-CAUSE-FIX:

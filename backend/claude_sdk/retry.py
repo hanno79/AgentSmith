@@ -7,7 +7,7 @@ Beschreibung: Claude SDK Retry/Heartbeat-Logik.
 """
 
 import logging
-import asyncio
+import time
 import random
 from typing import Optional
 
@@ -16,10 +16,16 @@ from . import loader as state
 logger = logging.getLogger(__name__)
 
 
-def _sleep_with_asyncio(seconds: float) -> None:
-    """Fuehrt eine Delay ueber asyncio.sleep aus (synchroner Aufrufer)."""
+# AENDERUNG 25.02.2026: Fix 80b — asyncio.run() durch time.sleep() ersetzt
+# ROOT-CAUSE-FIX:
+# Symptom: Planner Pre-Call Cooldown wird geloggt aber nicht abgewartet (1s statt 60s)
+# Ursache: asyncio.run() crasht innerhalb laufendem Event-Loop (run_planner ist async def,
+#          aufgerufen via loop.run_until_complete → asyncio.run() = RuntimeError)
+# Loesung: time.sleep() blockiert zuverlaessig unabhaengig vom Event-Loop-Kontext
+def _sleep_with_blocking(seconds: float) -> None:
+    """Fuehrt einen blockierenden Sleep durch (sicher in jedem Kontext)."""
     if seconds > 0:
-        asyncio.run(asyncio.sleep(seconds))
+        time.sleep(seconds)
 
 
 def run_sdk_with_retry(
@@ -130,7 +136,7 @@ def run_sdk_with_retry(
             f"Pre-Call Cooldown: Warte {pre_call_cooldown}s (TPM-Limit Schutz)...",
         )
 
-        _sleep_with_asyncio(pre_call_cooldown)
+        _sleep_with_blocking(pre_call_cooldown)
 
     # Heartbeat-Marge muss groesser als Worst-Case Zusatzzeit sein, damit kein
     # vorzeitiger Timeout bei Cooldown/Backoff-bedingter Verzoegerung ausloest.
@@ -224,7 +230,7 @@ def run_sdk_with_retry(
                         f"Rate-Limit erkannt, warte {backoff_seconds:.1f}s vor Retry...",
                     )
 
-                    _sleep_with_asyncio(backoff_seconds)
+                    _sleep_with_blocking(backoff_seconds)
                 continue
 
             manager._ui_log(
