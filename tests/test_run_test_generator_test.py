@@ -5,6 +5,7 @@ Datum: 24.02.2026
 Version: 1.0
 Beschreibung: Aufgesplittete Tests fuer run_test_generator aus dev_loop_test_utils.
 """
+# ÄNDERUNG 24.02.2026: Added new tests for run_test_generator; split tests into separate file.
 
 import os
 import sys
@@ -63,7 +64,7 @@ class TestRunTestGenerator:
         ergebnis = run_test_generator(mock_manager, code_files, iteration=1)
 
         # Assert
-        assert ergebnis is True
+        assert ergebnis is True, f"Erwartet: True, Erhalten: {ergebnis} bei Funktion test_erfolgreiche_generierung"
         mock_create_gen.assert_called_once()
         mock_create_task.assert_called_once()
         mock_crew_cls.assert_called_once()
@@ -91,15 +92,13 @@ class TestRunTestGenerator:
         ergebnis = run_test_generator(mock_manager, code_files, iteration=1)
 
         # Assert
-        assert ergebnis is False
+        assert ergebnis is False, f"Erwartet: False, Erhalten: {ergebnis} bei Funktion test_fehlgeschlagen_exception"
         # _ui_log muss mit Error-Level aufgerufen worden sein
         error_calls = [
             call for call in mock_manager._ui_log.call_args_list
             if call[0][1] == "Error"
         ]
-        assert len(error_calls) >= 1, (
-            "Erwartet: Mindestens ein _ui_log-Aufruf mit Level 'Error'"
-        )
+        assert len(error_calls) >= 1, f"Erwartet: >= 1, Erhalten: {len(error_calls)} bei Funktion test_fehlgeschlagen_exception"
 
     @patch("backend.dev_loop_test_utils.Crew")
     @patch("backend.dev_loop_test_utils.create_test_generation_task")
@@ -118,15 +117,13 @@ class TestRunTestGenerator:
         ergebnis = run_test_generator(mock_manager, code_files, iteration=1)
 
         # Assert
-        assert ergebnis is False
+        assert ergebnis is False, f"Erwartet: False, Erhalten: {ergebnis} bei Funktion test_keine_tests_im_output"
         # _ui_log muss mit Warning-Level aufgerufen worden sein
         warning_calls = [
             call for call in mock_manager._ui_log.call_args_list
             if call[0][1] == "Warning"
         ]
-        assert len(warning_calls) >= 1, (
-            "Erwartet: Mindestens ein _ui_log-Aufruf mit Level 'Warning'"
-        )
+        assert len(warning_calls) >= 1, f"Erwartet: >= 1, Erhalten: {len(warning_calls)} bei Funktion test_keine_tests_im_output"
 
     @patch("backend.dev_loop_test_utils.extract_test_files")
     @patch("backend.dev_loop_test_utils.Crew")
@@ -148,7 +145,7 @@ class TestRunTestGenerator:
         ergebnis = run_test_generator(mock_manager, code_files, iteration=1)
 
         # Assert
-        assert ergebnis is False
+        assert ergebnis is False, f"Erwartet: False, Erhalten: {ergebnis} bei Funktion test_filename_block_aber_extract_leer"
 
     @patch("backend.dev_loop_test_utils.extract_test_files")
     @patch("backend.dev_loop_test_utils.Crew")
@@ -173,7 +170,7 @@ class TestRunTestGenerator:
         ergebnis = run_test_generator(mock_manager, code_files, iteration=1)
 
         # Assert
-        assert ergebnis is True
+        assert ergebnis is True, f"Erwartet: True, Erhalten: {ergebnis} bei Funktion test_datei_wird_in_unterverzeichnis_geschrieben"
         test_pfad = os.path.join(
             mock_manager.project_path, "tests", "unit", "test_module.py"
         )

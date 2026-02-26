@@ -20,7 +20,7 @@ from crewai import Task
 from .agent_factory import init_agents
 from .orchestration_helpers import (
     extract_tables_from_schema, extract_design_data,
-    is_model_unavailable_error, is_rate_limit_error, is_empty_response_error
+    is_model_unavailable_error, is_rate_limit_error, is_empty_response_error, handle_model_error
 )
 from .heartbeat_utils import run_with_heartbeat
 from .orchestration_utils import _repair_json, _extract_json_from_text, _infer_blueprint_from_requirements
@@ -156,7 +156,10 @@ def run_techstack_phase(
         except Exception as ts_error:
             if is_model_unavailable_error(ts_error) or is_rate_limit_error(ts_error) or is_empty_response_error(ts_error):
                 ui_log_callback("TechStack", "Warning", f"Modell {current_techstack_model} nicht verfügbar/leer (Versuch {techstack_attempt + 1}/{MAX_TECHSTACK_RETRIES}), wechsle zu Fallback...")
-                model_router.mark_rate_limited_sync(current_techstack_model)
+                if is_empty_response_error(ts_error):
+                    model_router.mark_rate_limited_sync(current_techstack_model)
+                else:
+                    handle_model_error(model_router, current_techstack_model, ts_error)
                 if techstack_attempt == MAX_TECHSTACK_RETRIES - 1:
                     # ÄNDERUNG 02.02.2026: Erst requirement-basierten Fallback wenn alle Modelle erschöpft
                     fallback_blueprint = _infer_blueprint_from_requirements(user_goal)
@@ -337,7 +340,10 @@ def run_db_designer_phase(
         except Exception as db_error:
             if is_model_unavailable_error(db_error) or is_rate_limit_error(db_error) or is_empty_response_error(db_error):
                 ui_log_callback("DBDesigner", "Warning", f"Modell {current_db_model} nicht verfügbar/leer (Versuch {db_attempt + 1}/{MAX_DB_RETRIES}), wechsle...")
-                model_router.mark_rate_limited_sync(current_db_model)
+                if is_empty_response_error(db_error):
+                    model_router.mark_rate_limited_sync(current_db_model)
+                else:
+                    handle_model_error(model_router, current_db_model, db_error)
                 if db_attempt == MAX_DB_RETRIES - 1:
                     ui_log_callback("DBDesigner", "Error", "Alle DB-Modelle nicht verfügbar, überspringe Schema")
                     database_schema = ""
@@ -465,7 +471,10 @@ def run_designer_phase(
         except Exception as des_error:
             if is_model_unavailable_error(des_error) or is_rate_limit_error(des_error) or is_empty_response_error(des_error):
                 ui_log_callback("Designer", "Warning", f"Modell {current_design_model} nicht verfügbar/leer (Versuch {design_attempt + 1}/{MAX_DESIGN_RETRIES}), wechsle...")
-                model_router.mark_rate_limited_sync(current_design_model)
+                if is_empty_response_error(des_error):
+                    model_router.mark_rate_limited_sync(current_design_model)
+                else:
+                    handle_model_error(model_router, current_design_model, des_error)
                 if design_attempt == MAX_DESIGN_RETRIES - 1:
                     ui_log_callback("Designer", "Error", "Alle Design-Modelle nicht verfügbar, überspringe Design")
                     design_concept = ""
@@ -548,4 +557,3 @@ def run_waisen_check_phase(
         logger.warning(f"Waisen-Check Fehler: {e}")
         ui_log_callback("Validator", "WaisenError", f"Waisen-Check fehlgeschlagen: {e}")
         return None
-

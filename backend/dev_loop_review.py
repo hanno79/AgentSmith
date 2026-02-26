@@ -21,6 +21,8 @@ from .context_compressor import compress_context
 from .dev_loop_coder_utils import _get_current_code_dict
 from .orchestration_helpers import (
     is_rate_limit_error,
+    is_model_unavailable_error,
+    handle_model_error,
     is_empty_or_invalid_response,
     is_openrouter_error,
     create_human_readable_verdict,
@@ -323,6 +325,26 @@ Wenn der Code FEHLERFREI ist und alle Tests bestanden: Antworte mit "OK"
                 error_tracker = {}  # Tracker zuruecksetzen nach Modellwechsel
             continue
         except Exception as error:
+            # AENDERUNG 26.02.2026: Root-Cause-Fix — "No endpoints found" sofort aus dem Pool nehmen.
+            # Vorher lief das als generischer model_error und wurde erst nach 2 Fehlern gewechselt.
+            if is_model_unavailable_error(error):
+                err_kind = handle_model_error(manager.model_router, current_model, error)
+                manager._ui_log(
+                    "Reviewer",
+                    "ModelUnavailable",
+                    f"Modell {current_model} nicht verfuegbar ({err_kind}), sofortiger Wechsel",
+                )
+                agent_reviewer = init_agents(
+                    manager.config,
+                    project_rules,
+                    router=manager.model_router,
+                    include=["reviewer"],
+                    tech_blueprint=getattr(manager, 'tech_blueprint', None)
+                ).get("reviewer")
+                manager.agent_reviewer = agent_reviewer
+                error_tracker = {}
+                continue
+
             if is_rate_limit_error(error):
                 # Rate-Limit: Sofort wechseln (keine Wartezeit sinnvoll)
                 manager.model_router.mark_rate_limited_sync(current_model)

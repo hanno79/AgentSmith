@@ -64,7 +64,8 @@
     "Fuer eigene Farben die vordefinierten Variablen nutzen: bg-background, text-foreground, border-border, bg-primary, bg-muted etc.",
     "next.config.js mit module.exports ist die einzige Ausnahme fuer CommonJS",
     "In app/layout.js: <html> und <body> MUESSEN suppressHydrationWarning haben (verhindert Hydration-Errors durch Browser-Extensions)",
-    "Datums-Formatierung NIEMALS direkt in JSX rendern (Hydration-Mismatch!) — stattdessen in useEffect+useState oder als ISO-String"
+    "Datums-Formatierung NIEMALS direkt in JSX rendern (Hydration-Mismatch!) — stattdessen in useEffect+useState oder als ISO-String",
+    "Komponenten-Dateien in kebab-case benennen (item-list.jsx, task-form.jsx) — NICHT PascalCase (ItemListe.jsx). Imports muessen exakt mit Dateinamen uebereinstimmen."
   ],
   "file_templates_dir": "nextjs",
   "container_ids": ["__next", "root", "app"]

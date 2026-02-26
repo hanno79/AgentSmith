@@ -24,6 +24,10 @@ pytest-qt>=4.2.0  # PyQt/PySide UI-Tests (headless-fähig)
 
 # Validation (für Config Validation)
 pydantic>=2.8,<3.0.0
+# AENDERUNG 26.02.2026: Fix 89d — LiteLLM pydantic[email] Abhaengigkeit
+# ROOT-CAUSE-FIX: LiteLLM nutzt pydantic-Email-Validierung intern
+# ohne email-validator → ImportError-Spam bei jedem OpenRouter-Call
+email-validator
 
 # AENDERUNG 22.02.2026: Fix 73 — litellm[proxy] Abhaengigkeit fuer ColdStorageHandler
 # ROOT-CAUSE-FIX: litellm importiert apscheduler intern bei jedem API-Call via ColdStorageHandler

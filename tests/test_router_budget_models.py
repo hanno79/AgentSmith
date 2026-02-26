@@ -5,7 +5,7 @@ Datum: 22.02.2026
 Version: 1.0
 Beschreibung: Pydantic-Modelltests fuer backend/routers/budget.py.
 """
-# ÄNDERUNG 24.02.2026: DUMMY-Konstanten + ValidationError-Assertions fuer BudgetCapsRequest ergänzt.
+# ÄNDERUNG [24.02.2026]: DUMMY-Konstanten + ValidationError-Assertions fuer BudgetCapsRequest ergänzt.
 
 import os
 import sys

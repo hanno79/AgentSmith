@@ -15,7 +15,8 @@ import asyncio
 import logging
 import re
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Callable
 from datetime import datetime
@@ -167,63 +168,116 @@ class TaskDispatcher:
         batch.status = TaskStatus.IN_PROGRESS
         batch.started_at = datetime.now()
 
-        results: List[TaskExecutionResult] = []
-        futures = {}
+        # AENDERUNG 26.02.2026: Root-Cause-Fix - echte Retry-Runden je Batch.
+        # Vorher wurden Retry-Status gesetzt, aber nie erneut ausgefuehrt.
+        final_results: Dict[str, TaskExecutionResult] = {}
+        pending_tasks = list(batch.tasks)
+        round_counter = 0
 
-        # Tasks parallel starten
-        for task in batch.tasks:
-            self.tracker.update_status(task.id, TaskStatus.IN_PROGRESS)
-            future = self.executor.submit(self._execute_single_task, task)
-            futures[future] = task
+        while pending_tasks:
+            round_counter += 1
+            futures = {}
+            future_start_times = {}
+            future_timeouts = {}
+            future_cancel_events = {}
+            retry_tasks: List[DerivedTask] = []
 
-        # Auf Ergebnisse warten
-        for future in as_completed(futures):
-            task = futures[future]
-            try:
-                result = future.result(timeout=task.timeout_seconds)
-                results.append(result)
+            # Tasks parallel starten
+            for task in pending_tasks:
+                self.tracker.update_status(task.id, TaskStatus.IN_PROGRESS)
+                cancel_event = threading.Event()
+                future = self.executor.submit(self._execute_single_task, task, cancel_event)
+                futures[future] = task
+                future_start_times[future] = time.time()
+                future_timeouts[future] = self._get_task_timeout_seconds(task)
+                future_cancel_events[future] = cancel_event
 
-                # Tracker aktualisieren
-                if result.success:
-                    self.tracker.update_status(
-                        task.id,
-                        TaskStatus.COMPLETED,
-                        result=result.result,
-                        modified_files=result.modified_files
-                    )
-                else:
-                    # AENDERUNG 02.02.2026: Verbessertes Retry-Handling mit Logging
-                    # Retry pruefen
-                    can_retry = self.tracker.increment_retry(task.id)
-                    if not can_retry:
-                        # Max Retries erreicht - Status auf FAILED setzen
-                        self.tracker.update_status(
-                            task.id,
-                            TaskStatus.FAILED,
-                            error_message=f"Max Retries erreicht. Letzter Fehler: {result.error_message}"
-                        )
-                        logger.warning(f"[TaskDispatcher] Task {task.id} FAILED nach max retries")
-                    else:
-                        # Noch Retries moeglich - explizit auf PENDING setzen fuer Retry-Queue
-                        self.tracker.update_status(
-                            task.id,
-                            TaskStatus.PENDING,
-                            error_message=f"Retry geplant. Fehler: {result.error_message}"
-                        )
-                        logger.info(f"[TaskDispatcher] Task {task.id} wird wiederholt (Retry verfuegbar)")
-
-            except Exception as e:
-                logger.error(f"[TaskDispatcher] Task {task.id} Exception: {e}")
-                results.append(TaskExecutionResult(
-                    task_id=task.id,
-                    success=False,
-                    error_message=str(e)
-                ))
-                self.tracker.update_status(
-                    task.id,
-                    TaskStatus.FAILED,
-                    error_message=str(e)
+            # Auf Ergebnisse warten + harte Timeout-Absicherung
+            while futures:
+                done, not_done = wait(
+                    list(futures.keys()),
+                    timeout=0.5,
+                    return_when=FIRST_COMPLETED
                 )
+
+                if not done:
+                    now = time.time()
+                    timed_out = []
+                    for future in not_done:
+                        task = futures[future]
+                        started = future_start_times.get(future, now)
+                        timeout_seconds = future_timeouts.get(future, 120)
+                        if (now - started) >= timeout_seconds:
+                            timed_out.append(future)
+
+                    for future in timed_out:
+                        task = futures.pop(future)
+                        future_start_times.pop(future, None)
+                        timeout_seconds = future_timeouts.pop(future, 120)
+                        cancel_event = future_cancel_events.pop(future, None)
+                        if cancel_event is not None:
+                            cancel_event.set()
+                        cancelled = future.cancel()
+                        if not cancelled:
+                            logger.warning(
+                                "[TaskDispatcher] Task %s Timeout nach %ss (Future konnte nicht direkt gecancelt werden)",
+                                task.id,
+                                timeout_seconds,
+                            )
+                        self._abort_running_task(task, f"timeout_{timeout_seconds}s")
+
+                        timeout_msg = f"Task Timeout nach {timeout_seconds}s"
+                        timeout_result = TaskExecutionResult(
+                            task_id=task.id,
+                            success=False,
+                            error_message=timeout_msg,
+                        )
+                        can_retry = self._handle_task_failure(task, timeout_msg)
+                        if can_retry:
+                            retry_tasks.append(task)
+                        else:
+                            final_results[task.id] = timeout_result
+                    continue
+
+                for future in done:
+                    task = futures.pop(future)
+                    future_start_times.pop(future, None)
+                    future_timeouts.pop(future, None)
+                    future_cancel_events.pop(future, None)
+                    try:
+                        result = future.result()
+                    except Exception as e:
+                        logger.error(f"[TaskDispatcher] Task {task.id} Exception: {e}")
+                        result = TaskExecutionResult(
+                            task_id=task.id,
+                            success=False,
+                            error_message=str(e),
+                        )
+
+                    if result.success:
+                        final_results[task.id] = result
+                        self.tracker.update_status(
+                            task.id,
+                            TaskStatus.COMPLETED,
+                            result=result.result,
+                            modified_files=result.modified_files
+                        )
+                    else:
+                        can_retry = self._handle_task_failure(task, result.error_message)
+                        if can_retry:
+                            retry_tasks.append(task)
+                        else:
+                            final_results[task.id] = result
+
+            pending_tasks = retry_tasks
+            if pending_tasks:
+                logger.info(
+                    "[TaskDispatcher] Retry-Runde %d abgeschlossen, %d Task(s) werden erneut ausgefuehrt",
+                    round_counter,
+                    len(pending_tasks),
+                )
+
+        results = list(final_results.values())
 
         # Batch-Ergebnis zusammenstellen
         batch.status = TaskStatus.COMPLETED
@@ -241,6 +295,87 @@ class TaskDispatcher:
             modified_files=self._collect_modified_files(results),
             errors=[r.error_message for r in results if r.error_message]
         )
+
+    def _get_task_timeout_seconds(self, task: DerivedTask) -> int:
+        """Liefert einen gueltigen Timeout-Wert fuer eine Task-Ausfuehrung."""
+        try:
+            timeout_seconds = int(getattr(task, "timeout_seconds", 120) or 120)
+        except (TypeError, ValueError):
+            timeout_seconds = 120
+        return timeout_seconds if timeout_seconds > 0 else 120
+
+    def _abort_running_task(self, task: DerivedTask, reason: str) -> None:
+        """
+        Bricht bekannte laufende Subprozesse fuer einen Task aktiv ab.
+
+        Root-Cause-Fix:
+        - Future.cancel() stoppt bereits laufende Worker-Threads nicht.
+        - Daher killen wir den aktiven Claude-CLI-Prozess explizit, damit
+          keine Zombie-Aufrufe nach Timeout weiterlaufen.
+        """
+        claude_provider = getattr(self.manager, "claude_provider", None)
+        if not claude_provider:
+            return
+        killer = getattr(claude_provider, "kill_active_process", None)
+        if callable(killer):
+            try:
+                killer()
+                logger.warning(
+                    "[TaskDispatcher] Aktiver Claude-Prozess fuer Task %s abgebrochen (%s)",
+                    task.id,
+                    reason,
+                )
+            except Exception as kill_err:
+                logger.warning(
+                    "[TaskDispatcher] Prozess-Abbruch fuer Task %s fehlgeschlagen: %s",
+                    task.id,
+                    kill_err,
+                )
+
+    def _handle_task_failure(self, task: DerivedTask, error_message: str) -> bool:
+        """
+        Verarbeitet einen Task-Fehler inkl. Retry-Entscheidung.
+
+        Nutzt primär die Task-Metadaten (retry_count/max_retries), damit das Verhalten
+        auch bei gemocktem Tracker deterministisch bleibt.
+        """
+        prev_retry = int(getattr(task, "retry_count", 0) or 0)
+        try:
+            max_retries = int(getattr(task, "max_retries", 2) or 2)
+        except (TypeError, ValueError):
+            max_retries = 2
+
+        expected_retry = prev_retry + 1
+        expected_can_retry = expected_retry < max_retries
+
+        tracker_can_retry = None
+        try:
+            tracker_can_retry = self.tracker.increment_retry(task.id)
+        except Exception as retry_err:
+            logger.warning("[TaskDispatcher] Retry-Inkrement fehlgeschlagen fuer %s: %s", task.id, retry_err)
+
+        # Task-Objekt lokal konsistent halten (wichtig fuer Runtime-Entscheidung im selben Batch).
+        if getattr(task, "retry_count", 0) < expected_retry:
+            task.retry_count = expected_retry
+
+        can_retry = tracker_can_retry if isinstance(tracker_can_retry, bool) else expected_can_retry
+
+        if can_retry:
+            self.tracker.update_status(
+                task.id,
+                TaskStatus.PENDING,
+                error_message=f"Retry geplant. Fehler: {error_message}"
+            )
+            logger.info(f"[TaskDispatcher] Task {task.id} wird wiederholt (Retry verfuegbar)")
+            return True
+
+        self.tracker.update_status(
+            task.id,
+            TaskStatus.FAILED,
+            error_message=f"Max Retries erreicht. Letzter Fehler: {error_message}"
+        )
+        logger.warning(f"[TaskDispatcher] Task {task.id} FAILED nach max retries")
+        return False
 
     async def execute_batch_async(self, batch: TaskBatch) -> BatchResult:
         """
@@ -299,7 +434,11 @@ class TaskDispatcher:
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, self.execute_all, tasks)
 
-    def _execute_single_task(self, task: DerivedTask) -> TaskExecutionResult:
+    def _execute_single_task(
+        self,
+        task: DerivedTask,
+        cancel_event: Optional[threading.Event] = None
+    ) -> TaskExecutionResult:
         """
         Fuehrt einen einzelnen Task aus.
 
@@ -310,11 +449,20 @@ class TaskDispatcher:
             TaskExecutionResult
         """
         start_time = time.time()
+        task_timeout_seconds = self._get_task_timeout_seconds(task)
 
         # AENDERUNG 02.02.2026: Verbessertes Debug-Logging fuer Fehleranalyse
         logger.info(f"[UTDS] Starte Task {task.id}: {task.title[:50]} | Agent: {task.target_agent.value}")
 
         try:
+            if cancel_event is not None and cancel_event.is_set():
+                return TaskExecutionResult(
+                    task_id=task.id,
+                    success=False,
+                    error_message="Task vor Start abgebrochen",
+                    duration_seconds=time.time() - start_time,
+                )
+
             # Agent fuer Task-Typ holen
             agent = self._get_agent_for_task(task)
 
@@ -337,9 +485,36 @@ class TaskDispatcher:
                     "title": task.title[:100]
                 })
 
+            existing_files = self._list_existing_project_files()
+
             # AENDERUNG 24.02.2026: Fix 76b — Claude SDK CLI-Modus fuer UTDS-Tasks
             # SDK-First: Schneller und direkter als CrewAI, Fallback auf CrewAI bei Fehler
             task_description = self._build_task_description(task)
+            fix_target_file = None
+            if is_fix:
+                fix_prompt, fix_target_file = self._build_fix_task_prompt(task, existing_files)
+                if not fix_prompt or not fix_target_file:
+                    error_msg = (
+                        "Fix-Task ohne aufloesbare Zieldatei. "
+                        "UTDS muss affected_files oder Dateiname im Issue liefern."
+                    )
+                    self._emit_fix_event("FixOutput", {
+                        "task_id": task.id,
+                        "success": False,
+                        "affected_files": task.affected_files,
+                        "modified_files": [],
+                        "error": error_msg,
+                        "duration": round(time.time() - start_time, 1),
+                    })
+                    return TaskExecutionResult(
+                        task_id=task.id,
+                        success=False,
+                        error_message=error_msg,
+                        duration_seconds=time.time() - start_time,
+                        agent_used=task.target_agent.value,
+                    )
+                task_description = fix_prompt
+
             sdk_result_text = None
             agent_role = task.target_agent.value
             try:
@@ -347,15 +522,33 @@ class TaskDispatcher:
                 if hasattr(self.manager, "claude_provider") and self.manager.claude_provider:
                     sdk_result_text = run_sdk_with_retry(
                         self.manager, role=agent_role, prompt=task_description,
-                        timeout_seconds=300, agent_display_name=f"UTDS-{agent_role.capitalize()}"
+                        timeout_seconds=task_timeout_seconds,
+                        agent_display_name=f"UTDS-{agent_role.capitalize()}"
                     )
             except Exception as sdk_err:
                 logger.debug("[UTDS] SDK-Versuch fuer %s fehlgeschlagen: %s", agent_role, sdk_err)
+
+            if cancel_event is not None and cancel_event.is_set():
+                return TaskExecutionResult(
+                    task_id=task.id,
+                    success=False,
+                    error_message="Task nach SDK-Phase abgebrochen",
+                    duration_seconds=time.time() - start_time,
+                    agent_used=task.target_agent.value
+                )
 
             if sdk_result_text:
                 result_text = sdk_result_text
                 logger.info("[UTDS] Task %s via Claude SDK erfolgreich (%d Zeichen)", task.id, len(result_text))
             else:
+                if cancel_event is not None and cancel_event.is_set():
+                    return TaskExecutionResult(
+                        task_id=task.id,
+                        success=False,
+                        error_message="Task vor Crew-Fallback abgebrochen",
+                        duration_seconds=time.time() - start_time,
+                        agent_used=task.target_agent.value
+                    )
                 # Fallback: CrewAI Task erstellen
                 crew_task = Task(
                     description=task_description,
@@ -373,22 +566,69 @@ class TaskDispatcher:
                 result = crew.kickoff()
                 result_text = str(result) if result else ""
 
-            # AENDERUNG 07.02.2026: existing_files fuer Dateiname-Validierung (Fix 20)
-            existing_files = []
-            project_path = getattr(self.manager, 'project_path', None)
-            if project_path and os.path.isdir(str(project_path)):
-                for root, dirs, files in os.walk(str(project_path)):
-                    dirs[:] = [d for d in dirs if d not in ('node_modules', '.next', '.git', '__pycache__')]
-                    for fname in files:
-                        rel = os.path.relpath(os.path.join(root, fname), str(project_path)).replace("\\", "/")
-                        existing_files.append(rel)
+            if is_fix and fix_target_file:
+                from agents.fix_agent import extract_corrected_content
 
-            # Ergebnis analysieren
-            modified_files = self._extract_modified_files(result_text, task, existing_files=existing_files)
+                corrected_content = extract_corrected_content(result_text, fix_target_file)
+                if not corrected_content:
+                    error_msg = (
+                        f"Fix-Output enthaelt keine extrahierbare Korrektur fuer {fix_target_file}"
+                    )
+                    self._emit_fix_event("FixOutput", {
+                        "task_id": task.id,
+                        "success": False,
+                        "affected_files": task.affected_files,
+                        "modified_files": [],
+                        "error": error_msg,
+                        "duration": round(time.time() - start_time, 1),
+                    })
+                    return TaskExecutionResult(
+                        task_id=task.id,
+                        success=False,
+                        error_message=error_msg,
+                        duration_seconds=time.time() - start_time,
+                        agent_used=task.target_agent.value,
+                    )
 
-            # ÄNDERUNG 03.02.2026: UTDS-Fixes zu manager.current_code synchronisieren
-            # Verhindert dass Fixes bei nächster Coder-Iteration verloren gehen
-            self._sync_modified_files_to_manager(modified_files, result_text)
+                if cancel_event is not None and cancel_event.is_set():
+                    return TaskExecutionResult(
+                        task_id=task.id,
+                        success=False,
+                        error_message="Task vor Datei-Synchronisierung abgebrochen",
+                        duration_seconds=time.time() - start_time,
+                        agent_used=task.target_agent.value,
+                    )
+
+                write_ok = self._write_file_to_project(fix_target_file, corrected_content)
+                sync_ok = self._sync_single_file_to_manager(fix_target_file, corrected_content)
+                if not write_ok or not sync_ok:
+                    sync_error = (
+                        f"Fix-Task Synchronisierung fehlgeschlagen "
+                        f"(write_ok={write_ok}, sync_ok={sync_ok}) fuer {fix_target_file}"
+                    )
+                    self._emit_fix_event("FixOutput", {
+                        "task_id": task.id,
+                        "success": False,
+                        "affected_files": task.affected_files,
+                        "modified_files": [],
+                        "error": sync_error,
+                        "duration": round(time.time() - start_time, 1),
+                    })
+                    return TaskExecutionResult(
+                        task_id=task.id,
+                        success=False,
+                        error_message=sync_error,
+                        duration_seconds=time.time() - start_time,
+                        agent_used=task.target_agent.value,
+                    )
+                modified_files = [fix_target_file]
+            else:
+                # Ergebnis analysieren
+                modified_files = self._extract_modified_files(result_text, task, existing_files=existing_files)
+
+                # ÄNDERUNG 03.02.2026: UTDS-Fixes zu manager.current_code synchronisieren
+                # Verhindert dass Fixes bei nächster Coder-Iteration verloren gehen
+                self._sync_modified_files_to_manager(modified_files, result_text)
 
             # AENDERUNG 07.02.2026: Fix-Agent Output-Event (Fix 14)
             if is_fix:
@@ -397,12 +637,21 @@ class TaskDispatcher:
                     model_name = agent.llm.model
                 self._emit_fix_event("FixOutput", {
                     "task_id": task.id,
-                    "success": True,
+                    "success": bool(modified_files),
                     "affected_files": task.affected_files,
                     "modified_files": modified_files,
                     "model": model_name,
                     "duration": round(time.time() - start_time, 1)
                 })
+
+            if is_fix and not modified_files:
+                return TaskExecutionResult(
+                    task_id=task.id,
+                    success=False,
+                    error_message="Fix-Task lieferte keine geaenderte Datei",
+                    duration_seconds=time.time() - start_time,
+                    agent_used=task.target_agent.value,
+                )
 
             return TaskExecutionResult(
                 task_id=task.id,
@@ -577,6 +826,178 @@ class TaskDispatcher:
 """
         return desc
 
+    def _list_existing_project_files(self) -> List[str]:
+        """Liest vorhandene Projektdateien fuer Datei-Aufloesung und Validierung."""
+        existing_files = []
+        project_path = getattr(self.manager, "project_path", None)
+        if project_path and os.path.isdir(str(project_path)):
+            for root, dirs, files in os.walk(str(project_path)):
+                dirs[:] = [
+                    d for d in dirs if d not in ("node_modules", ".next", ".git", "__pycache__")
+                ]
+                for fname in files:
+                    rel = os.path.relpath(os.path.join(root, fname), str(project_path)).replace("\\", "/")
+                    existing_files.append(rel)
+        return existing_files
+
+    def _resolve_fix_target_file(self, task: DerivedTask, existing_files: List[str]) -> Optional[str]:
+        """Bestimmt die zu korrigierende Datei fuer einen Fix-Task."""
+        candidates = []
+        for af in task.affected_files or []:
+            if isinstance(af, str) and af.strip():
+                candidates.append(af.replace("\\", "/").strip())
+
+        if not candidates:
+            issue_text = f"{task.source_issue or ''}\n{task.description or ''}"
+            file_pattern = r'([a-zA-Z0-9_/\\.-]+\.(?:py|jsx|json|tsx|js|ts|html|css|yaml|yml|md|java|go|rs|cs|cpp|hpp|kt|kts|rb|swift|php|vue|svelte|dart|scala|xml|gradle|sql|sh|bat|toml))'
+            for match in re.findall(file_pattern, issue_text):
+                candidates.append(match.replace("\\", "/").strip())
+
+        if not candidates:
+            return None
+
+        existing_set = {ef.replace("\\", "/") for ef in existing_files or []}
+        for candidate in candidates:
+            if candidate in existing_set:
+                return candidate
+            base = os.path.basename(candidate)
+            base_matches = [ef for ef in existing_set if os.path.basename(ef) == base]
+            if len(base_matches) == 1:
+                return base_matches[0]
+
+            # Fallback: direkte Existenzpruefung, falls existing_files leer ist.
+            project_path = getattr(self.manager, "project_path", None)
+            if project_path:
+                project_root = os.path.abspath(str(project_path))
+                candidate_path = os.path.abspath(os.path.join(project_root, candidate))
+                try:
+                    if (os.path.commonpath([project_root, candidate_path]) == project_root
+                            and os.path.isfile(candidate_path)):
+                        return candidate
+                except ValueError:
+                    continue
+
+        # Keine aufloesbare Datei gefunden -> harter Fehler statt unspezifischem Crew-Fallback.
+        return None
+
+    def _read_project_file(self, rel_path: str) -> str:
+        """Liest eine Projektdatei als UTF-8 Text (best effort)."""
+        project_path = getattr(self.manager, "project_path", None)
+        if not project_path or not rel_path:
+            return ""
+        project_root = os.path.abspath(str(project_path))
+        full_path = os.path.abspath(os.path.join(project_root, rel_path))
+        try:
+            if os.path.commonpath([project_root, full_path]) != project_root:
+                return ""
+        except ValueError:
+            return ""
+        if not os.path.isfile(full_path):
+            return ""
+        try:
+            with open(full_path, "r", encoding="utf-8") as f:
+                return f.read()
+        except Exception:
+            return ""
+
+    def _extract_line_numbers(self, text: str) -> List[int]:
+        """Extrahiert Zeilennummern aus Fehlertexten."""
+        if not text:
+            return []
+        numbers = set()
+        for m in re.findall(r"(?:line|zeile)\s+(\d+)", text, flags=re.IGNORECASE):
+            try:
+                numbers.add(int(m))
+            except ValueError:
+                pass
+        return sorted(numbers)[:10]
+
+    def _build_fix_task_prompt(self, task: DerivedTask, existing_files: List[str]) -> tuple[Optional[str], Optional[str]]:
+        """Erstellt einen dateibezogenen Prompt fuer Fix-Tasks."""
+        from agents.fix_agent import build_fix_prompt
+
+        target_file = self._resolve_fix_target_file(task, existing_files)
+        if not target_file:
+            return None, None
+
+        current_content = self._read_project_file(target_file)
+        error_message = task.source_issue or task.description or task.title
+        line_numbers = self._extract_line_numbers(f"{task.source_issue}\n{task.description}")
+        prompt = build_fix_prompt(
+            file_path=target_file,
+            current_content=current_content,
+            error_type=task.category.value,
+            error_message=error_message,
+            line_numbers=line_numbers,
+            context_files=None,
+            suggested_fix=task.description[:500] if task.description else "",
+        )
+        return prompt, target_file
+
+    def _write_file_to_project(self, rel_path: str, content: str) -> bool:
+        """Schreibt korrigierten Dateiinhalt in das Projektverzeichnis."""
+        project_path = getattr(self.manager, "project_path", None)
+        if not project_path or not rel_path:
+            return False
+        project_root = os.path.abspath(str(project_path))
+        target_path = os.path.abspath(os.path.join(project_root, rel_path))
+        try:
+            if os.path.commonpath([project_root, target_path]) != project_root:
+                logger.warning("[UTDS] Schreibversuch ausserhalb Projektpfad blockiert: %s", rel_path)
+                return False
+        except ValueError:
+            return False
+
+        try:
+            target_dir = os.path.dirname(target_path)
+            if target_dir:
+                os.makedirs(target_dir, exist_ok=True)
+            with open(target_path, "w", encoding="utf-8") as f:
+                f.write(content)
+
+            # Harte Validierung: Read-after-write muss den geschriebenen Inhalt liefern.
+            with open(target_path, "r", encoding="utf-8") as f:
+                persisted = f.read()
+            if persisted != content:
+                logger.warning(
+                    "[UTDS] Read-after-write Mismatch fuer %s (expected=%d, actual=%d)",
+                    rel_path,
+                    len(content),
+                    len(persisted),
+                )
+                return False
+            return True
+        except Exception as e:
+            logger.error("[UTDS] Fehler beim Schreiben von %s: %s", rel_path, e)
+            return False
+
+    def _sync_single_file_to_manager(self, filename: str, content: str) -> bool:
+        """Synchronisiert eine einzelne Datei in manager.current_code."""
+        if not hasattr(self.manager, "current_code"):
+            return False
+
+        if self.manager.current_code is None:
+            self.manager.current_code = {}
+
+        if isinstance(self.manager.current_code, dict):
+            self.manager.current_code[filename] = content
+            return self.manager.current_code.get(filename) == content
+
+        if isinstance(self.manager.current_code, str):
+            try:
+                from .dev_loop_coder_utils import rebuild_current_code_from_disk
+
+                self.manager.current_code = rebuild_current_code_from_disk(self.manager)
+            except Exception:
+                return False
+
+            if isinstance(self.manager.current_code, dict):
+                return self.manager.current_code.get(filename) == content
+            if isinstance(self.manager.current_code, str):
+                marker = f"### FILENAME: {filename}"
+                return marker in self.manager.current_code
+        return False
+
     def _emit_fix_event(self, event_type: str, data: Dict) -> None:
         """
         AENDERUNG 07.02.2026: Sendet Fix-Agent Event an Frontend via on_log (Fix 14).
@@ -627,6 +1048,7 @@ class TaskDispatcher:
             r'^BeispielDatei',        # Platzhalter
             r'^\.\/',                 # Relative Pfade "./globals.css"
             r'^module\.ex$',          # Elixir-Fehlmatch
+            r'^request\.json$',       # Artefakt aus await request.json()
             r'DATEI',                 # "DATEI" als Name
         ]
         matches = [m for m in matches if not any(re.search(p, m) for p in _GARBAGE_PATTERNS)]
@@ -652,15 +1074,18 @@ class TaskDispatcher:
         # AENDERUNG 07.02.2026: Schritt 3 — Validierung gegen existierende Dateien (Fix 20)
         if existing_files:
             validated = []
+            affected_files_normalized = {
+                af.replace("\\", "/") for af in (task.affected_files or []) if isinstance(af, str)
+            }
             for m in matches:
                 m_normalized = m.replace("\\", "/")
                 m_basename = os.path.basename(m_normalized)
                 if (m_normalized in existing_files
                         or m_basename in [os.path.basename(ef) for ef in existing_files]
-                        or any(ef.endswith(f"/{m_normalized}") for ef in existing_files)):
+                        or any(ef.endswith(f"/{m_normalized}") for ef in existing_files)
+                        or m_normalized in affected_files_normalized):
                     validated.append(m)
-            if validated:
-                matches = validated
+            matches = validated
 
         found = list(set(matches))[:10]
 

@@ -109,19 +109,32 @@ async def reset_session():
         Bestaetigung
     """
     import json
+    import asyncio
     from datetime import datetime
     from ..app_state import manager as orch_manager, ws_manager
 
-    # 1. Stop-Flag setzen (beendet DevLoop-Iteration kooperativ)
+    # AENDERUNG 25.02.2026: Fix 85 — Sauberer Reset mit Process-Kill und Wait-for-Stop
+    # ROOT-CAUSE-FIX:
+    # Symptom: Nach Reset laufen Threads/Prozesse weiter, neuer Run startet parallel
+    # Ursache: Reset setzte nur Flags, wartete aber nicht auf tatsaechliches Ende
+    # Loesung: stop() + kill_active_process() + warten bis _is_running=False + dann reset
+
+    # 1. Stop-Flag setzen + aktive CLI-Prozesse beenden
     if hasattr(orch_manager, 'stop'):
         orch_manager.stop()
 
-    # 2. Session-Dict zuruecksetzen
+    # 2. Warten bis Run tatsaechlich beendet ist (max 5s)
+    for _ in range(10):
+        if not getattr(orch_manager, '_is_running', False):
+            break
+        await asyncio.sleep(0.5)
+
+    # 3. Session-Dict zuruecksetzen (erst NACH Stop)
     session_mgr = get_session_manager_instance()
     if session_mgr:
         session_mgr.reset()
 
-    # 3. Frontend ueber Stop informieren → Button wird freigegeben
+    # 4. Frontend ueber Stop informieren → Button wird freigegeben
     payload = json.dumps({
         "agent": "System",
         "event": "Stopped",

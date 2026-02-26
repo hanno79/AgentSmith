@@ -26,6 +26,8 @@ from main import save_multi_file_output
 from .agent_factory import init_agents
 from .orchestration_helpers import (
     is_rate_limit_error,
+    is_model_unavailable_error,
+    handle_model_error,
     is_server_error,
     is_litellm_internal_error,
     is_openrouter_error  # AENDERUNG 02.02.2026: OpenRouter-Fehler fuer sofortigen Modellwechsel
@@ -146,6 +148,30 @@ def run_coder_task(manager, project_rules: Dict[str, Any], c_prompt: str, agent_
             continue
 
         except Exception as error:
+            # AENDERUNG 26.02.2026: Root-Cause-Fix — "No endpoints found" sofort behandeln.
+            # Vorher fiel das in den generischen Exception-Pfad und konnte den Lauf abbrechen.
+            if is_model_unavailable_error(error):
+                err_kind = handle_model_error(manager.model_router, current_model, error)
+                manager._ui_log(
+                    "Coder",
+                    "ModelUnavailable",
+                    f"Modell {current_model} nicht verfuegbar ({err_kind}) - sofortiger Modellwechsel",
+                )
+                agent_coder = init_agents(
+                    manager.config,
+                    project_rules,
+                    router=manager.model_router,
+                    include=["coder"],
+                    tech_blueprint=getattr(manager, 'tech_blueprint', None)
+                ).get("coder")
+                task_coder = Task(description=c_prompt, expected_output="Code", agent=agent_coder)
+                error_tracker = {}
+
+                if coder_attempt == MAX_CODER_RETRIES - 1:
+                    manager._ui_log("Coder", "Error", f"Alle {MAX_CODER_RETRIES} Versuche fehlgeschlagen (Modell nicht verfuegbar)")
+                    raise error
+                continue
+
             # AENDERUNG 29.01.2026: LiteLLM interne Bugs wie Rate-Limits behandeln
             if is_litellm_internal_error(error):
                 error_type = "litellm_bug"

@@ -73,7 +73,7 @@ from budget_tracker import get_budget_tracker
 from model_router import get_model_router
 from .worker_pool import OfficeManager, WorkerStatus
 from .orchestration_helpers import (
-    is_model_unavailable_error, is_rate_limit_error, is_empty_response_error
+    is_model_unavailable_error, is_rate_limit_error, is_empty_response_error, handle_model_error
 )
 # AENDERUNG 08.02.2026: Fix 24 - Waisen-Check Phase
 from .orchestration_phases import run_waisen_check_phase
@@ -134,6 +134,8 @@ class OrchestrationManager:
         self.force_security_fix = False
         self.discovery_briefing: Optional[Dict[str, Any]] = None
         self.model_router = get_model_router(self.config)
+        self._effective_token_limits = dict(self.config.get("token_limits", {}))
+        self._claude_sdk_runtime_guard = {}
         # AENDERUNG 01.02.2026: Fallback-Callback um WorkerStatus zu aktualisieren
         self.model_router.on_fallback = self._handle_model_fallback
         self.project_rules = {}
@@ -162,6 +164,19 @@ class OrchestrationManager:
         # Loesung: threading.Event() als kooperatives Stop-Signal fuer alle Iteration-Loops
         import threading
         self._stop_event = threading.Event()
+        # AENDERUNG 25.02.2026: Fix 85 — _is_running Flag fuer robusten Single-Run-Schutz
+        # ROOT-CAUSE-FIX:
+        # Symptom: Zwei Runs starten parallel nach Reset (session_mgr.is_active() prueft nur Status-String)
+        # Ursache: Reset setzt Status auf "Idle" aber Background-Threads laufen weiter
+        # Loesung: _is_running trackt ob run_task() tatsaechlich ausfuehrt (unabhaengig vom Session-Status)
+        self._is_running = False
+        # AENDERUNG 26.02.2026: Claude Hard-Limit Circuit-Breaker
+        # Wenn ein globales Account-Limit erkannt wird ("You've hit your limit"),
+        # sollen alle weiteren Claude-SDK/CLI Aufrufe sofort auf OpenRouter fallen.
+        self._force_openrouter_for_claude = False
+        self._force_openrouter_reason = ""
+        self._force_openrouter_activated_at = None
+        self._claude_short_response_guard = {"total_failures": 0, "by_role": {}}
 
         # AENDERUNG 21.02.2026: Claude SDK Provider (zusaetzliches LLM-Backend neben OpenRouter)
         self.claude_provider = None
@@ -169,6 +184,7 @@ class OrchestrationManager:
             try:
                 from .claude_sdk import get_claude_sdk_provider
                 self.claude_provider = get_claude_sdk_provider()
+                self._apply_claude_sdk_runtime_mitigation()
                 logger.info("Claude SDK Provider aktiviert (Max Plan Backend)")
             except ImportError as e:
                 logger.warning("Claude SDK Provider nicht verfuegbar: %s", e)
@@ -227,6 +243,66 @@ class OrchestrationManager:
                                       action_required=action_required, project_id=project_id)
         self._ui_log(*help_msg.to_legacy())
 
+    def get_effective_token_limit(self, role: str, default: Optional[int] = None) -> Optional[int]:
+        """Liefert das zur Laufzeit wirksame Token-Limit pro Rolle."""
+        if role in self._effective_token_limits:
+            return self._effective_token_limits.get(role)
+        return default
+
+    def _apply_claude_sdk_runtime_mitigation(self) -> None:
+        """
+        Startup-Mitigation fuer Claude SDK/CLI Token-Cap Mismatch.
+        - erkennt SDK-/CLI-Versionen und Haiku-Runtime-Cap
+        - setzt effektives coder Token-Limit
+        - bevorzugt system-cli fuer coder ODER faellt auf sonnet zurueck
+        """
+        if not self.claude_provider:
+            return
+
+        configured_coder_limit = int(self.config.get("token_limits", {}).get("coder", 8192))
+        runtime_guard = self.claude_provider.probe_sdk_runtime(configured_coder_limit)
+        self._claude_sdk_runtime_guard = runtime_guard
+
+        effective_limit = int(runtime_guard.get("effective_coder_limit") or configured_coder_limit)
+        self._effective_token_limits["coder"] = effective_limit
+        logger.info(
+            "Claude SDK Runtime-Guard: sdk=%s bundled_cli=%s system_cli=%s "
+            "haiku_cap=%s configured=%d effective=%d",
+            runtime_guard.get("sdk_version"),
+            runtime_guard.get("bundled_cli_version"),
+            runtime_guard.get("system_cli_version"),
+            runtime_guard.get("reported_haiku_limit"),
+            configured_coder_limit,
+            effective_limit,
+        )
+
+        if not runtime_guard.get("mitigation_required"):
+            return
+
+        sdk_cfg = self.config.setdefault("claude_sdk", {})
+        if runtime_guard.get("prefer_system_cli"):
+            cli_roles = sdk_cfg.setdefault("cli_mode_roles", [])
+            if "coder" not in cli_roles:
+                cli_roles.append("coder")
+            logger.warning(
+                "Claude SDK Mitigation aktiv: coder nutzt system-claude CLI "
+                "(system=%s > bundled=%s)",
+                runtime_guard.get("system_cli_version"),
+                runtime_guard.get("bundled_cli_version"),
+            )
+            return
+
+        agent_models = sdk_cfg.setdefault("agent_models", {})
+        previous_model = agent_models.get("coder", sdk_cfg.get("default_model", "sonnet"))
+        agent_models["coder"] = "sonnet"
+        logger.warning(
+            "Claude SDK Mitigation aktiv: coder Modell %s -> sonnet "
+            "(sdk_affected=%s, limit_mismatch=%s)",
+            previous_model,
+            runtime_guard.get("sdk_in_affected_range"),
+            runtime_guard.get("limit_mismatch"),
+        )
+
     def _handle_help_needed_events(self, iteration: int) -> Dict[str, Any]:
         """Wrapper für ausgelagerte HELP_NEEDED Handler Funktion."""
         return handle_help_needed_events(
@@ -246,10 +322,17 @@ class OrchestrationManager:
                      f"Briefing aktiviert: {briefing.get('projectName', 'unbenannt')}")
 
     # AENDERUNG 22.02.2026: Fix 68a — Stop-Flag Methoden
+    # AENDERUNG 25.02.2026: Fix 85 — stop() beendet auch aktive CLI-Prozesse
     def stop(self) -> None:
-        """Signalisiert allen laufenden Loops zu stoppen (kooperativ)."""
+        """Signalisiert allen laufenden Loops zu stoppen und beendet aktive Prozesse."""
         self._stop_event.set()
-        logger.info("OrchestrationManager: Stop-Signal gesetzt")
+        # Aktiven CLI-Prozess sofort beenden (statt auf Timeout zu warten)
+        if self.claude_provider and hasattr(self.claude_provider, 'kill_active_process'):
+            try:
+                self.claude_provider.kill_active_process()
+            except Exception as e:
+                logger.debug("Process-Kill bei Stop: %s", e)
+        logger.info("OrchestrationManager: Stop-Signal gesetzt + Prozesse beendet")
 
     def is_stop_requested(self) -> bool:
         """Prueft ob Stop angefordert wurde."""
@@ -258,6 +341,35 @@ class OrchestrationManager:
     def _clear_stop(self) -> None:
         """Setzt Stop-Flag zurueck (vor jedem neuen Run)."""
         self._stop_event.clear()
+
+    def force_openrouter_for_claude(self, reason: str) -> None:
+        """
+        Aktiviert einen globalen Claude-Circuit-Breaker fuer den aktuellen Run.
+        Danach liefert get_provider() fuer alle Rollen "openrouter".
+        """
+        if self._force_openrouter_for_claude:
+            return
+        self._force_openrouter_for_claude = True
+        self._force_openrouter_reason = (reason or "").strip()[:300]
+        self._force_openrouter_activated_at = datetime.now().isoformat()
+        self._ui_log(
+            "System",
+            "ProviderOverride",
+            "Claude-Hard-Limit erkannt - wechsle global auf OpenRouter.",
+        )
+        logger.warning(
+            "Claude-Circuit-Breaker aktiv: globaler OpenRouter-Fallback. Grund: %s",
+            self._force_openrouter_reason or "unbekannt",
+        )
+
+    def reset_claude_provider_override(self) -> None:
+        """Setzt Claude-Run-Guards zurueck (vor jedem neuen Run)."""
+        self._force_openrouter_for_claude = False
+        self._force_openrouter_reason = ""
+        self._force_openrouter_activated_at = None
+        # Run-lokalen Kurzantwort-Guard immer loeschen, damit neue Runs nicht
+        # durch Altzustand sofort in globalen OpenRouter-Fallback kippen.
+        self._claude_short_response_guard = {"total_failures": 0, "by_role": {}}
 
     def get_briefing_context(self) -> str:
         return format_briefing_context(self.discovery_briefing)
@@ -300,6 +412,8 @@ class OrchestrationManager:
         Returns:
             "claude-sdk" wenn aktiviert und Rolle konfiguriert, sonst "openrouter"
         """
+        if getattr(self, "_force_openrouter_for_claude", False):
+            return "openrouter"
         if self.claude_provider and role in self.config.get("claude_sdk", {}).get("agent_models", {}):
             return "claude-sdk"
         return "openrouter"
@@ -371,9 +485,18 @@ class OrchestrationManager:
         return sanitized[:50] if sanitized else None
 
     # AENDERUNG 09.02.2026: project_name Parameter fuer benutzerdefinierte Projektnamen
+    # AENDERUNG 25.02.2026: Fix 85 — _is_running Guard gegen parallele Runs
     def run_task(self, user_goal: str, project_name: str = None):
+        # Robuster Single-Run-Schutz (zusaetzlich zum HTTP 409 Check)
+        if self._is_running:
+            self._ui_log("System", "Warning", "Run bereits aktiv - Anfrage abgelehnt")
+            logger.warning("run_task() abgelehnt: _is_running=True")
+            return
+        self._is_running = True
         # AENDERUNG 22.02.2026: Fix 68a — Stop-Flag zuruecksetzen vor neuem Run
         self._clear_stop()
+        # AENDERUNG 26.02.2026: Claude-Circuit-Breaker pro Run zuruecksetzen
+        self.reset_claude_provider_override()
         try:
             self._ui_log("System", "Task Start", f"Goal: {user_goal}")
             # AENDERUNG 10.02.2026: Fix 47 — User-Goal fuer Doc-Enrichment Keyword-Erkennung
@@ -470,6 +593,11 @@ class OrchestrationManager:
                 logger.warning(f"[UTDS] Initial-Derivation fehlgeschlagen: {utds_err}")
                 self._ui_log("UTDS", "Warning", f"Initial-Derivation uebersprungen: {utds_err}")
 
+            # AENDERUNG 25.02.2026: Fix 85 — Stop-Check vor Research-Phase
+            if self.is_stop_requested():
+                self._ui_log("System", "Stopped", "Run vor Research-Phase gestoppt")
+                return
+
             # 🔎 RESEARCH PHASE
             if self.is_first_run:
                 # AENDERUNG 08.02.2026: research_timeout_minutes entfernt → agent_timeouts["researcher"]
@@ -541,7 +669,10 @@ class OrchestrationManager:
                         except Exception as e:
                             if is_model_unavailable_error(e) or is_rate_limit_error(e) or is_empty_response_error(e):
                                 self._ui_log("Researcher", "Warning", f"Modell {research_model} nicht verfügbar (Versuch {researcher_attempt + 1}/{MAX_RESEARCHER_RETRIES}): {str(e)[:80]}")
-                                self.model_router.mark_rate_limited_sync(research_model)
+                                if is_empty_response_error(e):
+                                    self.model_router.mark_rate_limited_sync(research_model)
+                                else:
+                                    handle_model_error(self.model_router, research_model, e)
                                 self._update_worker_status("researcher", "idle")
                                 if researcher_attempt < MAX_RESEARCHER_RETRIES - 1:
                                     self._ui_log("Researcher", "Info", "Wechsle zu Fallback-Modell...")
@@ -557,6 +688,11 @@ class OrchestrationManager:
                                 "model": research_model, "error": str(e), "attempt": researcher_attempt + 1
                             }, ensure_ascii=False))
                             break
+
+            # AENDERUNG 25.02.2026: Fix 85 — Stop-Check vor Meta-Orchestrator
+            if self.is_stop_requested():
+                self._ui_log("System", "Stopped", "Run vor Planner-Phase gestoppt")
+                return
 
             # 🧠 META-ORCHESTRATOR
             # AENDERUNG 21.02.2026: 3→7 damit alle konfigurierten Modelle + dynamischer Fallback probiert werden
@@ -574,7 +710,10 @@ class OrchestrationManager:
                 except Exception as meta_err:
                     if is_model_unavailable_error(meta_err) or is_rate_limit_error(meta_err) or is_empty_response_error(meta_err):
                         self._ui_log("Orchestrator", "Warning", f"Meta-Modell {current_meta_model} nicht verfügbar (Versuch {meta_attempt + 1}/{MAX_META_RETRIES})")
-                        self.model_router.mark_rate_limited_sync(current_meta_model)
+                        if is_empty_response_error(meta_err):
+                            self.model_router.mark_rate_limited_sync(current_meta_model)
+                        else:
+                            handle_model_error(self.model_router, current_meta_model, meta_err)
                         if meta_attempt < MAX_META_RETRIES - 1:
                             continue
                     self._ui_log("Orchestrator", "Error", f"Meta-Orchestrator Fehler: {str(meta_err)[:200]}")
@@ -674,6 +813,11 @@ class OrchestrationManager:
                     self._run_designer_phase(designer_goal, self.project_rules, getattr(self, '_stats_run_id', project_id), agent_timeouts.get("designer", 300))
                 self._ui_log("Security", "Status", "Security-Scan wird nach Code-Generierung durchgeführt...")
 
+            # AENDERUNG 25.02.2026: Fix 85 — Stop-Check vor DevLoop
+            if self.is_stop_requested():
+                self._ui_log("System", "Stopped", "Run vor DevLoop gestoppt")
+                return
+
             # 🔄 DEV LOOP
             dev_loop = DevLoop(self, set_current_agent, run_with_timeout)
             success, feedback = dev_loop.run(
@@ -721,6 +865,8 @@ class OrchestrationManager:
             self._finalize_error()
             raise e
         finally:
+            # AENDERUNG 25.02.2026: Fix 85 — _is_running zuruecksetzen (IMMER, auch bei Fehler/Stop)
+            self._is_running = False
             # AENDERUNG 10.02.2026: Fix 50 - Docker-Container aufräumen
             if getattr(self, '_docker_container', None):
                 try:
@@ -924,4 +1070,3 @@ class OrchestrationManager:
             session_mgr.end_session(status="Error")
         except Exception:
             pass
-

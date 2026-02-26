@@ -424,6 +424,33 @@ class TestRunReview:
             "Erwartet: Sofortiger Modellwechsel nach Rate-Limit"
         )
 
+    def test_model_unavailable_sofortiger_modellwechsel(self):
+        """ModelUnavailable-Fehler (z.B. no endpoints found) wechseln sofort das Modell."""
+        from backend.dev_loop_review import run_review
+
+        manager = self._create_default_manager()
+
+        with patch("backend.dev_loop_review._compress_review_code", return_value="compressed code"), \
+             patch("backend.dev_loop_review.Task"), \
+             patch("backend.dev_loop_review.run_with_heartbeat", side_effect=[
+                 Exception("OpenrouterException - No endpoints found for deepseek/deepseek-r1-0528:free"),
+                 "OK - Alles gut"
+             ]), \
+             patch("backend.dev_loop_review.init_agents", return_value={"reviewer": MagicMock()}), \
+             patch("backend.dev_loop_review.is_empty_or_invalid_response", return_value=False), \
+             patch("backend.dev_loop_review.is_rate_limit_error", return_value=False), \
+             patch("backend.dev_loop_review.is_model_unavailable_error", return_value=True), \
+             patch("backend.dev_loop_review.handle_model_error", return_value="permanent") as mock_handle, \
+             patch("backend.dev_loop_review.is_openrouter_error", return_value=False), \
+             patch("backend.dev_loop_review.truncate_review_output", side_effect=lambda x, **kw: x), \
+             patch("backend.dev_loop_review.create_human_readable_verdict", return_value="Zusammenfassung"):
+            output, verdict, summary = run_review(
+                manager, {}, "code", "", "", False, MagicMock()
+            )
+
+        mock_handle.assert_called_once()
+        assert verdict == "OK", "Nach Modellwechsel soll der zweite erfolgreiche Versuch akzeptiert werden"
+
     @patch("backend.dev_loop_review._compress_review_code")
     @patch("backend.dev_loop_review.Task")
     @patch("backend.dev_loop_review.run_with_heartbeat")

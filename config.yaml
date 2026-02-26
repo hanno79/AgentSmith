@@ -16,14 +16,10 @@ enable_file_by_file_mode: true
 agent_timeouts:
   default: 750
   coder: 1800
-  # AENDERUNG 24.02.2026: Fix 79 — inkl. Claude SDK Cooldown/Backoff Overhead
-  # reviewer normal 1200s + worst_case_overhead 135s (45 + 2*45) => >1335s
   reviewer: 1500
   tester: 300
   security: 300
-  researcher: 900
-  # AENDERUNG 24.02.2026: Fix 79 — inkl. Claude SDK Cooldown/Backoff Overhead
-  # planner normal 900s + worst_case_overhead 135s (45 + 2*45) => >1035s
+  researcher: 600
   planner: 1200
   designer: 300
   fix: 750
@@ -40,7 +36,12 @@ token_limits:
   reviewer: 65536
   planner: 65536
   designer: 8192
-  security: 4096
+  # AENDERUNG 26.02.2026: Fix 89a — Security Token-Limit erhoehen
+  # ROOT-CAUSE-FIX:
+  # Symptom: Security-Agent liefert nur 6 Zeichen ("SECURE") statt echtem Scan
+  # Ursache: token_limit 4096 → Truncation auf ~12k Zeichen (~3% des Codes)
+  # Loesung: 65536 wie coder/reviewer — Security braucht den vollen Code
+  security: 65536
   researcher: 8192
   orchestrator: 4096
   fix: 65536
@@ -86,11 +87,11 @@ models:
       - openrouter/meta-llama/llama-3.1-405b-instruct:free
       - openrouter/z-ai/glm-4.5-air:free
     researcher:
-      primary: openrouter/z-ai/glm-4.5-air:free
+      primary: openrouter/openai/gpt-oss-120b:free
       fallback:
+      - openrouter/z-ai/glm-4.5-air:free
       - openrouter/nousresearch/hermes-3-llama-3.1-405b:free
       - openrouter/meta-llama/llama-3.3-70b-instruct:free
-      - openrouter/openai/gpt-oss-120b:free
       - openrouter/deepseek/deepseek-r1-0528:free
     coder:
       primary: openrouter/qwen/qwen3-coder:free
@@ -138,11 +139,6 @@ models:
       - openrouter/nousresearch/hermes-3-llama-3.1-405b:free
       - openrouter/qwen/qwen3-coder:free
       - openrouter/z-ai/glm-4.5-air:free
-      extended_fallback:
-      - openrouter/deepseek/deepseek-r1-0528:free
-      - openrouter/arcee-ai/trinity-large-preview:free
-      - openrouter/google/gemma-3-27b-it:free
-      - openrouter/xiaomi/mimo-v2-flash:free
     reviewer:
       primary: openrouter/deepseek/deepseek-r1-0528:free
       fallback:
@@ -235,11 +231,11 @@ models:
       - openrouter/qwen/qwen-3
       - openrouter/baidu/ernie-5.0
     researcher:
-      primary: openrouter/mistralai/mistral-medium-3.1
+      primary: openrouter/inception/mercury
       fallback:
+      - openrouter/mistralai/mistral-medium-3.1
       - openrouter/google/gemini-2.5-flash
       - openrouter/deepseek/deepseek-r1-0528
-      - openrouter/baidu/ernie-5.0
       - openrouter/minimax/minimax-m2.1
     coder:
       primary: openrouter/moonshotai/kimi-k2.5
@@ -673,6 +669,12 @@ claude_sdk:
     # Ursache: Kein Cooldown → Fix trifft nach 44+ File-by-File Calls direkt auf TPM-Limit
     # Loesung: 30s Cooldown (kuerzer als Planner/Reviewer 60s, aber genug fuer TPM-Recovery)
     fix: 30
+    # AENDERUNG 25.02.2026: Fix 84 — Pre-Call Cooldown fuer Researcher
+    # ROOT-CAUSE-FIX:
+    # Symptom: Researcher trifft nach TaskDeriver (Opus, 75s) direkt auf erschoepftes TPM-Budget
+    # Ursache: Kein Cooldown konfiguriert, TPM-Limit noch nicht erholt
+    # Loesung: 15s Cooldown (kuerzer als Planner/Reviewer 60s, genuegend fuer TPM-Recovery)
+    researcher: 15
     # AENDERUNG 25.02.2026: Fix 81 — Coder-Cooldown entfernt (Haiku hat hoehere Rate-Limits)
   # AENDERUNG 22.02.2026: Fix 74d — Tier-1 Non-Coder max 2 Versuche
   # ROOT-CAUSE-FIX: DB-Designer 3x 750s = 37.5 Min Worst-Case
@@ -687,36 +689,38 @@ claude_sdk:
   # Loesung: Konfigurierbare max_turns pro Rolle
   default_max_turns: 10
   max_turns_by_role:
-    # AENDERUNG 24.02.2026: Fix 76a — CLI-Rollen max_turns angepasst (vorher ignoriert wegen hardcoded 1)
-    researcher: 10       # CLI-Modus: Research braucht mehrere Turns, aber weniger als async SDK
-    techstack_architect: 10
-    # AENDERUNG 25.02.2026: Fix 82 — max_turns zurueck auf 10 (Fix 71: "3+ Turns noetig")
-    coder: 10
-    reviewer: 10
-    # AENDERUNG 24.02.2026: Fix 76e — Grosszuegige 10 Turns fuer ALLE Rollen (Phase 1: Korrektheit)
-    # Erst pruefen ob alle Rollen sauber durchlaufen, dann in Phase 2 optimieren
-    designer: 10
-    db_designer: 10
-    planner: 10
-    documentation_manager: 10
-    security: 10
-    # AENDERUNG 25.02.2026: Fix 80 — Fix auf Sonnet (max_turns=5), Tester bleibt Haiku (3)
+    # AENDERUNG 26.02.2026: Fix 90 — ALLE CLI-Rollen auf max_turns=1
     # ROOT-CAUSE-FIX:
-    # Symptom: Haiku Fix-Tasks geben nur 28 Zeichen zurueck (unbrauchbar)
-    # Ursache: Haiku zu schwach fuer Code-Patch-Prompts, Sonnet braucht mehr Turns
-    # Loesung: Fix=Sonnet mit max_turns=5, Tester=Haiku mit max_turns=3
-    fix: 5
-    tester: 3
-    task_deriver: 10
-    analyst: 10
-    konzepter: 10
+    # Symptom: Designer (und potenziell andere CLI-Rollen) Timeout nach 300s
+    #          bei --max-turns 10 → Tool-Use-Runden statt direkter Textantwort
+    # Ursache: CLI-Modus (`claude -p`) mit max_turns>1 startet Tool-Use-Runden
+    #          (je 30-90s pro Runde) → Timeout bei 300s. Selbes Pattern wie Fix 88 (fix)
+    # Loesung: ALLE cli_mode_roles auf max_turns=1 (reine Textgenerierung braucht nur 1 Turn)
+    #          Nur SDK-Rollen (researcher, planner) behalten max_turns=10 (brauchen Tool-Use)
+    #
+    # SDK-Rollen (NICHT in cli_mode_roles) — brauchen Tool-Use, daher max_turns=10:
+    researcher: 10
+    reviewer: 10
+    planner: 10
+    # CLI-Rollen — reine Textgenerierung, max_turns=1:
+    coder: 1
+    designer: 1
+    db_designer: 1
+    techstack_architect: 1
+    security: 1
+    documentation_manager: 1
+    fix: 1
+    tester: 1
+    task_deriver: 1
+    analyst: 1
+    konzepter: 1
   agent_models:
     # Tier 1: Opus — Komplexe Denkaufgaben (nur techstack_architect bleibt, kurze Ausgabe)
-    # AENDERUNG 22.02.2026: Fix 72a — researcher: opus → sonnet (TPM-Rate-Limit-Fix)
+    # AENDERUNG 25.02.2026: Fix 86c — researcher zurueck auf sonnet (async SDK statt CLI)
     # ROOT-CAUSE-FIX:
-    # Symptom: Researcher SDK-Versuche scheitern alle (~10 Min Zeitverlust)
-    # Ursache: Opus TPM-Limits bei langen Research-Outputs erschoepft
-    # Loesung: Sonnet fuer Researcher (10x hoehere Limits, weiterhin hohe Qualitaet)
+    # Symptom: Beide Modelle (Sonnet+Opus) scheitern im CLI-Modus (Timeout 300s+)
+    # Ursache: CLI-Modus mit Tool-Use ist zu langsam (nicht das Modell!)
+    # Loesung: Researcher aus cli_mode_roles entfernt → async SDK, Sonnet reicht
     researcher: sonnet
     techstack_architect: opus
     # AENDERUNG 25.02.2026: Fix 81 — Coder zurueck auf Haiku (Sonnet-Rate-Limit)
@@ -767,7 +771,12 @@ claude_sdk:
   cli_mode_roles:
   - db_designer
   - designer
-  - researcher
+  # AENDERUNG 25.02.2026: Fix 86c — Researcher aus CLI-Modus entfernt
+  # ROOT-CAUSE-FIX:
+  # Symptom: Researcher Timeout nach 300s+ im CLI-Modus (Sonnet UND Opus)
+  # Ursache: CLI mit --max-turns 10 + Tool-Use (DuckDuckGoSearch) = >300s pro Versuch
+  # Loesung: async SDK wie Planner (Fix 77) — robuster bei Tool-intensiven Aufgaben
+  # - researcher  (→ nutzt jetzt async SDK)
   - techstack_architect
   - security
   - coder

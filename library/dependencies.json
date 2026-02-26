@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-02-24T19:23:50.040887",
+  "last_updated": "2026-02-26T13:52:16.105209",
   "python": {
     "version": "3.12.12",
     "packages": [
@@ -70,7 +70,7 @@
       },
       {
         "name": "certifi",
-        "version": "2026.1.4",
+        "version": "2026.2.25",
         "status": "installed"
       },
       {
@@ -95,7 +95,7 @@
       },
       {
         "name": "claude-agent-sdk",
-        "version": "0.1.39",
+        "version": "0.1.44",
         "status": "installed"
       },
       {
@@ -139,6 +139,11 @@
         "status": "installed"
       },
       {
+        "name": "dnspython",
+        "version": "2.8.0",
+        "status": "installed"
+      },
+      {
         "name": "docstring_parser",
         "version": "0.17.0",
         "status": "installed"
@@ -154,13 +159,18 @@
         "status": "installed"
       },
       {
+        "name": "email-validator",
+        "version": "2.3.0",
+        "status": "installed"
+      },
+      {
         "name": "et_xmlfile",
         "version": "2.0.0",
         "status": "installed"
       },
       {
         "name": "fastapi",
-        "version": "0.129.2",
+        "version": "0.133.1",
         "status": "installed"
       },
       {
@@ -205,7 +215,7 @@
       },
       {
         "name": "hf-xet",
-        "version": "1.2.0",
+        "version": "1.3.1",
         "status": "installed"
       },
       {
@@ -325,7 +335,7 @@
       },
       {
         "name": "langchain-core",
-        "version": "1.2.14",
+        "version": "1.2.16",
         "status": "installed"
       },
       {
@@ -335,7 +345,7 @@
       },
       {
         "name": "langsmith",
-        "version": "0.7.6",
+        "version": "0.7.7",
         "status": "installed"
       },
       {
@@ -535,7 +545,7 @@
       },
       {
         "name": "primp",
-        "version": "1.0.0",
+        "version": "1.1.1",
         "status": "installed"
       },
       {
@@ -654,6 +664,11 @@
         "status": "installed"
       },
       {
+        "name": "python-discovery",
+        "version": "1.0.0",
+        "status": "installed"
+      },
+      {
         "name": "python-dotenv",
         "version": "1.1.1",
         "status": "installed"
@@ -740,7 +755,7 @@
       },
       {
         "name": "SQLAlchemy",
-        "version": "2.0.46",
+        "version": "2.0.47",
         "status": "installed"
       },
       {
@@ -840,7 +855,7 @@
       },
       {
         "name": "virtualenv",
-        "version": "20.38.0",
+        "version": "21.0.0",
         "status": "installed"
       },
       {
@@ -890,7 +905,7 @@
     "packages": [
       {
         "name": "@anthropic-ai/claude-code",
-        "version": "2.1.50",
+        "version": "2.1.56",
         "status": "installed"
       },
       {

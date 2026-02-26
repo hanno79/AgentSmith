@@ -1,0 +1,153 @@
+/*
+ * Author: rahn
+ * Datum: 25.02.2026
+ * Version: 1.0
+ * Beschreibung: Globale Stile mit Glassmorphismus-Klassen, Animationen und Custom Properties
+ */
+
+/* Google Fonts Import - Sora Schriftart */
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&display=swap');
+
+/* Tailwind Direktiven */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* CSS Custom Properties fuer Primaerfarben */
+:root {
+  --farbe-blau: #2b336a;
+  --farbe-rot: #870010;
+  --farbe-grau: #7c7c6b;
+  --farbe-hintergrund: #0a0b14;
+  --glas-bg: rgba(255, 255, 255, 0.04);
+  --glas-border: rgba(255, 255, 255, 0.08);
+  --glas-border-stark: rgba(255, 255, 255, 0.15);
+  --schatten-tief: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+
+/* Basisstile */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  background-color: var(--farbe-hintergrund);
+  color: rgba(255, 255, 255, 0.92);
+  font-family: 'Sora', sans-serif;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom Scrollbar - sehr duenn und halb-transparent */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* Glassmorphismus Basisklasse */
+.glas {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* Glassmorphismus mit Hover-Effekt */
+.glas-hover {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glas-hover:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.14);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+/* Starkes Glas - fuer hervorgehobene Elemente */
+.glas-stark {
+  background: rgba(255, 255, 255, 0.07);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.09);
+}
+
+/* Fixierter Hintergrund-Gradient mit farbigen Orbs */
+.hintergrund-gradient {
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 15% 50%, rgba(43, 51, 106, 0.5) 0%, transparent 55%),
+    radial-gradient(ellipse at 85% 20%, rgba(135, 0, 16, 0.25) 0%, transparent 45%),
+    radial-gradient(ellipse at 55% 85%, rgba(43, 51, 106, 0.25) 0%, transparent 50%),
+    #0a0b14;
+  z-index: -1;
+}
+
+/* Animations-Klassen */
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.animate-slideUp {
+  animation: slideUp 0.4s ease-out;
+}
+
+@keyframes fadeIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes slideUp {
+  0% { transform: translateY(10px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+/* Radix UI Overlay fuer Dialoge */
+[data-radix-dialog-overlay] {
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+  animation: fadeIn 0.2s ease-out;
+}
+
+/* Fokus-Stil */
+*:focus-visible {
+  outline: 2px solid rgba(43, 51, 106, 0.8);
+  outline-offset: 2px;
+}
+
+/* Input Placeholder Farbe */
+input::placeholder,
+textarea::placeholder {
+  color: rgba(255, 255, 255, 0.25);
+}
+
+/* Tabellen-Stile */
+table {
+  border-collapse: separate;
+  border-spacing: 0;
+}

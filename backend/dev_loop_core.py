@@ -102,6 +102,23 @@ def _compute_feedback_signature(feedback: str, sandbox_result: str) -> str:
     return hashlib.md5(signature_input.encode()).hexdigest()[:16]
 
 
+def _get_required_file_count_for_mode(is_patch_mode: bool) -> int:
+    """
+    Liefert die minimale Dateianzahl fuer Success-Gate je Modus.
+
+    Root-Cause-Fix D1:
+    - Full-Mode (Erstgenerierung): mindestens 3 Dateien
+    - Patch-Mode (gezielte Korrektur): mindestens 1 geaenderte Datei
+    """
+    return 1 if is_patch_mode else 3
+
+
+def _has_minimum_files_for_mode(created_files: list, is_patch_mode: bool) -> bool:
+    """Prueft die mode-abhaengige Mindestanzahl generierter/geaenderter Dateien."""
+    count = len(created_files) if created_files else 0
+    return count >= _get_required_file_count_for_mode(is_patch_mode)
+
+
 class DevLoop:
     def __init__(self, manager, set_current_agent, run_with_timeout):
         self.manager = manager
@@ -407,6 +424,8 @@ class DevLoop:
             # AENDERUNG 06.02.2026: ROOT-CAUSE-FIX Endlos-Iteration trotz Reviewer-OK
             review_says_ok = review_verdict == "OK"
             file_count = len(created_files) if created_files else 0
+            required_min_files = _get_required_file_count_for_mode(_is_patch)
+            has_minimum_files = _has_minimum_files_for_mode(created_files, _is_patch)
             manager._ui_log("Debug", "LoopDecision", json.dumps({
                 "iteration": iteration + 1,
                 "review_output_preview": review_output[:200] if review_output else "",
@@ -414,13 +433,14 @@ class DevLoop:
                 "sandbox_failed": sandbox_failed,
                 "security_passed": security_passed,
                 "security_retry_count": security_retry_count,
+                "mode": "patch" if _is_patch else "full",
                 "created_files_count": file_count,
-                "has_minimum_files": file_count >= 3,
-                "will_break": review_says_ok and not sandbox_failed and security_passed and file_count >= 3
+                "required_min_files": required_min_files,
+                "has_minimum_files": has_minimum_files,
+                "will_break": review_says_ok and not sandbox_failed and security_passed and has_minimum_files
             }, ensure_ascii=False))
 
             created_count = len(created_files) if created_files else 0
-            has_minimum_files = created_count >= 3
 
             if review_says_ok and not sandbox_failed and security_passed and has_minimum_files:
 
@@ -510,9 +530,20 @@ class DevLoop:
                 break
 
             if review_says_ok and not has_minimum_files:
-                manager._ui_log("Orchestrator", "Status", f"Nur {created_count} Dateien erstellt - generiere weitere...")
-                feedback = f"Bitte weitere Dateien generieren. Bisher nur {created_count} Datei(en). "
-                feedback += "Ein vollstaendiges Projekt braucht mindestens Backend, Config/Requirements und README oder Tests."
+                if _is_patch:
+                    manager._ui_log(
+                        "Orchestrator",
+                        "Status",
+                        "Patch-Mode: keine Datei-Aenderung erkannt - versuche gezielten Fix erneut..."
+                    )
+                    feedback = (
+                        f"Patch-Mode: Bisher {created_count} geaenderte Datei(en). "
+                        "Erzeuge mindestens eine konkrete Datei-Korrektur im erwarteten Dateiformat."
+                    )
+                else:
+                    manager._ui_log("Orchestrator", "Status", f"Nur {created_count} Dateien erstellt - generiere weitere...")
+                    feedback = f"Bitte weitere Dateien generieren. Bisher nur {created_count} Datei(en). "
+                    feedback += "Ein vollstaendiges Projekt braucht mindestens Backend, Config/Requirements und README oder Tests."
                 iteration += 1
                 manager._current_iteration = iteration
                 continue

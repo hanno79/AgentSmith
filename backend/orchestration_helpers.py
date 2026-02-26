@@ -220,6 +220,16 @@ def is_permanently_unavailable_error(error: Exception) -> bool:
         'please migrate to',
         'model removed'
     ]
+    # AENDERUNG 26.02.2026: Root-Cause-Fix — OpenRouter "no endpoints found"
+    # Diese Fehler sind fuer den laufenden Run i.d.R. dauerhaft und sollten
+    # nicht nur als temporaeres Rate-Limit behandelt werden.
+    endpoint_patterns = [
+        'no endpoints found for',
+        'no endpoint found for',
+        'no providers available for',
+    ]
+    if any(pattern in error_str for pattern in endpoint_patterns):
+        return True
     return any(pattern in error_str for pattern in permanent_patterns)
 
 

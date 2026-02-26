@@ -8,10 +8,12 @@ Beschreibung: Task-Tracker für Traceability und Logging im UTDS.
 
 import json
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from backend.library_sanitizer import sanitize_structure, sanitize_text
 from backend.task_models import (
     DerivedTask, TaskStatus, TaskBatch, BatchResult, TaskDerivationResult
 )
@@ -74,10 +76,36 @@ class TaskTracker:
                 "sessions": self._derivation_sessions[-100:],  # Letzte 100 Sessions
                 "summary": self._generate_summary()
             }
+            data = sanitize_structure(data)
             with open(self.log_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
         except Exception as e:
             print(f"[TaskTracker] Fehler beim Speichern: {e}")
+
+    def _sanitize_modified_files(self, modified_files: List[str]) -> List[str]:
+        """Filtert Artefakte und behaelt nur plausibel dateipfadartige Eintraege."""
+        if not modified_files:
+            return []
+
+        path_re = re.compile(
+            r"^[A-Za-z0-9_.\-\\/]+\.(py|js|jsx|ts|tsx|html|css|json|yaml|yml|md|sql|sh|bat|toml|ini|cfg|txt)$"
+        )
+        filtered: List[str] = []
+        for entry in modified_files:
+            if not isinstance(entry, str):
+                continue
+            normalized = entry.strip().replace("\\", "/")
+            if not normalized:
+                continue
+            # request.json taucht als Artefakt aus await request.json() auf.
+            if normalized.lower() == "request.json":
+                continue
+            if "(" in normalized or ")" in normalized or ":" in normalized:
+                continue
+            if path_re.match(normalized):
+                filtered.append(normalized)
+
+        return list(dict.fromkeys(filtered))[:20]
 
     def log_derivation_result(self, result: TaskDerivationResult) -> List[str]:
         """
@@ -178,9 +206,9 @@ class TaskTracker:
         if result:
             task.result = result
         if error_message:
-            task.error_message = error_message
+            task.error_message = sanitize_text(error_message)
         if modified_files:
-            task.modified_files = modified_files
+            task.modified_files = self._sanitize_modified_files(modified_files)
 
         # Dart-Update wenn verfuegbar
         if self.dart_sync and task.dart_id:

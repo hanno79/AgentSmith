@@ -21,22 +21,22 @@ from backend.library_sanitizer import (
 def test_redact_email():
     text = "Kontakt: user@example.com"
     sanitized = sanitize_text(text)
-    assert sanitized == "Kontakt: [REDACTED_EMAIL]"
+    assert sanitized == "Kontakt: [REDACTED_EMAIL]", f"Erwartet: Kontakt: [REDACTED_EMAIL], Erhalten: {sanitized} bei Funktion sanitize_text"
 
 
 def test_redact_request_id():
     text = "Request ID: 123e4567-e89b-12d3-a456-426614174000"
     sanitized = sanitize_text(text)
-    assert sanitized == "Request ID: [REDACTED_REQUEST_ID]"
+    assert sanitized == "Request ID: [REDACTED_REQUEST_ID]", f"Erwartet: Request ID: [REDACTED_REQUEST_ID], Erhalten: {sanitized} bei Funktion sanitize_text"
 
 
 def test_sanitize_structure_redacts_email():
     value = {"message": "Mail user@example.com"}
     sanitized = sanitize_structure(value)
-    assert sanitized["message"] == "Mail [REDACTED_EMAIL]"
+    assert sanitized["message"] == "Mail [REDACTED_EMAIL]", f"Erwartet: Mail [REDACTED_EMAIL], Erhalten: {sanitized["message"]} bei Funktion sanitize_structure"
 
 
 def test_prepare_archive_payload_redacts_request_id():
     project = {"entries": [{"type": "log", "content": "Request ID: 123e4567-e89b-12d3-a456-426614174000"}]}
     sanitized = prepare_archive_payload(project)
-    assert sanitized["entries"][0]["content"] == "Request ID: [REDACTED_REQUEST_ID]"
+    assert sanitized["entries"][0]["content"] == "Request ID: [REDACTED_REQUEST_ID]", f"Erwartet: Request ID: [REDACTED_REQUEST_ID], Erhalten: {sanitized["entries"][0]["content"]} bei Funktion prepare_archive_payload"

@@ -214,6 +214,11 @@ class TestIsPermanentlyUnavailableError:
         err = Exception("Timeout beim Verbindungsaufbau")
         assert is_permanently_unavailable_error(err) is False
 
+    def test_no_endpoints_found_ist_permanent(self):
+        """OpenRouter 'no endpoints found' gilt als permanent unavailable fuer den Run."""
+        err = Exception("OpenrouterException - No endpoints found for deepseek/deepseek-r1-0528:free")
+        assert is_permanently_unavailable_error(err) is True
+
 
 # -- TestHandleModelError --
 class TestHandleModelError:
@@ -246,6 +251,15 @@ class TestHandleModelError:
         ergebnis = handle_model_error(mock_router, "test-model", err)
         assert ergebnis == "unknown"
         mock_router.mark_permanently_unavailable.assert_not_called()
+        mock_router.mark_rate_limited_sync.assert_not_called()
+
+    def test_no_endpoints_found_markiert_permanent(self):
+        """OpenRouter 'no endpoints found' wird als permanent markiert."""
+        mock_router = MagicMock()
+        err = Exception("No endpoints found for deepseek/deepseek-r1-0528:free")
+        ergebnis = handle_model_error(mock_router, "test-model", err)
+        assert ergebnis == "permanent"
+        mock_router.mark_permanently_unavailable.assert_called_once()
         mock_router.mark_rate_limited_sync.assert_not_called()
 
 

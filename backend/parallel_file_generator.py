@@ -237,6 +237,27 @@ async def run_parallel_file_generation(
                     manager._ui_log("ParallelGen", "Skipped", f"{filename}: project_path ist None, uebersprungen")
                     continue
 
+                # AENDERUNG 26.02.2026: Fix 89b — Dependency-Merge bei File-by-File
+                # ROOT-CAUSE-FIX:
+                # Symptom: tailwindcss fehlt nach File-by-File in package.json
+                # Ursache: parallel_file_generator schreibt package.json direkt ohne Merge
+                # Loesung: Gleiche Merge-Logik wie main.py:save_multi_file_output (Fix 24A)
+                if filename.endswith(("package.json", "requirements.txt")):
+                    dep_full_path = os.path.join(manager.project_path, filename)
+                    if os.path.exists(dep_full_path):
+                        tech_bp = manager.tech_blueprint or {}
+                        if tech_bp.get("_source_template"):
+                            try:
+                                from dependency_merger import merge_dependency_file
+                                content = merge_dependency_file(
+                                    dep_full_path, content, tech_bp
+                                )
+                                manager._ui_log("ParallelGen", "DependencyMerge",
+                                    f"{filename}: Template-Dependencies gemergt")
+                            except Exception as merge_err:
+                                manager._ui_log("ParallelGen", "MergeWarning",
+                                    f"Dependency-Merge fuer {filename} fehlgeschlagen: {merge_err}")
+
                 results[filename] = content
 
                 # Speichere Datei

@@ -468,9 +468,26 @@ class TestDevLoopInit:
 class TestMinimumFilesCheck:
     """Tests für Minimum-Datei-Anforderungen.
 
-    Der DevLoop erwartet mindestens 3 Dateien für ein vollständiges Projekt.
+    Full-Mode erwartet mindestens 3 Dateien.
+    Patch-Mode erlaubt <3 Dateien (mindestens 1 geänderte Datei).
     Diese Logik ist verteilt über mehrere Module.
     """
+
+    def test_mode_gate_full_mode_requires_three_files(self):
+        """Full-Mode: Mindestanzahl bleibt bei 3 Dateien."""
+        from backend.dev_loop_core import _get_required_file_count_for_mode, _has_minimum_files_for_mode
+
+        assert _get_required_file_count_for_mode(is_patch_mode=False) == 3
+        assert _has_minimum_files_for_mode(["a.py", "b.py"], is_patch_mode=False) is False
+        assert _has_minimum_files_for_mode(["a.py", "b.py", "c.py"], is_patch_mode=False) is True
+
+    def test_mode_gate_patch_mode_requires_one_file(self):
+        """Patch-Mode: bereits 1 geänderte Datei reicht für Success-Gate."""
+        from backend.dev_loop_core import _get_required_file_count_for_mode, _has_minimum_files_for_mode
+
+        assert _get_required_file_count_for_mode(is_patch_mode=True) == 1
+        assert _has_minimum_files_for_mode([], is_patch_mode=True) is False
+        assert _has_minimum_files_for_mode(["single_fix.js"], is_patch_mode=True) is True
 
     def test_get_files_to_fix_respects_max_files(self):
         """get_files_to_fix respektiert max_files Parameter."""

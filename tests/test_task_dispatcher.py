@@ -1131,6 +1131,73 @@ class TestExecuteBatch:
         assert TaskStatus.COMPLETED in statuses, "Tracker muss COMPLETED erhalten"
         d.shutdown()
 
+    def test_retry_wird_im_batch_tatsaechlich_ausgefuehrt(self):
+        """Fehlerhafte Tasks werden innerhalb desselben Batches erneut ausgefuehrt."""
+        d = _make_dispatcher()
+        task = _make_task("T-006")
+        task.max_retries = 2
+        fail_result = TaskExecutionResult(task_id="T-006", success=False, error_message="kaputt")
+        success_result = TaskExecutionResult(task_id="T-006", success=True, result="OK")
+
+        # Erstes Ergebnis fehlgeschlagen, zweites erfolgreich -> Retry muss erfolgen.
+        d.tracker.increment_retry.return_value = True
+        with patch.object(d, "_execute_single_task", side_effect=[fail_result, success_result]) as mock_exec:
+            batch = self._make_batch([task])
+            result = d.execute_batch(batch)
+
+        assert mock_exec.call_count == 2, "Task muss nach Fehler erneut ausgefuehrt werden"
+        assert result.success is True
+        assert result.completed_tasks == ["T-006"]
+        assert result.failed_tasks == []
+        d.shutdown()
+
+    def test_timeout_ausfuehrung_wird_beendet_und_als_failed_markiert(self):
+        """Haengende Tasks laufen in Timeout statt den Batch endlos zu blockieren."""
+        d = _make_dispatcher()
+        task = _make_task("T-007")
+        task.timeout_seconds = 1
+        task.max_retries = 1
+
+        def _slow_task(_, __=None):
+            import time
+            time.sleep(2)
+            return TaskExecutionResult(task_id="T-007", success=True, result="zu spaet")
+
+        with patch.object(d, "_execute_single_task", side_effect=_slow_task):
+            batch = self._make_batch([task])
+            result = d.execute_batch(batch)
+
+        assert result.success is False
+        assert "T-007" in result.failed_tasks
+        assert any("Timeout" in err for err in result.errors)
+        d.shutdown()
+
+    def test_timeout_triggert_claude_prozess_kill(self):
+        """Bei Timeout wird der aktive Claude-Prozess explizit abgebrochen."""
+        manager = MagicMock()
+        manager.config = {}
+        manager.claude_provider = MagicMock()
+        d = _make_dispatcher(manager=manager)
+        task = _make_task("T-008")
+        task.timeout_seconds = 1
+        task.max_retries = 1
+
+        def _slow_until_cancel(_task, cancel_event=None):
+            import time
+            while cancel_event is not None and not cancel_event.is_set():
+                time.sleep(0.05)
+            # Ergebnis kommt absichtlich "zu spaet" und darf nicht mehr als Erfolg zaehlen.
+            return TaskExecutionResult(task_id="T-008", success=True, result="late")
+
+        with patch.object(d, "_execute_single_task", side_effect=_slow_until_cancel):
+            batch = self._make_batch([task])
+            result = d.execute_batch(batch)
+
+        manager.claude_provider.kill_active_process.assert_called()
+        assert result.success is False
+        assert "T-008" in result.failed_tasks
+        d.shutdown()
+
 
 # ============================================================
 # 16. TestExecuteAll - 4 Tests

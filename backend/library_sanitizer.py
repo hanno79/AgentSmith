@@ -89,8 +89,9 @@ def sanitize_text(text: str) -> str:
 
     # User-IDs anonymisieren
     sanitized = re.sub(r'("user_id"\s*:\s*")[^"]+(")', r'\1<REDACTED_USER>\2', sanitized)
+    sanitized = re.sub(r'("user_id"\s*:\s*")[^"]+(?=\s*\(Fehler)', r'\1<REDACTED_USER>"', sanitized)
     sanitized = re.sub(r"(user_id\s*[:=]\s*)([A-Za-z0-9_\-]+)", r"\1<REDACTED_USER>", sanitized)
-    # ÄNDERUNG 24.02.2026: Erweiterte Datenschutz-Redaktion fuer sensible Identifikatoren
+    # ÄNDERUNG [24.02.2026]: Erweiterte Datenschutz-Redaktion fuer sensible Identifikatoren
     # Redigiert E-Mail-Adressen und externe Request IDs in Log-/Fehlertexten.
     sanitized = re.sub(
         r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}",
@@ -102,6 +103,13 @@ def sanitize_text(text: str) -> str:
         "Request ID: [REDACTED_REQUEST_ID]",
         sanitized,
     )
+    # Provider-/Fehler-Payload normalisieren (OpenRouter/LiteLLM Details entfernen)
+    sanitized = re.sub(r'("provider_name"\s*:\s*")[^"]+(")', r'\1[REDACTED_PROVIDER]\2', sanitized)
+    sanitized = re.sub(r'("is_byok"\s*:\s*)(true|false)', r"\1null", sanitized, flags=re.IGNORECASE)
+    sanitized = re.sub(r'("code"\s*:\s*)\d+', r"\1[REDACTED_CODE]", sanitized)
+    sanitized = re.sub(r'("raw"\s*:\s*")[^"]*(")', r'\1[REDACTED_PROVIDER_RAW]\2', sanitized)
+    sanitized = re.sub(r"https?://[^\s\"']+", "<REDACTED_URL>", sanitized)
+    sanitized = re.sub(r"\buser_(?!id\b)[A-Za-z0-9_-]+\b", "user_<redacted>", sanitized)
 
     sanitized = sanitize_paths(sanitized)
     sanitized = redact_stack_traces(sanitized)

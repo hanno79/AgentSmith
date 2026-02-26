@@ -49,6 +49,7 @@ PATCH_EXTRACT_VULNS = "backend.dev_loop_security.extract_vulnerabilities"
 PATCH_IS_RATE_LIMIT = "backend.dev_loop_security.is_rate_limit_error"
 PATCH_IS_MODEL_UNAVAIL = "backend.dev_loop_security.is_model_unavailable_error"
 PATCH_IS_EMPTY_RESPONSE = "backend.dev_loop_security.is_empty_response_error"
+PATCH_HANDLE_MODEL_ERROR = "backend.dev_loop_security.handle_model_error"
 
 
 class TestRunSecurityRescan:
@@ -246,12 +247,13 @@ class TestRunSecurityRescan:
     @patch(PATCH_IS_EMPTY_RESPONSE, return_value=False)
     @patch(PATCH_IS_MODEL_UNAVAIL, return_value=True)
     @patch(PATCH_IS_RATE_LIMIT, return_value=False)
+    @patch(PATCH_HANDLE_MODEL_ERROR, return_value="permanent")
     @patch(PATCH_EXTRACT_VULNS, return_value=[])
     @patch(PATCH_RUN_WITH_HEARTBEAT)
     @patch(PATCH_TASK)
     @patch(PATCH_INIT_AGENTS)
     def test_model_unavailable_retry(
-        self, mock_init, mock_task, mock_heartbeat, mock_extract,
+        self, mock_init, mock_task, mock_heartbeat, mock_extract, mock_handle_model_error,
         mock_is_rate, mock_is_unavail, mock_is_empty,
         mock_manager, sample_project_rules, sample_current_code
     ):
@@ -272,6 +274,8 @@ class TestRunSecurityRescan:
             "Erwartet: True - nach Retry mit Fallback-Modell sollte SECURE zurueckgegeben werden"
         assert mock_heartbeat.call_count == 2, \
             "Erwartet: 2 Aufrufe (1 Fehler + 1 Erfolg)"
+        mock_handle_model_error.assert_called_once()
+        mock_manager.model_router.mark_rate_limited_sync.assert_not_called()
 
     @patch(PATCH_IS_EMPTY_RESPONSE, return_value=True)
     @patch(PATCH_IS_MODEL_UNAVAIL, return_value=False)

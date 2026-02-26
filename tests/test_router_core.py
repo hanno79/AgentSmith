@@ -94,6 +94,12 @@ class TestRunEndpoint:
     @patch(MANAGER_PATCH)
     def test_run_erfolgreich(self, mock_mgr, mock_ws, mock_log):
         """POST /run startet einen Task und gibt status=started zurueck."""
+        # AENDERUNG 26.02.2026: Fix 89 — _is_running Mock fuer Fix 85 Kompatibilitaet
+        # ROOT-CAUSE-FIX:
+        # Symptom: Test gibt 409 statt 200 zurueck
+        # Ursache: MagicMock._is_running ist truthy → getattr() liefert Mock statt False
+        # Loesung: _is_running explizit auf False setzen
+        mock_mgr._is_running = False
         response = client.post("/run", json={"goal": "Erstelle eine Todo-App"})
         assert response.status_code == 200
         data = response.json()
@@ -105,6 +111,7 @@ class TestRunEndpoint:
     @patch(MANAGER_PATCH)
     def test_run_mit_project_name(self, mock_mgr, mock_ws, mock_log):
         """POST /run mit project_name wird akzeptiert."""
+        mock_mgr._is_running = False
         response = client.post("/run", json={
             "goal": "Erstelle eine App",
             "project_name": "mein_projekt"

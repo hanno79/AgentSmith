@@ -37,7 +37,6 @@ import ThreatIntelligence from './components/ThreatIntelligence';
 import SystemIntegrity from './components/SystemIntegrity';
 import {
   getThreatIntel,
-  getDefenseEntries,
   getMitigationTargets,
   getDefconLevel,
   getNodeStatus,
@@ -93,7 +92,8 @@ const SecurityOffice = ({
   };
 
   // Prüfe ob echte Daten vorhanden sind
-  const hasData = overallStatus !== '' || vulnerabilities.length > 0;
+  const safeVulnerabilities = Array.isArray(vulnerabilities) ? vulnerabilities : [];
+  const hasData = overallStatus !== '' || safeVulnerabilities.length > 0;
   const isScanning = status === 'Status' || status === 'Working';
 
   // Status Badge Rendering Helper
@@ -107,11 +107,25 @@ const SecurityOffice = ({
   };
 
   // ÄNDERUNG 01.02.2026: Utility-Funktionen aus SecurityCalculations.js
-  const threatIntel = getThreatIntel(hasData, isScanning, vulnerabilities, overallStatus, scannedFiles);
-  const defenseEntries = getDefenseEntries(logs, hasData);
-  const mitigationTargets = getMitigationTargets(hasData, vulnerabilities);
-  const defcon = getDefconLevel(hasData, vulnerabilities);
-  const nodeStatus = getNodeStatus(hasData, overallStatus);
+  const threatIntel = getThreatIntel({
+    vulnerabilities: safeVulnerabilities,
+    overallStatus,
+    scannedFiles,
+    hasData,
+    isScanning
+  });
+  const mitigationTargets = getMitigationTargets({
+    vulnerabilities: safeVulnerabilities,
+    hasData
+  });
+  const defcon = getDefconLevel({
+    vulnerabilities: safeVulnerabilities,
+    hasData
+  });
+  const nodeStatus = getNodeStatus({
+    overallStatus,
+    hasData
+  });
 
   return (
     <div className="bg-[#0f172a] text-white font-display overflow-hidden h-screen flex flex-col">
@@ -158,9 +172,9 @@ const SecurityOffice = ({
           </div>
           {/* Dynamisches Vulnerabilities Badge */}
           <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#1e293b] border border-[#334155]">
-            <Eye size={14} className={vulnerabilities.length > 0 ? 'text-amber-500' : 'text-slate-500'} />
+            <Eye size={14} className={safeVulnerabilities.length > 0 ? 'text-amber-500' : 'text-slate-500'} />
             <span className="text-xs font-semibold text-white">
-              {hasData ? `${vulnerabilities.length} Findings` : 'Keine Daten'}
+              {hasData ? `${safeVulnerabilities.length} Findings` : 'Keine Daten'}
             </span>
           </div>
           {/* Scan-Typ Anzeige */}
@@ -248,7 +262,7 @@ const SecurityOffice = ({
                     <>
                       <ShieldCheck size={32} className="text-green-400" />
                       <p className="text-sm text-green-400">Analyse abgeschlossen</p>
-                      <p className="text-xs text-slate-600">{overallStatus}: {vulnerabilities.length} Findings</p>
+                      <p className="text-xs text-slate-600">{overallStatus}: {safeVulnerabilities.length} Findings</p>
                     </>
                   ) : (
                     <>
@@ -319,10 +333,10 @@ const SecurityOffice = ({
               ) : (
                 <div className="space-y-3">
                   {/* Individuelle Vulnerabilities mit FIX-Vorschlägen */}
-                  {vulnerabilities.length > 0 && (
+                  {safeVulnerabilities.length > 0 && (
                     <div className="space-y-2 mb-4">
                       <h5 className="text-xs font-bold text-slate-400 uppercase mb-2">Gefundene Schwachstellen</h5>
-                      {vulnerabilities.map((vuln, i) => (
+                      {safeVulnerabilities.map((vuln, i) => (
                         <div key={`vuln-${i}`} className={`p-3 rounded-lg border ${
                           vuln.severity === 'critical' ? 'bg-red-950/30 border-red-500/40' :
                           vuln.severity === 'high' ? 'bg-orange-950/30 border-orange-500/40' :
@@ -390,15 +404,15 @@ const SecurityOffice = ({
               </button>
               <button
                 onClick={handleDeployPatches}
-                disabled={deployStatus === 'loading' || vulnerabilities.length === 0}
+                disabled={deployStatus === 'loading' || safeVulnerabilities.length === 0}
                 className={`flex-[2] px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 ${
                   deployStatus === 'success'
                     ? 'bg-green-600 text-white shadow-[0_0_15px_rgba(34,197,94,0.3)]'
-                    : deployStatus === 'error'
+                  : deployStatus === 'error'
                       ? 'bg-orange-600 text-white'
                       : deployStatus === 'loading'
                         ? 'bg-red-700 text-white cursor-wait'
-                        : vulnerabilities.length === 0
+                        : safeVulnerabilities.length === 0
                           ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
                           : 'bg-red-600 hover:bg-red-500 text-white shadow-[0_0_15px_rgba(239,68,68,0.3)]'
                 }`}
@@ -421,7 +435,7 @@ const SecurityOffice = ({
                 ) : (
                   <>
                     <Shield size={16} />
-                    Deploy All Patches ({vulnerabilities.length})
+                    Deploy All Patches ({safeVulnerabilities.length})
                   </>
                 )}
               </button>

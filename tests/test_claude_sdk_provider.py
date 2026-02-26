@@ -501,6 +501,34 @@ class TestRateLimitEventHandling:
                     timeout_seconds=30
                 )
 
+
+class TestRuntimeGuard:
+    """Tests fuer Runtime-Guard (SDK/CLI Version + Token-Cap)."""
+
+    def test_run_agent_reicht_max_output_tokens_durch(self, provider):
+        with patch.object(provider, "_run_sync", return_value="x" * 300) as mock_run:
+            provider.run_agent(
+                prompt="test",
+                role="coder",
+                model="haiku",
+                max_output_tokens=1234,
+            )
+            assert mock_run.call_args.kwargs.get("max_output_tokens") == 1234
+
+    def test_probe_sdk_runtime_bevorzugt_neuere_system_cli(self, provider):
+        with patch("backend.claude_sdk.provider.importlib.metadata.version", return_value="0.1.39"), \
+             patch.object(provider, "_find_bundled_cli_path", return_value="C:/bundled/claude.exe"), \
+             patch.object(provider, "_read_cli_version", side_effect=["1.0.0", "1.1.0"]), \
+             patch.object(provider, "_probe_cli_runtime_cap", return_value=8192), \
+             patch("backend.claude_sdk.provider.shutil.which", return_value="C:/system/claude.exe"):
+            result = provider.probe_sdk_runtime(configured_coder_limit=65536)
+
+        assert result["sdk_in_affected_range"] is True
+        assert result["limit_mismatch"] is True
+        assert result["effective_coder_limit"] == 8192
+        assert result["prefer_system_cli"] is True
+
+class TestRateLimitEventHandlingWeitere:
     def test_andere_stream_fehler_werden_weitergeleitet(self, provider):
         """Nicht-rate_limit Fehler im Stream → Exception unveraendert weiterleiten."""
         import backend.claude_sdk.loader as loader

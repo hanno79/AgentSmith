@@ -6,17 +6,28 @@
  *               Extrahiert aus SecurityOffice.jsx (Regel 1: Max 500 Zeilen)
  */
 
+const asVulnerabilityArray = (value) => (Array.isArray(value) ? value : []);
+
 /**
  * Berechnet Threat Intelligence Statistiken basierend auf Vulnerabilities.
  */
-export const getThreatIntel = (vulnerabilities, overallStatus, scannedFiles, hasData, isScanning) => {
-  if (!hasData) {
+export const getThreatIntel = ({
+  vulnerabilities = [],
+  overallStatus = '',
+  scannedFiles = 0,
+  hasData = false,
+  isScanning = false
+} = {}) => {
+  const vulnerabilityList = asVulnerabilityArray(vulnerabilities);
+  const effectiveHasData = Boolean(hasData) || overallStatus !== '' || vulnerabilityList.length > 0;
+
+  if (!effectiveHasData) {
     return { activeThreats: 0, suspicious: 0, secured: 0, scanning: isScanning ? 1 : 0 };
   }
-  const critical = vulnerabilities.filter(v => v.severity === 'critical').length;
-  const high = vulnerabilities.filter(v => v.severity === 'high').length;
-  const medium = vulnerabilities.filter(v => v.severity === 'medium').length;
-  const low = vulnerabilities.filter(v => v.severity === 'low').length;
+  const critical = vulnerabilityList.filter(v => v.severity === 'critical').length;
+  const high = vulnerabilityList.filter(v => v.severity === 'high').length;
+  const medium = vulnerabilityList.filter(v => v.severity === 'medium').length;
+  const low = vulnerabilityList.filter(v => v.severity === 'low').length;
 
   return {
     activeThreats: critical + high,
@@ -50,8 +61,13 @@ export const getDefenseEntries = (logs, hasData) => {
 /**
  * Gruppiert Vulnerabilities nach Severity für Mitigation-Targets.
  */
-export const getMitigationTargets = (vulnerabilities, hasData) => {
-  if (!hasData || vulnerabilities.length === 0) return [];
+export const getMitigationTargets = ({
+  vulnerabilities = [],
+  hasData = false
+} = {}) => {
+  const vulnerabilityList = asVulnerabilityArray(vulnerabilities);
+  const effectiveHasData = Boolean(hasData) || vulnerabilityList.length > 0;
+  if (!effectiveHasData || vulnerabilityList.length === 0) return [];
 
   const groups = {
     critical: { name: 'Critical Issues', patches: 0, critical: true },
@@ -60,7 +76,7 @@ export const getMitigationTargets = (vulnerabilities, hasData) => {
     low: { name: 'Low Priority', patches: 0, critical: false }
   };
 
-  vulnerabilities.forEach(v => {
+  vulnerabilityList.forEach(v => {
     if (groups[v.severity]) {
       groups[v.severity].patches++;
     }
@@ -72,25 +88,34 @@ export const getMitigationTargets = (vulnerabilities, hasData) => {
 /**
  * Berechnet DEFCON-Level basierend auf Vulnerabilities.
  */
-export const getDefconLevel = (vulnerabilities, hasData) => {
-  if (!hasData) return { level: 5, text: 'STANDBY', color: 'slate', description: 'Warte auf Analyse...' };
+export const getDefconLevel = ({
+  vulnerabilities = [],
+  hasData = false
+} = {}) => {
+  const vulnerabilityList = asVulnerabilityArray(vulnerabilities);
+  const effectiveHasData = Boolean(hasData) || vulnerabilityList.length > 0;
+  if (!effectiveHasData) return { level: 5, text: 'STANDBY', color: 'slate', description: 'Warte auf Analyse...' };
 
-  const critical = vulnerabilities.filter(v => v.severity === 'critical').length;
-  const high = vulnerabilities.filter(v => v.severity === 'high').length;
-  const medium = vulnerabilities.filter(v => v.severity === 'medium').length;
+  const critical = vulnerabilityList.filter(v => v.severity === 'critical').length;
+  const high = vulnerabilityList.filter(v => v.severity === 'high').length;
+  const medium = vulnerabilityList.filter(v => v.severity === 'medium').length;
 
   if (critical > 0) return { level: 1, text: 'CRITICAL', color: 'red', description: 'Kritische Sicherheitslücken!' };
   if (high > 0) return { level: 2, text: 'HIGH ALERT', color: 'orange', description: 'Hohe Bedrohungsstufe' };
   if (medium > 0) return { level: 3, text: 'ELEVATED', color: 'amber', description: 'Erhöhte Wachsamkeit' };
-  if (vulnerabilities.length > 0) return { level: 4, text: 'GUARDED', color: 'yellow', description: 'Geringe Bedrohungen' };
+  if (vulnerabilityList.length > 0) return { level: 4, text: 'GUARDED', color: 'yellow', description: 'Geringe Bedrohungen' };
   return { level: 5, text: 'SECURE', color: 'green', description: 'System sicher' };
 };
 
 /**
  * Berechnet Node-Security Status basierend auf Overall-Status.
  */
-export const getNodeStatus = (overallStatus, hasData) => {
-  if (!hasData) {
+export const getNodeStatus = ({
+  overallStatus = '',
+  hasData = false
+} = {}) => {
+  const effectiveHasData = Boolean(hasData) || overallStatus !== '';
+  if (!effectiveHasData) {
     return [
       { name: 'DB', health: 0, status: 'unknown' },
       { name: 'API', health: 0, status: 'unknown' },
@@ -117,12 +142,54 @@ export const getNodeStatus = (overallStatus, hasData) => {
  */
 export const getDefconColorClass = (color, type = 'bg') => {
   const colorMap = {
-    red: { bg: 'bg-red-950/30', border: 'border-red-500/30', text: 'text-red-400' },
-    orange: { bg: 'bg-orange-950/30', border: 'border-orange-500/30', text: 'text-orange-400' },
-    amber: { bg: 'bg-amber-950/30', border: 'border-amber-500/30', text: 'text-amber-400' },
-    yellow: { bg: 'bg-yellow-950/30', border: 'border-yellow-500/30', text: 'text-yellow-400' },
-    green: { bg: 'bg-green-950/30', border: 'border-green-500/30', text: 'text-green-400' },
-    slate: { bg: 'bg-slate-800/50', border: 'border-slate-500/30', text: 'text-slate-400' }
+    red: {
+      bg: 'bg-red-950/30',
+      border: 'border-red-500/30',
+      text: 'text-red-400',
+      icon: 'text-red-400',
+      ping: 'bg-red-400',
+      dot: 'bg-red-500'
+    },
+    orange: {
+      bg: 'bg-orange-950/30',
+      border: 'border-orange-500/30',
+      text: 'text-orange-400',
+      icon: 'text-orange-400',
+      ping: 'bg-orange-400',
+      dot: 'bg-orange-500'
+    },
+    amber: {
+      bg: 'bg-amber-950/30',
+      border: 'border-amber-500/30',
+      text: 'text-amber-400',
+      icon: 'text-amber-400',
+      ping: 'bg-amber-400',
+      dot: 'bg-amber-500'
+    },
+    yellow: {
+      bg: 'bg-yellow-950/30',
+      border: 'border-yellow-500/30',
+      text: 'text-yellow-400',
+      icon: 'text-yellow-400',
+      ping: 'bg-yellow-400',
+      dot: 'bg-yellow-500'
+    },
+    green: {
+      bg: 'bg-green-950/30',
+      border: 'border-green-500/30',
+      text: 'text-green-400',
+      icon: 'text-green-400',
+      ping: 'bg-green-400',
+      dot: 'bg-green-500'
+    },
+    slate: {
+      bg: 'bg-slate-800/50',
+      border: 'border-slate-500/30',
+      text: 'text-slate-400',
+      icon: 'text-slate-400',
+      ping: 'bg-slate-400',
+      dot: 'bg-slate-500'
+    }
   };
   return colorMap[color]?.[type] || colorMap.slate[type];
 };

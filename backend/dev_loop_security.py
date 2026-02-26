@@ -22,6 +22,7 @@ from .orchestration_helpers import (
     is_rate_limit_error,
     is_model_unavailable_error,
     is_empty_response_error,
+    handle_model_error,
     extract_vulnerabilities
 )
 from .heartbeat_utils import run_with_heartbeat
@@ -209,7 +210,10 @@ WICHTIG - CVE-REGELN:
                                  "Leere Antwort"
                     manager._ui_log("Security", "Warning",
                         f"Security-Modell {current_security_model} {error_type} (Versuch {security_attempt + 1}/{MAX_SECURITY_RETRIES})")
-                    manager.model_router.mark_rate_limited_sync(current_security_model)
+                    if is_empty_response_error(sec_err):
+                        manager.model_router.mark_rate_limited_sync(current_security_model)
+                    else:
+                        handle_model_error(manager.model_router, current_security_model, sec_err)
                     if security_attempt < MAX_SECURITY_RETRIES - 1:
                         manager._ui_log("Security", "Info", "Wechsle zu Fallback-Modell...")
                         continue  # Naechster Versuch mit Fallback

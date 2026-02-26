@@ -51,43 +51,43 @@ class TestMatchesAnyPattern:
 
     def test_match_python_test_prefix(self):
         """Python test_*.py Pattern wird erkannt."""
-        assert _matches_any_pattern("test_app.py", ["test_*.py"]) is True
+        assert _matches_any_pattern("test_app.py", ["test_*.py"]) is True, "Erwartet: True, Erhalten: {} bei Funktion _matches_any_pattern".format(_matches_any_pattern("test_app.py", ["test_*.py"]))
 
     def test_match_python_test_suffix(self):
         """Python *_test.py Pattern wird erkannt."""
-        assert _matches_any_pattern("app_test.py", ["*_test.py"]) is True
+        assert _matches_any_pattern("app_test.py", ["*_test.py"]) is True, "Erwartet: True, Erhalten: {} bei Funktion _matches_any_pattern".format(_matches_any_pattern("app_test.py", ["*_test.py"]))
 
     def test_no_match(self):
         """Normale Code-Datei matcht keins der Test-Patterns."""
-        assert _matches_any_pattern("app.py", ["test_*.py", "*_test.py"]) is False
+        assert _matches_any_pattern("app.py", ["test_*.py", "*_test.py"]) is False, "Erwartet: False, Erhalten: {} bei Funktion _matches_any_pattern".format(_matches_any_pattern("app.py", ["test_*.py", "*_test.py"]))
 
     def test_match_js_test(self):
         """JavaScript *.test.js Pattern wird erkannt."""
-        assert _matches_any_pattern("App.test.js", ["*.test.js"]) is True
+        assert _matches_any_pattern("App.test.js", ["*.test.js"]) is True, "Erwartet: True, Erhalten: {} bei Funktion _matches_any_pattern".format(_matches_any_pattern("App.test.js", ["*.test.js"]))
 
     def test_match_ts_spec(self):
         """TypeScript *.spec.ts Pattern wird erkannt."""
-        assert _matches_any_pattern("utils.spec.ts", ["*.spec.ts"]) is True
+        assert _matches_any_pattern("utils.spec.ts", ["*.spec.ts"]) is True, "Erwartet: True, Erhalten: {} bei Funktion _matches_any_pattern".format(_matches_any_pattern("utils.spec.ts", ["*.spec.ts"]))
 
     def test_leere_patterns(self):
         """Leere Pattern-Liste ergibt immer False."""
-        assert _matches_any_pattern("test_app.py", []) is False
+        assert _matches_any_pattern("test_app.py", []) is False, "Erwartet: False, Erhalten: {} bei Funktion _matches_any_pattern".format(_matches_any_pattern("test_app.py", []))
 
     def test_mehrere_patterns_zweites_matcht(self):
         """Bei mehreren Patterns reicht ein Treffer."""
-        assert _matches_any_pattern("app_test.py", ["test_*.py", "*_test.py"]) is True
+        assert _matches_any_pattern("app_test.py", ["test_*.py", "*_test.py"]) is True, "Erwartet: True, Erhalten: {} bei Funktion _matches_any_pattern".format(_matches_any_pattern("app_test.py", ["test_*.py", "*_test.py"]))
 
     def test_case_sensitivity(self):
         """Exakter Match funktioniert unabhaengig vom Betriebssystem."""
-        assert _matches_any_pattern("test_app.py", ["test_*.py"]) is True
+        assert _matches_any_pattern("test_app.py", ["test_*.py"]) is True, "Erwartet: True, Erhalten: {} bei Funktion _matches_any_pattern".format(_matches_any_pattern("test_app.py", ["test_*.py"]))
 
     def test_wildcard_star(self):
         """Wildcard * matcht beliebige Zeichen vor dem Suffix."""
-        assert _matches_any_pattern("anything.test.js", ["*.test.js"]) is True
+        assert _matches_any_pattern("anything.test.js", ["*.test.js"]) is True, "Erwartet: True, Erhalten: {} bei Funktion _matches_any_pattern".format(_matches_any_pattern("anything.test.js", ["*.test.js"]))
 
     def test_kein_match_falsche_extension(self):
         """Falsche Dateiendung wird nicht gematcht."""
-        assert _matches_any_pattern("test_app.txt", ["test_*.py"]) is False
+        assert _matches_any_pattern("test_app.txt", ["test_*.py"]) is False, "Erwartet: False, Erhalten: {} bei Funktion _matches_any_pattern".format(_matches_any_pattern("test_app.txt", ["test_*.py"]))
 
 
 # =========================================================================

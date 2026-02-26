@@ -32,15 +32,21 @@ async def run_agent_task(request: Request, task_request: TaskRequest, background
     print(f"Received /run request for goal: {task_request.goal}")
 
     # AENDERUNG 22.02.2026: Fix 68c — Nur einen Run gleichzeitig erlauben
+    # AENDERUNG 25.02.2026: Fix 85 — Doppelter Check: Session-Status UND _is_running Flag
     # ROOT-CAUSE-FIX:
-    # Symptom: Zweiter Run startet waehrend erster noch laeuft → Race-Condition, Token-Verschwendung
-    # Ursache: Kein Check ob Session bereits aktiv ist
-    # Loesung: Session-Status pruefen -> HTTP 409 wenn aktiv
+    # Symptom: Zwei Runs parallel nach Reset (Session-Status "Idle" aber Threads laufen noch)
+    # Ursache: session_mgr.is_active() prueft nur Status-String, nicht ob run_task() tatsaechlich laeuft
+    # Loesung: Zusaetzlicher Check auf manager._is_running (wird in run_task try/finally verwaltet)
+    is_manager_running = getattr(manager, '_is_running', False)
     session_mgr = get_session_manager_instance()
-    if session_mgr and session_mgr.is_active():
-        current_session = getattr(session_mgr, "current_session", None) or {}
-        current_goal = current_session.get("goal", "")
-        print(f"[Run] Abgelehnt: Session bereits aktiv (Ziel: {current_goal})")
+    session_active = session_mgr and session_mgr.is_active()
+
+    if is_manager_running or session_active:
+        current_goal = ""
+        if session_mgr:
+            current_session = getattr(session_mgr, "current_session", None) or {}
+            current_goal = current_session.get("goal", "")
+        print(f"[Run] Abgelehnt: Run bereits aktiv (is_running={is_manager_running}, session={session_active})")
         raise HTTPException(
             status_code=409,
             detail={

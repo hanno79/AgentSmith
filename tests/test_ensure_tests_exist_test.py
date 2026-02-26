@@ -50,7 +50,7 @@ class TestEnsureTestsExist:
         ergebnis = ensure_tests_exist(mock_manager, iteration=0)
 
         # Assert
-        assert ergebnis is True
+        assert ergebnis is True, f"Erwartet: True, Erhalten: {ergebnis} bei Funktion test_tests_existieren_in_tests_verzeichnis"
         # _ui_log muss Info-Meldung ueber vorhandene Tests enthalten
         info_calls = [
             call for call in mock_manager._ui_log.call_args_list
@@ -69,7 +69,7 @@ class TestEnsureTestsExist:
         ergebnis = ensure_tests_exist(mock_manager, iteration=0)
 
         # Assert
-        assert ergebnis is True
+        assert ergebnis is True, f"Erwartet: True, Erhalten: {ergebnis} bei Funktion test_tests_existieren_im_root"
         info_calls = [
             call for call in mock_manager._ui_log.call_args_list
             if call[0][1] == "Info" and "root" in str(call[0][2]).lower()
@@ -91,7 +91,7 @@ class TestEnsureTestsExist:
         ergebnis = ensure_tests_exist(mock_manager, iteration=0)
 
         # Assert
-        assert ergebnis is True
+        assert ergebnis is True, f"Erwartet: True, Erhalten: {ergebnis} bei Funktion test_nicht_python_mit_test_command"
         info_calls = [
             call for call in mock_manager._ui_log.call_args_list
             if call[0][1] == "Info" and "javascript" in str(call[0][2]).lower()
@@ -113,7 +113,7 @@ class TestEnsureTestsExist:
         ergebnis = ensure_tests_exist(mock_manager, iteration=1)
 
         # Assert
-        assert ergebnis is True
+        assert ergebnis is True, f"Erwartet: True, Erhalten: {ergebnis} bei Funktion test_keine_tests_python_iteration_groesser_null"
         mock_run_gen.assert_called_once()
         # Pruefe dass code_files korrekt uebergeben wurde
         call_args = mock_run_gen.call_args
@@ -135,7 +135,7 @@ class TestEnsureTestsExist:
         ergebnis = ensure_tests_exist(mock_manager, iteration=0)
 
         # Assert
-        assert ergebnis is True
+        assert ergebnis is True, f"Erwartet: True, Erhalten: {ergebnis} bei Funktion test_keine_tests_python_iteration_null_fallback"
         mock_fallback.assert_called_once_with(
             str(tmp_path), "python_script"
         )
@@ -153,7 +153,7 @@ class TestEnsureTestsExist:
         ergebnis = ensure_tests_exist(mock_manager, iteration=0)
 
         # Assert
-        assert ergebnis is False
+        assert ergebnis is False, f"Erwartet: False, Erhalten: {ergebnis} bei Funktion test_keine_tests_fallback_fehlgeschlagen"
         error_calls = [
             call for call in mock_manager._ui_log.call_args_list
             if call[0][1] == "Error"
@@ -175,7 +175,7 @@ class TestEnsureTestsExist:
         ergebnis = ensure_tests_exist(mock_manager, iteration=0)
 
         # Assert
-        assert ergebnis is True
+        assert ergebnis is True, f"Erwartet: True, Erhalten: {ergebnis} bei Funktion test_statisches_projekt_keine_test_patterns"
         info_calls = [
             call for call in mock_manager._ui_log.call_args_list
             if call[0][1] == "Info" and "statisch" in str(call[0][2]).lower()
@@ -199,7 +199,7 @@ class TestEnsureTestsExist:
         ergebnis = ensure_tests_exist(mock_manager, iteration=1)
 
         # Assert
-        assert ergebnis is True
+        assert ergebnis is True, f"Erwartet: True, Erhalten: {ergebnis} bei Funktion test_run_test_generator_fehlschlag_dann_fallback"
         mock_run_gen.assert_called_once()
         mock_fallback.assert_called_once()
 
@@ -213,7 +213,7 @@ class TestEnsureTestsExist:
         ergebnis = ensure_tests_exist(mock_manager, iteration=0)
 
         # Assert
-        assert ergebnis is False
+        assert ergebnis is False, f"Erwartet: False, Erhalten: {ergebnis} bei Funktion test_keine_code_dateien_vorhanden"
         warning_calls = [
             call for call in mock_manager._ui_log.call_args_list
             if call[0][1] == "Warning" and "keine" in str(call[0][2]).lower()
@@ -236,7 +236,7 @@ class TestEnsureTestsExist:
             ergebnis = ensure_tests_exist(mock_manager, iteration=0)
 
         # Assert
-        assert ergebnis is True
+        assert ergebnis is True, f"Erwartet: True, Erhalten: {ergebnis} bei Funktion test_tests_dir_existiert_aber_leer"
 
     def test_tech_blueprint_leer_fallback_python(self, mock_manager, tmp_path):
         """tech_blueprint={} (leer) → Fallback auf Python-Config."""
@@ -250,7 +250,7 @@ class TestEnsureTestsExist:
             ergebnis = ensure_tests_exist(mock_manager, iteration=0)
 
         # Assert — Leeres Blueprint fallback auf Python
-        assert ergebnis is True
+        assert ergebnis is True, f"Erwartet: True, Erhalten: {ergebnis} bei Funktion test_tech_blueprint_leer_fallback_python"
 
     def test_tech_blueprint_none_ohne_code_dateien(self, mock_manager, tmp_path):
         """tech_blueprint=None + keine Code-Dateien → False (keine Dateien zum Testen).
@@ -267,7 +267,7 @@ class TestEnsureTestsExist:
         ergebnis = ensure_tests_exist(mock_manager, iteration=0)
 
         # Assert
-        assert ergebnis is False
+        assert ergebnis is False, f"Erwartet: False, Erhalten: {ergebnis} bei Funktion test_tech_blueprint_none_ohne_code_dateien"
 
     @patch("backend.dev_loop_test_utils.run_test_generator")
     def test_tech_blueprint_none_mit_code_crasht(self, mock_run_gen, mock_manager, tmp_path):
@@ -298,7 +298,7 @@ class TestEnsureTestsExist:
         ergebnis = ensure_tests_exist(mock_manager, iteration=0)
 
         # Assert
-        assert ergebnis is True
+        assert ergebnis is True, f"Erwartet: True, Erhalten: {ergebnis} bei Funktion test_mehrere_test_dateien_in_tests_dir"
         info_calls = [
             call for call in mock_manager._ui_log.call_args_list
             if call[0][1] == "Info" and "3" in str(call[0][2])

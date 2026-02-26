@@ -7,7 +7,9 @@ Beschreibung: Claude SDK Provider + Singleton fuer CLI/SDK-Ausfuehrung.
 """
 
 import logging
+import importlib.metadata
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -33,7 +35,212 @@ class ClaudeSDKProvider:
 
     def __init__(self):
         self._initialized = False
+        # AENDERUNG 25.02.2026: Fix 85 — Aktiven CLI-Prozess tracken fuer sauberen Stop
+        self._current_process = None
         logger.info("ClaudeSDKProvider initialisiert (Lazy-Loading)")
+
+    def kill_active_process(self):
+        """Beendet den aktuell laufenden CLI-Prozess (fuer Reset/Stop)."""
+        proc = self._current_process
+        if proc is not None:
+            try:
+                if proc.poll() is None:
+                    proc.kill()
+                    proc.wait(timeout=3)
+                    logger.info("CLI-Prozess durch Stop/Reset beendet (PID=%s)", proc.pid)
+            except Exception as e:
+                logger.debug("kill_active_process: %s", e)
+
+    @staticmethod
+    def _parse_version_tuple(version_text: Optional[str]) -> Optional[tuple]:
+        """Parst semver-artige Versionsstrings robust in ein vergleichbares Tuple."""
+        if not version_text:
+            return None
+        match = re.search(r"(\d+)\.(\d+)\.(\d+)", version_text)
+        if not match:
+            return None
+        return tuple(int(match.group(i)) for i in range(1, 4))
+
+    @classmethod
+    def _is_version_newer(cls, candidate: Optional[str], baseline: Optional[str]) -> bool:
+        cand_t = cls._parse_version_tuple(candidate)
+        base_t = cls._parse_version_tuple(baseline)
+        if not cand_t:
+            return False
+        if not base_t:
+            return True
+        return cand_t > base_t
+
+    @staticmethod
+    def _read_cli_version(cli_path: str) -> Optional[str]:
+        """Liest die CLI-Version via --version (best effort)."""
+        try:
+            result = subprocess.run(
+                [cli_path, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=8,
+            )
+        except Exception:
+            return None
+
+        combined = f"{result.stdout or ''}\n{result.stderr or ''}"
+        match = re.search(r"(\d+\.\d+\.\d+)", combined)
+        return match.group(1) if match else None
+
+    @staticmethod
+    def _extract_token_cap_from_text(text: str) -> Optional[int]:
+        if not text:
+            return None
+
+        patterns = [
+            r"(?:max(?:imum)?|limit)[^0-9]{0,30}(\d{3,6})\s*tokens?",
+            r"(\d{3,6})\s*tokens?[^a-zA-Z]{0,20}(?:max(?:imum)?|limit)",
+            r"context[^0-9]{0,20}(\d{3,6})",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, text, flags=re.IGNORECASE)
+            if match:
+                try:
+                    return int(match.group(1))
+                except (TypeError, ValueError):
+                    continue
+        return None
+
+    @classmethod
+    def _probe_cli_runtime_cap(cls, cli_path: str, model_full: str, requested: int = 65536) -> Optional[int]:
+        """
+        Ermittelt das zur Laufzeit gemeldete Token-Limit (best effort).
+        Strategie: absichtlich hohes Token-Limit setzen und Fehlermeldung parsen.
+        """
+        if not cli_path:
+            return None
+
+        env = os.environ.copy()
+        env.pop("CLAUDECODE", None)
+        base_cmd = [
+            cli_path,
+            "-p",
+            "--output-format",
+            "text",
+            "--max-turns",
+            "1",
+            "--model",
+            model_full,
+        ]
+        prompts = "Respond with OK."
+        token_flags = ("--max-output-tokens", "--max-tokens")
+
+        for token_flag in token_flags:
+            cmd = list(base_cmd)
+            cmd.extend([token_flag, str(requested)])
+            try:
+                result = subprocess.run(
+                    cmd,
+                    input=prompts,
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                    env=env,
+                )
+            except Exception:
+                continue
+
+            if result.returncode == 0:
+                return requested
+
+            combined = f"{result.stdout or ''}\n{result.stderr or ''}"
+            parsed = cls._extract_token_cap_from_text(combined)
+            if parsed:
+                return parsed
+
+        return None
+
+    @classmethod
+    def _find_bundled_cli_path(cls) -> Optional[str]:
+        """
+        Sucht nach einer vom SDK mitgelieferten Claude-CLI (best effort).
+        Falls keine bundler-spezifische Binary gefunden wird, bleibt das Feld leer.
+        """
+        try:
+            import claude_agent_sdk  # type: ignore
+        except Exception:
+            return None
+
+        pkg_dir = os.path.dirname(getattr(claude_agent_sdk, "__file__", "") or "")
+        if not pkg_dir or not os.path.isdir(pkg_dir):
+            return None
+
+        candidate_names = ("claude", "claude.exe", "claude-code", "claude-code.exe")
+        for root, _, files in os.walk(pkg_dir):
+            lower = {f.lower(): f for f in files}
+            for name in candidate_names:
+                if name in lower:
+                    candidate = os.path.join(root, lower[name])
+                    if os.path.isfile(candidate):
+                        return candidate
+        return None
+
+    def probe_sdk_runtime(self, configured_coder_limit: int) -> dict:
+        """
+        Prueft SDK/CLI-Laufzeitinfos fuer Haiku und liefert eine Mitigation-Empfehlung.
+        """
+        sdk_version = None
+        try:
+            sdk_version = importlib.metadata.version("claude-agent-sdk")
+        except Exception:
+            sdk_version = None
+
+        bundled_cli_path = self._find_bundled_cli_path()
+        bundled_cli_version = self._read_cli_version(bundled_cli_path) if bundled_cli_path else None
+        system_cli_path = shutil.which("claude") or shutil.which("claude.exe")
+        system_cli_version = self._read_cli_version(system_cli_path) if system_cli_path else None
+
+        reported_limit = None
+        probe_path = bundled_cli_path or system_cli_path
+        if probe_path:
+            reported_limit = self._probe_cli_runtime_cap(
+                cli_path=probe_path,
+                model_full=state.CLAUDE_MODEL_MAP.get("haiku", "haiku"),
+                requested=max(int(configured_coder_limit or 0), 65536),
+            )
+
+        sdk_in_affected_range = False
+        sdk_vtuple = self._parse_version_tuple(sdk_version)
+        if sdk_vtuple is not None:
+            # Bekannter Problemstart: 0.1.39; obere Schranke defensiv auf <0.2.0.
+            sdk_in_affected_range = (0, 1, 39) <= sdk_vtuple < (0, 2, 0)
+
+        effective_limit = int(configured_coder_limit or 0)
+        if reported_limit and reported_limit > 0:
+            effective_limit = min(effective_limit, int(reported_limit))
+
+        limit_mismatch = bool(
+            reported_limit
+            and configured_coder_limit
+            and int(reported_limit) < int(configured_coder_limit)
+        )
+        mitigation_required = sdk_in_affected_range or limit_mismatch
+        prefer_system_cli = (
+            mitigation_required
+            and bool(system_cli_path)
+            and self._is_version_newer(system_cli_version, bundled_cli_version)
+        )
+
+        return {
+            "sdk_version": sdk_version,
+            "bundled_cli_path": bundled_cli_path,
+            "bundled_cli_version": bundled_cli_version,
+            "system_cli_path": system_cli_path,
+            "system_cli_version": system_cli_version,
+            "reported_haiku_limit": reported_limit,
+            "configured_coder_limit": configured_coder_limit,
+            "effective_coder_limit": effective_limit,
+            "sdk_in_affected_range": sdk_in_affected_range,
+            "limit_mismatch": limit_mismatch,
+            "mitigation_required": mitigation_required,
+            "prefer_system_cli": prefer_system_cli,
+        }
 
     def _ensure_initialized(self):
         if not self._initialized:
@@ -53,6 +260,7 @@ class ClaudeSDKProvider:
         timeout_seconds: int = 750,
         max_turns: int = 10,
         use_cli_mode: bool = False,
+        max_output_tokens: Optional[int] = None,
     ) -> str:
         # AENDERUNG 22.02.2026: Fix 75a — CLI-Modus braucht kein SDK-Lazy-Loading
         if not use_cli_mode:
@@ -90,6 +298,7 @@ class ClaudeSDKProvider:
                     system_prompt=system_prompt,
                     timeout_seconds=timeout_seconds,
                     max_turns=max_turns,
+                    max_output_tokens=max_output_tokens,
                 )
             else:
                 result = self._run_sync(
@@ -100,6 +309,7 @@ class ClaudeSDKProvider:
                     system_prompt=system_prompt,
                     max_turns=max_turns,
                     timeout_seconds=timeout_seconds,
+                    max_output_tokens=max_output_tokens,
                 )
 
             latency_ms = (time.time() - start_time) * 1000
@@ -168,6 +378,7 @@ class ClaudeSDKProvider:
         system_prompt: Optional[str],
         timeout_seconds: int,
         max_turns: int = 1,
+        max_output_tokens: Optional[int] = None,
     ) -> str:
         """
         Einfacher CLI-Modus via subprocess.
@@ -180,6 +391,8 @@ class ClaudeSDKProvider:
         model_full = state.CLAUDE_MODEL_MAP.get(model, model)
         cmd = [claude_path, "-p", "--output-format", "text", "--max-turns", str(max_turns)]
         cmd.extend(["--model", model_full])
+        if max_output_tokens:
+            cmd.extend(["--max-output-tokens", str(max_output_tokens)])
         # AENDERUNG 24.02.2026: Fix 76c — Default System-Prompt fuer CLI-Modus
         # ROOT-CAUSE-FIX:
         # Symptom: TechStack/DB-Designer/Designer liefern ~28 Zeichen via CLI
@@ -195,27 +408,73 @@ class ClaudeSDKProvider:
         env = os.environ.copy()
         env.pop("CLAUDECODE", None)
 
-        result = subprocess.run(
-            cmd,
-            input=prompt,
-            capture_output=True,
-            text=True,
-            timeout=timeout_seconds, env=env
+        # AENDERUNG 25.02.2026: Fix 85 — Popen statt subprocess.run fuer kill_active_process()
+        # ROOT-CAUSE-FIX:
+        # Symptom: Reset stoppt CLI-Prozess nicht (subprocess.run blockiert bis Timeout)
+        # Ursache: subprocess.run() ist nicht unterbrechbar von aussen
+        # Loesung: Popen + communicate() + _current_process Tracking → kill() bei Reset
+        proc = subprocess.Popen(
+            cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, text=True, env=env
         )
+        self._current_process = proc
+        try:
+            stdout, stderr = proc.communicate(input=prompt, timeout=timeout_seconds)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.communicate()
+            raise
+        finally:
+            self._current_process = None
 
-        if result.returncode != 0:
+        if proc.returncode != 0 and max_output_tokens:
+            combined_err = f"{stdout or ''}\n{stderr or ''}".lower()
+            if "unknown option" in combined_err or "unknown argument" in combined_err:
+                cmd_without_max = list(cmd)
+                if "--max-output-tokens" in cmd_without_max:
+                    idx = cmd_without_max.index("--max-output-tokens")
+                    del cmd_without_max[idx : idx + 2]
+                proc2 = subprocess.Popen(
+                    cmd_without_max, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE, text=True, env=env
+                )
+                self._current_process = proc2
+                try:
+                    stdout, stderr = proc2.communicate(input=prompt, timeout=timeout_seconds)
+                except subprocess.TimeoutExpired:
+                    proc2.kill()
+                    proc2.communicate()
+                    raise
+                finally:
+                    self._current_process = None
+                proc = proc2
+
+        if proc.returncode != 0:
             # AENDERUNG 24.02.2026: Fix 76d — Bessere Fehler-Diagnostik
             # Manche CLIs schreiben Fehler nach stdout statt stderr
-            stderr_excerpt = (result.stderr or "")[:500]
-            stdout_excerpt = (result.stdout or "")[:500]
+            stderr_excerpt = (stderr or "")[:500]
+            stdout_excerpt = (stdout or "")[:500]
             raise RuntimeError(
-                f"claude CLI Fehler (Code {result.returncode}): "
+                f"claude CLI Fehler (Code {proc.returncode}): "
                 f"stderr={stderr_excerpt} stdout={stdout_excerpt}"
             )
 
-        output = result.stdout.strip()
+        output = stdout.strip()
         if not output:
             raise ValueError("claude CLI: Leere Antwort erhalten")
+
+        # AENDERUNG 26.02.2026: Fix 91b — CLI-Output Preview loggen
+        # ROOT-CAUSE-FIX:
+        # Symptom: 28-Zeichen-Antworten ohne Kontext was zurueckkommt
+        # Ursache: _run_cli() gibt Output zurueck ohne zu loggen
+        # Loesung: DEBUG-Level Preview fuer alle CLI-Antworten
+        logger.debug(
+            "CLI %s Output (%d Zeichen): %.100s%s",
+            model,
+            len(output),
+            output,
+            "..." if len(output) > 100 else "",
+        )
 
         return output
 
@@ -228,6 +487,7 @@ class ClaudeSDKProvider:
         system_prompt: Optional[str],
         max_turns: int,
         timeout_seconds: int,
+        max_output_tokens: Optional[int] = None,
     ) -> str:
         """Synchroner Wrapper fuer async claude-agent-sdk query()."""
         import anyio
@@ -236,7 +496,7 @@ class ClaudeSDKProvider:
         stop_event = threading.Event()
 
         async def _async_query():
-            option_kwargs = {
+            base_option_kwargs = {
                 "system_prompt": system_prompt
                 or "Gib nur den angeforderten Output zurueck. Keine Erklaerungen oder Kommentare ausserhalb des angeforderten Formats.",
                 "allowed_tools": tools or [],
@@ -244,11 +504,33 @@ class ClaudeSDKProvider:
                 "cwd": cwd,
                 "include_partial_messages": True,
             }
-            try:
-                options = state._sdk_options_class(**option_kwargs)
-            except TypeError:
-                option_kwargs.pop("include_partial_messages", None)
-                options = state._sdk_options_class(**option_kwargs)
+
+            token_keys = ["max_output_tokens", "max_tokens", "max_tokens_to_sample"]
+            token_variants = [None]
+            if max_output_tokens and int(max_output_tokens) > 0:
+                token_variants = token_keys + [None]
+
+            last_error = None
+            options = None
+            for token_key in token_variants:
+                option_kwargs = dict(base_option_kwargs)
+                if token_key:
+                    option_kwargs[token_key] = int(max_output_tokens)
+                try:
+                    options = state._sdk_options_class(**option_kwargs)
+                    break
+                except TypeError as e:
+                    last_error = e
+                    option_kwargs.pop("include_partial_messages", None)
+                    try:
+                        options = state._sdk_options_class(**option_kwargs)
+                        break
+                    except TypeError as e2:
+                        last_error = e2
+                        continue
+
+            if options is None and last_error is not None:
+                raise last_error
 
             result_text = ""
             msg_count = 0

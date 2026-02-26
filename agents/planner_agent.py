@@ -68,6 +68,16 @@ def create_planner(config: Dict[str, Any], project_rules: Dict[str, List[str]], 
             "7. run.bat - Startskript (abhaengig von requirements.txt)\n"
             "8. tests/test_database.py - DB-Tests (abhaengig von database)\n"
             "9. tests/test_main.py - Haupttests (abhaengig von main)\n\n"
+            # AENDERUNG 26.02.2026: Fix 89c — Naming-Convention fuer Komponenten
+            # ROOT-CAUSE-FIX:
+            # Symptom: Import '@/components/ItemListe' aber Datei heisst 'item-list.jsx'
+            # Ursache: Planner plant ohne Naming-Convention → Coder generiert inkonsistente Imports
+            # Loesung: Explizite Naming-Convention im Planner-Prompt
+            "WICHTIGE NAMING-KONVENTIONEN:\n"
+            "- Komponenten-Dateien: kebab-case (item-list.jsx, task-form.jsx, stats-panel.jsx)\n"
+            "- NICHT PascalCase oder camelCase fuer Dateinamen (FALSCH: ItemListe.jsx, taskForm.jsx)\n"
+            "- Import-Pfade MUESSEN exakt mit den geplanten Dateinamen uebereinstimmen\n"
+            "- Beispiel: components/item-list.jsx → import ItemList from '@/components/item-list'\n\n"
             "AUSGABE-FORMAT (strikt JSON):\n"
             "```json\n"
             "{\n"

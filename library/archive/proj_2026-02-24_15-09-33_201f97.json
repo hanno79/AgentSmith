@@ -131,7 +131,7 @@
       "from_agent": "UTDS",
       "to_agent": "System",
       "type": "InitialDerivation",
-      "content": "{\"source\": \"initial\", \"total_tasks\": 10, \"by_category\": {\"config\": 2, \"code\": 8}, \"by_priority\": {\"critical\": 2, \"high\": 5, \"medium\": 2, \"low\": 1}}",
+      "content": "{\"source\": \"initial\", \"total_tasks\": 10, \"by_category\": {\"config\": 2, \"code\": [REDACTED_CODE]}, \"by_priority\": {\"critical\": 2, \"high\": 5, \"medium\": 2, \"low\": 1}}",
       "metadata": {}
     },
     {
@@ -1933,7 +1933,7 @@
       "from_agent": "Planner",
       "to_agent": "System",
       "type": "Error",
-      "content": "Planner fehlgeschlagen: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"qwen/qwen3-coder:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: http<LOCAL_PATH>\",\"provider_name\":\"Venice\",\"is_byok\":false}},\"user_id\":\"<REDACTED_USER>\"}",
+      "content": "Planner fehlgeschlagen: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":[REDACTED_CODE],\"metadata\":{\"raw\":\"[REDACTED_PROVIDER_RAW]\",\"provider_name\":\"[REDACTED_PROVIDER]\",\"is_byok\":null}},\"user_id\":\"<REDACTED_USER>\"}",
       "metadata": {}
     },
     {
@@ -2113,7 +2113,7 @@
       "from_agent": "Coder",
       "to_agent": "System",
       "type": "Error",
-      "content": "Fehler bei package.json: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"qwen/qwen3-coder:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: http<LOCAL_PATH>\",\"provider_name\":\"Venice\",\"is_byok\":false}},\"user_id\":\"<REDACTED_USER>\"}",
+      "content": "Fehler bei package.json: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":[REDACTED_CODE],\"metadata\":{\"raw\":\"[REDACTED_PROVIDER_RAW]\",\"provider_name\":\"[REDACTED_PROVIDER]\",\"is_byok\":null}},\"user_id\":\"<REDACTED_USER>\"}",
       "metadata": {}
     },
     {
@@ -2283,7 +2283,7 @@
       "from_agent": "Coder",
       "to_agent": "System",
       "type": "Error",
-      "content": "Fehler bei lib/db.js: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"qwen/qwen3-coder:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: http<LOCAL_PATH>\",\"provider_name\":\"Venice\",\"is_byok\":false}},\"user_id\":\"<REDACTED_USER>\"}",
+      "content": "Fehler bei lib/db.js: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":[REDACTED_CODE],\"metadata\":{\"raw\":\"[REDACTED_PROVIDER_RAW]\",\"provider_name\":\"[REDACTED_PROVIDER]\",\"is_byok\":null}},\"user_id\":\"<REDACTED_USER>\"}",
       "metadata": {}
     },
     {
@@ -2623,7 +2623,7 @@
       "from_agent": "Coder",
       "to_agent": "System",
       "type": "Error",
-      "content": "Fehler bei app/page.js: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"qwen/qwen3-coder:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: http<LOCAL_PATH>\",\"provider_name\":\"Venice\",\"is_byok\":false}},\"user_id\":\"<REDACTED_USER>\"}",
+      "content": "Fehler bei app/page.js: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":[REDACTED_CODE],\"metadata\":{\"raw\":\"[REDACTED_PROVIDER_RAW]\",\"provider_name\":\"[REDACTED_PROVIDER]\",\"is_byok\":null}},\"user_id\":\"<REDACTED_USER>\"}",
       "metadata": {}
     },
     {
@@ -3033,7 +3033,7 @@
       "from_agent": "Coder",
       "to_agent": "System",
       "type": "Error",
-      "content": "Fehler bei app/api/activity_log/route.js: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"openai/gpt-oss-120b:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: http<LOCAL_PATH>\",\"provider_name\":\"OpenInference\",\"is_byok\":false}},\"user_id\":\"<REDACTED_USER>\"}",
+      "content": "Fehler bei app/api/activity_log/route.js: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":[REDACTED_CODE],\"metadata\":{\"raw\":\"[REDACTED_PROVIDER_RAW]\",\"provider_name\":\"[REDACTED_PROVIDER]\",\"is_byok\":null}},\"user_id\":\"<REDACTED_USER>\"}",
       "metadata": {}
     },
     {
@@ -3113,7 +3113,7 @@
       "from_agent": "Coder",
       "to_agent": "System",
       "type": "Error",
-      "content": "Fehler bei app/api/todo_items/route.js: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"meta-llama/llama-3.3-70b-instruct:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: http<LOCAL_PATH>\",\"provider_name\":\"OpenInference\",\"is_byok\":false}},\"user_id\":\"<REDACTED_USER>\"}",
+      "content": "Fehler bei app/api/todo_items/route.js: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":[REDACTED_CODE],\"metadata\":{\"raw\":\"[REDACTED_PROVIDER_RAW]\",\"provider_name\":\"[REDACTED_PROVIDER]\",\"is_byok\":null}},\"user_id\":\"<REDACTED_USER>\"}",
       "metadata": {}
     },
     {
@@ -3313,7 +3313,7 @@
       "from_agent": "Coder",
       "to_agent": "System",
       "type": "Error",
-      "content": "Fehler bei run.bat: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"qwen/qwen3-coder:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: http<LOCAL_PATH>\",\"provider_name\":\"Venice\",\"is_byok\":false}},\"user_id\":\"<REDACTED_USER>\"}",
+      "content": "Fehler bei run.bat: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":[REDACTED_CODE],\"metadata\":{\"raw\":\"[REDACTED_PROVIDER_RAW]\",\"provider_name\":\"[REDACTED_PROVIDER]\",\"is_byok\":null}},\"user_id\":\"<REDACTED_USER>\"}",
       "metadata": {}
     },
     {
@@ -3683,7 +3683,7 @@
       "from_agent": "Coder",
       "to_agent": "System",
       "type": "Error",
-      "content": "Fehler bei lib/db.js: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"openai/gpt-oss-120b:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: http<LOCAL_PATH>\",\"provider_name\":\"OpenInference\",\"is_byok\":false}},\"user_id\":\"<REDACTED_USER>\"}",
+      "content": "Fehler bei lib/db.js: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":[REDACTED_CODE],\"metadata\":{\"raw\":\"[REDACTED_PROVIDER_RAW]\",\"provider_name\":\"[REDACTED_PROVIDER]\",\"is_byok\":null}},\"user_id\":\"<REDACTED_USER>\"}",
       "metadata": {}
     },
     {
@@ -3853,7 +3853,7 @@
       "from_agent": "Coder",
       "to_agent": "System",
       "type": "Error",
-      "content": "Fehler bei app/page.js: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"meta-llama/llama-3.3-70b-instruct:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: http<LOCAL_PATH>\",\"provider_name\":\"OpenInference\",\"is_byok\":false}},\"user_id\":\"<REDACTED_USER>\"}",
+      "content": "Fehler bei app/page.js: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":[REDACTED_CODE],\"metadata\":{\"raw\":\"[REDACTED_PROVIDER_RAW]\",\"provider_name\":\"[REDACTED_PROVIDER]\",\"is_byok\":null}},\"user_id\":\"<REDACTED_USER>\"}",
       "metadata": {}
     },
     {
@@ -4123,7 +4123,7 @@
       "from_agent": "Coder",
       "to_agent": "System",
       "type": "Error",
-      "content": "Fehler bei app/api/todo_items/route.js: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"qwen/qwen3-coder:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: http<LOCAL_PATH>\",\"provider_name\":\"Venice\",\"is_byok\":false}},\"user_id\":\"<REDACTED_USER>\"}",
+      "content": "Fehler bei app/api/todo_items/route.js: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":[REDACTED_CODE],\"metadata\":{\"raw\":\"[REDACTED_PROVIDER_RAW]\",\"provider_name\":\"[REDACTED_PROVIDER]\",\"is_byok\":null}},\"user_id\":\"<REDACTED_USER>\"}",
       "metadata": {}
     },
     {
@@ -4173,7 +4173,7 @@
       "from_agent": "Coder",
       "to_agent": "System",
       "type": "Error",
-      "content": "Fehler bei app/api/activity_log/route.js: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"openai/gpt-oss-120b:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: http<LOCAL_PATH>\",\"provider_name\":\"OpenInference\",\"is_byok\":false}},\"user_id\":\"<REDACTED_USER>\"}",
+      "content": "Fehler bei app/api/activity_log/route.js: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":[REDACTED_CODE],\"metadata\":{\"raw\":\"[REDACTED_PROVIDER_RAW]\",\"provider_name\":\"[REDACTED_PROVIDER]\",\"is_byok\":null}},\"user_id\":\"<REDACTED_USER>\"}",
       "metadata": {}
     },
     {
@@ -4363,7 +4363,7 @@
       "from_agent": "Coder",
       "to_agent": "System",
       "type": "Error",
-      "content": "Fehler bei run.bat: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"meta-llama/llama-3.3-70b-instruct:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: http<LOCAL_PATH>\",\"provider_name\":\"OpenInference\",\"is_byok\":false}},\"user_id\":\"<REDACTED_USER>\"}",
+      "content": "Fehler bei run.bat: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":[REDACTED_CODE],\"metadata\":{\"raw\":\"[REDACTED_PROVIDER_RAW]\",\"provider_name\":\"[REDACTED_PROVIDER]\",\"is_byok\":null}},\"user_id\":\"<REDACTED_USER>\"}",
       "metadata": {}
     },
     {
@@ -4793,7 +4793,7 @@
       "from_agent": "Reviewer",
       "to_agent": "System",
       "type": "ModelError",
-      "content": "Unerwarteter Fehler bei openrouter/deepseek/deepseek-r1-0528:free: NotFoundError: litellm.NotFoundError: NotFoundError: OpenrouterException - {\"error\":{\"message\":\"No endpoints found for deepseek/deepseek-r1-0528:free.\",\"code\":404},\"user_id\":\"<REDACTED_USER>\"} (Fehler 1/2)",
+      "content": "Unerwarteter Fehler bei openrouter/deepseek/deepseek-r1-0528:free: NotFoundError: litellm.NotFoundError: NotFoundError: OpenrouterException - {\"error\":{\"message\":\"No endpoints found for deepseek/deepseek-r1-0528:free.\",\"code\":[REDACTED_CODE]},\"user_id\":\"<REDACTED_USER>\"} (Fehler 1/2)",
       "metadata": {}
     },
     {
@@ -4803,7 +4803,7 @@
       "from_agent": "Reviewer",
       "to_agent": "System",
       "type": "ModelError",
-      "content": "Unerwarteter Fehler bei openrouter/deepseek/deepseek-r1-0528:free: NotFoundError: litellm.NotFoundError: NotFoundError: OpenrouterException - {\"error\":{\"message\":\"No endpoints found for deepseek/deepseek-r1-0528:free.\",\"code\":404},\"user_id\":\"<REDACTED_USER>\"} (Fehler 2/2)",
+      "content": "Unerwarteter Fehler bei openrouter/deepseek/deepseek-r1-0528:free: NotFoundError: litellm.NotFoundError: NotFoundError: OpenrouterException - {\"error\":{\"message\":\"No endpoints found for deepseek/deepseek-r1-0528:free.\",\"code\":[REDACTED_CODE]},\"user_id\":\"<REDACTED_USER>\"} (Fehler 2/2)",
       "metadata": {}
     },
     {
@@ -6023,7 +6023,7 @@
       "from_agent": "UTDS",
       "to_agent": "System",
       "type": "TasksDerived",
-      "content": "{\"total\": 3, \"by_category\": {\"config\": 2, \"code\": 1}, \"by_priority\": {\"critical\": 1, \"high\": 1, \"medium\": 1}, \"by_agent\": {\"fix\": 3}, \"derivation_time\": 43.5073516368866}",
+      "content": "{\"total\": 3, \"by_category\": {\"config\": 2, \"code\": [REDACTED_CODE]}, \"by_priority\": {\"critical\": 1, \"high\": 1, \"medium\": 1}, \"by_agent\": {\"fix\": 3}, \"derivation_time\": 43.5073516368866}",
       "metadata": {}
     },
     {
@@ -6493,7 +6493,7 @@
       "from_agent": "UTDS",
       "to_agent": "System",
       "type": "TasksDerived",
-      "content": "{\"total\": 4, \"by_category\": {\"config\": 3, \"code\": 1}, \"by_priority\": {\"critical\": 2, \"high\": 2}, \"by_agent\": {\"fix\": 4}, \"derivation_time\": 43.57927227020264}",
+      "content": "{\"total\": 4, \"by_category\": {\"config\": 3, \"code\": [REDACTED_CODE]}, \"by_priority\": {\"critical\": 2, \"high\": 2}, \"by_agent\": {\"fix\": 4}, \"derivation_time\": 43.57927227020264}",
       "metadata": {}
     },
     {
@@ -8843,7 +8843,7 @@
       "from_agent": "Reviewer",
       "to_agent": "System",
       "type": "ModelError",
-      "content": "Unerwarteter Fehler bei openrouter/meta-llama/llama-3.1-405b-instruct:free: NotFoundError: litellm.NotFoundError: NotFoundError: OpenrouterException - {\"error\":{\"message\":\"No endpoints found for meta-llama/llama-3.1-405b-instruct:free.\",\"code\":404},\"user_id\":\"user_2wZeGHQVFxb9G0hgVpIfdJPrjv (Fehler 1/2)",
+      "content": "Unerwarteter Fehler bei openrouter/meta-llama/llama-3.1-405b-instruct:free: NotFoundError: litellm.NotFoundError: NotFoundError: OpenrouterException - {\"error\":{\"message\":\"No endpoints found for meta-llama/llama-3.1-405b-instruct:free.\",\"code\":[REDACTED_CODE]},\"user_id\":\"<REDACTED_USER>\"(Fehler 1/2)",
       "metadata": {}
     },
     {
@@ -8853,7 +8853,7 @@
       "from_agent": "Reviewer",
       "to_agent": "System",
       "type": "ModelError",
-      "content": "Unerwarteter Fehler bei openrouter/meta-llama/llama-3.1-405b-instruct:free: NotFoundError: litellm.NotFoundError: NotFoundError: OpenrouterException - {\"error\":{\"message\":\"No endpoints found for meta-llama/llama-3.1-405b-instruct:free.\",\"code\":404},\"user_id\":\"user_2wZeGHQVFxb9G0hgVpIfdJPrjv (Fehler 2/2)",
+      "content": "Unerwarteter Fehler bei openrouter/meta-llama/llama-3.1-405b-instruct:free: NotFoundError: litellm.NotFoundError: NotFoundError: OpenrouterException - {\"error\":{\"message\":\"No endpoints found for meta-llama/llama-3.1-405b-instruct:free.\",\"code\":[REDACTED_CODE]},\"user_id\":\"<REDACTED_USER>\"(Fehler 2/2)",
       "metadata": {}
     },
     {
@@ -9273,7 +9273,7 @@
       "from_agent": "UTDS",
       "to_agent": "System",
       "type": "TasksDerived",
-      "content": "{\"total\": 3, \"by_category\": {\"config\": 2, \"code\": 1}, \"by_priority\": {\"critical\": 2, \"high\": 1}, \"by_agent\": {\"fix\": 3}, \"derivation_time\": 43.648364305496216}",
+      "content": "{\"total\": 3, \"by_category\": {\"config\": 2, \"code\": [REDACTED_CODE]}, \"by_priority\": {\"critical\": 2, \"high\": 1}, \"by_agent\": {\"fix\": 3}, \"derivation_time\": 43.648364305496216}",
       "metadata": {}
     },
     {
@@ -9783,7 +9783,7 @@
       "from_agent": "UTDS",
       "to_agent": "System",
       "type": "TasksDerived",
-      "content": "{\"total\": 4, \"by_category\": {\"config\": 3, \"code\": 1}, \"by_priority\": {\"critical\": 2, \"high\": 1, \"medium\": 1}, \"by_agent\": {\"fix\": 3, \"coder\": 1}, \"derivation_time\": 34.23081040382385}",
+      "content": "{\"total\": 4, \"by_category\": {\"config\": 3, \"code\": [REDACTED_CODE]}, \"by_priority\": {\"critical\": 2, \"high\": 1, \"medium\": 1}, \"by_agent\": {\"fix\": 3, \"coder\": 1}, \"derivation_time\": 34.23081040382385}",
       "metadata": {}
     },
     {
@@ -11283,7 +11283,7 @@
       "from_agent": "UTDS",
       "to_agent": "System",
       "type": "TasksDerived",
-      "content": "{\"total\": 3, \"by_category\": {\"config\": 2, \"code\": 1}, \"by_priority\": {\"critical\": 1, \"high\": 2}, \"by_agent\": {\"fix\": 3}, \"derivation_time\": 31.559111833572388}",
+      "content": "{\"total\": 3, \"by_category\": {\"config\": 2, \"code\": [REDACTED_CODE]}, \"by_priority\": {\"critical\": 1, \"high\": 2}, \"by_agent\": {\"fix\": 3}, \"derivation_time\": 31.559111833572388}",
       "metadata": {}
     },
     {
@@ -11833,7 +11833,7 @@
       "from_agent": "UTDS",
       "to_agent": "System",
       "type": "TasksDerived",
-      "content": "{\"total\": 5, \"by_category\": {\"code\": 3, \"config\": 2}, \"by_priority\": {\"critical\": 2, \"high\": 3}, \"by_agent\": {\"coder\": 3, \"fix\": 2}, \"derivation_time\": 39.309874057769775}",
+      "content": "{\"total\": 5, \"by_category\": {\"code\": [REDACTED_CODE], \"config\": 2}, \"by_priority\": {\"critical\": 2, \"high\": 3}, \"by_agent\": {\"coder\": 3, \"fix\": 2}, \"derivation_time\": 39.309874057769775}",
       "metadata": {}
     },
     {

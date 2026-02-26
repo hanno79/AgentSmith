@@ -1,82 +1,84 @@
 {
-  "last_updated": "2026-02-24T20:02:03.729485",
+  "last_updated": "2026-02-26T13:41:05.336882",
   "total_tasks": 65,
   "tasks": [
     {
       "id": "TASK-001",
-      "title": "package.json Dependencies korrigieren",
-      "description": "Entferne better-sqlite3 aus Dependencies falls vorhanden und füge stattdessen sqlite3 und sqlite hinzu. Diese Libraries sind für das nextjs_sqlite Template erforderlich und haben keine C++-Build-Abhängigkeiten.",
+      "title": "Next.js Projekt mit Tailwind und shadcn/ui initialisieren",
+      "description": "Erstelle ein neues Next.js-Projekt (App Router). Installiere und konfiguriere Tailwind CSS und shadcn/ui. Richte die grundlegende Ordnerstruktur ein: /app, /components, /lib, /prisma bzw. /db. Stelle sicher, dass TypeScript aktiviert ist.",
       "category": "config",
       "priority": "critical",
-      "target_agent": "fix",
+      "target_agent": "coder",
       "affected_files": [
-        "package.json"
+        "package.json",
+        "tailwind.config.ts",
+        "tsconfig.json",
+        "next.config.ts",
+        "components.json"
       ],
       "dependencies": [],
-      "source_issue": "Dependency-Fehler: Fehlende Dependencies in package.json: better-sqlite3. Template 'nextjs_sqlite' verbietet better-sqlite3!",
-      "source_type": "sandbox",
-      "status": "completed",
+      "source_issue": "Implementiere es mit React/Next.js. Nutze Tailwind und Shad/cn fürs UI.",
+      "source_type": "initial",
+      "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-24T19:48:20.625982",
-      "started_at": "2026-02-24T19:48:20.789279",
-      "completed_at": "2026-02-24T19:53:12.659105",
-      "result": "```json\n{\n  \"name\": \"project\",\n  \"version\": \"1.0.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"dev\": \"next dev\",\n    \"build\": \"next build\",\n    \"start\": \"next start\",\n    \"test\": \"jest\"\n  },\n  \"dependencies\": {\n    \"@headlessui/react\": \"^2.2.9\",\n    \"autoprefixer\": \"10.4.16\",\n    \"next\": \"15.1.0\",\n    \"postcss\": \"8.4.31\",\n    \"react\": \"19.0.0\",\n    \"react-dom\": \"19.0.0\",\n    \"sqlite\": \"^5.1.1\",\n    \"sqlite3\": \"^5.1.7\",\n    \"tailwindcss\": \"3.4.1\"\n  }\n}\n```\n\n**Status:** ✅ KORREKT\n\nBeide package.json Dateien enthalten bereits die korrekten Dependencies:\n- ✅ `sqlite3` vorhanden\n- ✅ `sqlite` vorhanden  \n- ✅ `better-sqlite3` NICHT vorhanden\n\n**Projekt-Dateien überprüft:**\n1. `/app/frontend/package.json` - ✅ Korrekt\n2. `/app/projects/abcd_20260221_163523/package.json` - ✅ Korrekt\n\n**Fazit:** Dependencies sind bereits für nextjs_sqlite Template optimiert. Keine Änderungen erforderlich.",
+      "created_at": "2026-02-26T13:41:05.336727",
+      "started_at": null,
+      "completed_at": null,
+      "result": null,
       "error_message": null,
-      "modified_files": [
-        "package.json",
-        "/app/projects/abcd_20260221_163523/package.json",
-        "/app/frontend/package.json"
-      ],
+      "modified_files": [],
       "retry_count": 0,
       "max_retries": 2,
       "timeout_seconds": 120
     },
     {
       "id": "TASK-002",
-      "title": "Datenbankverbindung in lib/db.js umschreiben",
-      "description": "Ersetze better-sqlite3 Import und Verwendung durch sqlite3 und sqlite. Verwende: import Database from 'sqlite3' und import { open } from 'sqlite'. Stelle sicher, dass die Datenbankverbindung korrekt initialisiert wird.",
-      "category": "code",
-      "priority": "critical",
+      "title": "Tailwind Theme mit Primaerfarben konfigurieren",
+      "description": "Konfiguriere das Tailwind-Theme mit den vorgegebenen Primaerfarben: Blau #2b336a (RGB 43,51,106), Rot #870010 (RGB 135,0,16), Grau #7c7c6b (RGB 124,124,107). Definiere diese als custom colors (z.B. primary, danger, muted) in der Tailwind-Config und in den shadcn/ui CSS-Variablen in globals.css. KEINE blue-purple Gradients verwenden.",
+      "category": "config",
+      "priority": "high",
       "target_agent": "coder",
       "affected_files": [
-        "lib/db.js"
+        "tailwind.config.ts",
+        "app/globals.css"
       ],
       "dependencies": [
         "TASK-001"
       ],
-      "source_issue": "Library WARNING: VERBOTENE LIBRARY: better-sqlite3. Verwende stattdessen: import Database from 'sqlite3' UND import { open } from 'sqlite'",
-      "source_type": "sandbox",
+      "source_issue": "nutze diese Primärfarben: Blau: 43, 51, 106 --- #2b336a Rot: 135, 0, 16 --- #870010 Grau: 124, 124, 107 --- #7c7c6b",
+      "source_type": "initial",
       "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-24T19:48:20.625991",
-      "started_at": "2026-02-24T19:53:12.730587",
+      "created_at": "2026-02-26T13:41:05.336738",
+      "started_at": null,
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"qwen/qwen3-coder:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"Venice\",\"is_byok\":false}},\"user_id\":\"user_2wZeGHQVFxb9G0hgVpIfdJPrjvI\"}",
+      "error_message": null,
       "modified_files": [],
-      "retry_count": 1,
+      "retry_count": 0,
       "max_retries": 2,
       "timeout_seconds": 120
     },
     {
       "id": "TASK-003",
-      "title": "API-Route item_attachments auf sqlite3 migrieren",
-      "description": "Ersetze better-sqlite3 Imports und Datenbankzugriffe in app/api/item_attachments/route.js durch sqlite3/sqlite. Nutze die aktualisierte lib/db.js Datenbankverbindung.",
+      "title": "SQLite Datenbank mit better-sqlite3 einrichten",
+      "description": "Installiere better-sqlite3 (oder drizzle-orm mit better-sqlite3 driver). Erstelle ein Datenbankschema fuer die Tabelle 'items' mit den Spalten: id (INTEGER PRIMARY KEY AUTOINCREMENT), nr (INTEGER UNIQUE, auto-generiert), name (TEXT NOT NULL), beschreibung (TEXT), typ (TEXT NOT NULL, 'bug' oder 'idee'), status (TEXT NOT NULL DEFAULT 'offen'), created_at (DATETIME DEFAULT CURRENT_TIMESTAMP), updated_at (DATETIME). Erstelle die DB-Initialisierungslogik in einer separaten Datei.",
       "category": "code",
-      "priority": "high",
-      "target_agent": "fix",
+      "priority": "critical",
+      "target_agent": "coder",
       "affected_files": [
-        "app/api/item_attachments/route.js"
+        "lib/db.ts",
+        "lib/schema.ts"
       ],
       "dependencies": [
-        "TASK-002"
+        "TASK-001"
       ],
-      "source_issue": "Library WARNING: VERBOTENE LIBRARY: better-sqlite3 in app/api/item_attachments/route.js",
-      "source_type": "sandbox",
-      "status": "in_progress",
+      "source_issue": "die bugs sollen in einer lokalen sqlite datenbank gespeichert werden. ich brauche eine spalte NR, Name, Beschreibung, Status.",
+      "source_type": "initial",
+      "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-24T19:48:20.625994",
-      "started_at": "2026-02-24T20:02:03.616584",
+      "created_at": "2026-02-26T13:41:05.336743",
+      "started_at": null,
       "completed_at": null,
       "result": null,
       "error_message": null,
@@ -87,23 +89,23 @@
     },
     {
       "id": "TASK-004",
-      "title": "API-Route item_status_history auf sqlite3 migrieren",
-      "description": "Ersetze better-sqlite3 Imports und Datenbankzugriffe in app/api/item_status_history/route.js durch sqlite3/sqlite. Nutze die aktualisierte lib/db.js Datenbankverbindung.",
+      "title": "API-Route fuer Items auflisten (GET /api/items)",
+      "description": "Erstelle eine Next.js API-Route (Route Handler) unter /api/items fuer GET-Anfragen. Die Route soll alle Items aus der SQLite-Datenbank abfragen und als JSON zurueckgeben, sortiert nach NR absteigend. Implementiere Error Handling mit aussagekraeftigen Fehlermeldungen.",
       "category": "code",
-      "priority": "high",
-      "target_agent": "fix",
+      "priority": "critical",
+      "target_agent": "coder",
       "affected_files": [
-        "app/api/item_status_history/route.js"
+        "app/api/items/route.ts"
       ],
       "dependencies": [
-        "TASK-002"
+        "TASK-003"
       ],
-      "source_issue": "Library WARNING: VERBOTENE LIBRARY: better-sqlite3 in app/api/item_status_history/route.js",
-      "source_type": "sandbox",
-      "status": "in_progress",
+      "source_issue": "die bugs und ideen müssen erfasst werden können",
+      "source_type": "initial",
+      "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-24T19:48:20.625996",
-      "started_at": "2026-02-24T20:02:03.639886",
+      "created_at": "2026-02-26T13:41:05.336746",
+      "started_at": null,
       "completed_at": null,
       "result": null,
       "error_message": null,
@@ -114,23 +116,23 @@
     },
     {
       "id": "TASK-005",
-      "title": "API-Route statuses auf sqlite3 migrieren",
-      "description": "Ersetze better-sqlite3 Imports und Datenbankzugriffe in app/api/statuses/route.js durch sqlite3/sqlite. Nutze die aktualisierte lib/db.js Datenbankverbindung.",
+      "title": "API-Route fuer Item erstellen (POST /api/items)",
+      "description": "Erstelle die POST-Handler-Logik in /api/items/route.ts. Validiere die Eingabedaten (name ist Pflichtfeld, typ muss 'bug' oder 'idee' sein). Die NR soll automatisch hochgezaehlt werden. Speichere das neue Item in der SQLite-Datenbank. Gib das erstellte Item als JSON zurueck mit Status 201.",
       "category": "code",
-      "priority": "high",
-      "target_agent": "fix",
+      "priority": "critical",
+      "target_agent": "coder",
       "affected_files": [
-        "app/api/statuses/route.js"
+        "app/api/items/route.ts"
       ],
       "dependencies": [
-        "TASK-002"
+        "TASK-003"
       ],
-      "source_issue": "Library WARNING: VERBOTENE LIBRARY: better-sqlite3 in app/api/statuses/route.js",
-      "source_type": "sandbox",
-      "status": "in_progress",
+      "source_issue": "die bugs und ideen müssen erfasst werden können",
+      "source_type": "initial",
+      "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-24T19:48:20.625998",
-      "started_at": "2026-02-24T20:02:03.683102",
+      "created_at": "2026-02-26T13:41:05.336749",
+      "started_at": null,
       "completed_at": null,
       "result": null,
       "error_message": null,
@@ -141,23 +143,23 @@
     },
     {
       "id": "TASK-006",
-      "title": "API-Route items auf sqlite3 migrieren",
-      "description": "Ersetze better-sqlite3 Imports und Datenbankzugriffe in app/api/items/route.js durch sqlite3/sqlite. Nutze die aktualisierte lib/db.js Datenbankverbindung.",
+      "title": "API-Route fuer Status-Update (PATCH /api/items/[id])",
+      "description": "Erstelle eine dynamische API-Route unter /api/items/[id] mit PATCH-Handler. Ermoeglicht das Aktualisieren des Status eines Items (moegliche Status: 'offen', 'in Bearbeitung', 'erledigt', 'zurueckgestellt'). Aktualisiere das updated_at-Feld automatisch. Validiere, dass das Item existiert, und gib 404 zurueck wenn nicht gefunden.",
       "category": "code",
-      "priority": "high",
-      "target_agent": "fix",
+      "priority": "critical",
+      "target_agent": "coder",
       "affected_files": [
-        "app/api/items/route.js"
+        "app/api/items/[id]/route.ts"
       ],
       "dependencies": [
-        "TASK-002"
+        "TASK-003"
       ],
-      "source_issue": "Library WARNING: VERBOTENE LIBRARY: better-sqlite3. Betroffene Dateien: app/api/items/route.js",
-      "source_type": "sandbox",
-      "status": "in_progress",
+      "source_issue": "der status muss gewechselt werden können",
+      "source_type": "initial",
+      "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-24T19:48:20.626001",
-      "started_at": "2026-02-24T20:02:03.729483",
+      "created_at": "2026-02-26T13:41:05.336751",
+      "started_at": null,
       "completed_at": null,
       "result": null,
       "error_message": null,
@@ -168,24 +170,22 @@
     },
     {
       "id": "TASK-007",
-      "title": "Hauptlayout mit Navigation und Header",
-      "description": "Erstelle das Hauptlayout der App mit einem glassmorphischen Header, App-Titel 'BugTracker', Aktions-Buttons für 'Neuer Eintrag'. Implementiere ein responsives Grid-Layout mit Glassmorphismus-Background und animierten Gradient-Overlays für visuelles Interesse",
+      "title": "API-Route fuer Item bearbeiten und loeschen",
+      "description": "Erweitere die dynamische API-Route /api/items/[id] um PUT-Handler (komplettes Item-Update: name, beschreibung, typ, status) und DELETE-Handler (Item loeschen). Implementiere Eingabevalidierung und korrektes Error Handling fuer beide Operationen.",
       "category": "code",
-      "priority": "medium",
+      "priority": "high",
       "target_agent": "coder",
       "affected_files": [
-        "app/page.tsx",
-        "app/layout.tsx",
-        "components/header.tsx"
+        "app/api/items/[id]/route.ts"
       ],
       "dependencies": [
-        "TASK-004"
+        "TASK-006"
       ],
-      "source_issue": "eine umwerfende GUI mit perfekter usability",
+      "source_issue": "die bugs und ideen müssen erfasst werden können",
       "source_type": "initial",
       "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-24T19:19:46.703791",
+      "created_at": "2026-02-26T13:41:05.336754",
       "started_at": null,
       "completed_at": null,
       "result": null,
@@ -197,23 +197,23 @@
     },
     {
       "id": "TASK-008",
-      "title": "State Management mit React Query",
-      "description": "Implementiere Tanstack React Query für effizientes State Management. Erstelle custom hooks: useGetTasks, useCreateTask, useUpdateTask, useDeleteTask. Implementiere optimistic updates für bessere UX beim Status-Wechsel",
+      "title": "Glassmorphism Basis-Styles und UI-Utilities erstellen",
+      "description": "Erstelle wiederverwendbare CSS-Klassen und Tailwind-Utilities fuer Glassmorphism-Effekte: backdrop-blur, semi-transparente Hintergruende (rgba mit den Primaerfarben), subtile Borders, weiche Box-Shadows, Frost-Glas-Effekte. Definiere Hover-Animationen (scale, shadow-intensivierung, glow-Effekte). Erstelle eine utilities-Datei mit cn()-Helper und Glassmorphism-Varianten.",
       "category": "code",
-      "priority": "medium",
+      "priority": "high",
       "target_agent": "coder",
       "affected_files": [
-        "lib/hooks/use-tasks.ts",
-        "app/providers.tsx"
+        "lib/utils.ts",
+        "app/globals.css"
       ],
       "dependencies": [
-        "TASK-003"
+        "TASK-002"
       ],
-      "source_issue": "der status muss gewechselt werden können",
+      "source_issue": "schönen glassmorphismus elementen mit hover und schatten effekten und frost glas elementen. sauber und modern. trau dich etwas.",
       "source_type": "initial",
       "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-24T19:19:46.703794",
+      "created_at": "2026-02-26T13:41:05.336756",
       "started_at": null,
       "completed_at": null,
       "result": null,
@@ -225,24 +225,24 @@
     },
     {
       "id": "TASK-009",
-      "title": "Animations und Micro-Interactions",
-      "description": "Füge Framer Motion Animationen hinzu: Smooth transitions beim Status-Wechsel, Hover-Animationen für Glassmorphismus-Cards, Stagger-Animation beim Laden der Task-Liste, Success/Error Toast-Notifications. Implementiere subtle parallax effects für depth",
+      "title": "Haupt-Layout mit Glassmorphism Header erstellen",
+      "description": "Erstelle das Haupt-Layout der App in app/layout.tsx und die Hauptseite app/page.tsx. Implementiere einen modernen Header mit Glassmorphism-Effekt, App-Titel und subtiler Navigation. Verwende eine moderne Schriftart (z.B. Inter oder Geist) statt Standardschriften. Der Hintergrund soll einen subtilen Gradient oder Pattern haben, der die Glassmorphism-Elemente zur Geltung bringt. Primaerfarben aus TASK-002 nutzen.",
       "category": "code",
-      "priority": "low",
+      "priority": "high",
       "target_agent": "coder",
       "affected_files": [
-        "components/animations.tsx",
-        "lib/motion-variants.ts"
+        "app/layout.tsx",
+        "app/page.tsx"
       ],
       "dependencies": [
-        "TASK-005",
-        "TASK-006"
+        "TASK-001",
+        "TASK-008"
       ],
-      "source_issue": "umwerfende GUI mit perfekter usability und schönen glassmorphismus elementen mit hover",
+      "source_issue": "ich brauche eine umwerfende GUI mit perfekter usability",
       "source_type": "initial",
       "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-24T19:19:46.703796",
+      "created_at": "2026-02-26T13:41:05.336759",
       "started_at": null,
       "completed_at": null,
       "result": null,
@@ -254,26 +254,23 @@
     },
     {
       "id": "TASK-010",
-      "title": "Responsive Design und Mobile Optimierung",
-      "description": "Optimiere alle Komponenten für Mobile, Tablet und Desktop. Implementiere touch-friendly Interactions, angepasste Glassmorphismus-Effekte für Mobile Performance, Swipe-to-delete für Mobile Tasks, responsive Typography Scale",
-      "category": "refactor",
-      "priority": "medium",
+      "title": "Item-Tabelle Komponente mit Glassmorphism erstellen",
+      "description": "Erstelle eine React-Komponente 'ItemTable' die alle Items in einer Tabelle anzeigt mit den Spalten: NR, Name, Beschreibung, Typ (Bug/Idee), Status. Nutze shadcn/ui Table-Komponente als Basis, ueberlagert mit Glassmorphism-Styling (frosted glass Tabellenheader, semi-transparente Zeilen, Hover-Effekte mit Schatten und leichtem Glow). Jede Zeile soll beim Hover visuell hervorgehoben werden.",
+      "category": "code",
+      "priority": "high",
       "target_agent": "coder",
       "affected_files": [
-        "components/task-table.tsx",
-        "components/task-dialog.tsx",
-        "app/globals.css"
+        "components/item-table.tsx"
       ],
       "dependencies": [
-        "TASK-005",
-        "TASK-006",
-        "TASK-007"
+        "TASK-004",
+        "TASK-008"
       ],
-      "source_issue": "perfekter usability",
+      "source_issue": "ich brauche eine spalte NR, Name, Beschreibung, Status",
       "source_type": "initial",
       "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-24T19:19:46.703798",
+      "created_at": "2026-02-26T13:41:05.336762",
       "started_at": null,
       "completed_at": null,
       "result": null,
@@ -285,701 +282,776 @@
     },
     {
       "id": "TASK-011",
-      "title": "Package.json Dependencies korrigieren",
-      "description": "Prüfe und korrigiere die Dependencies in package.json. Stelle sicher, dass alle benötigten Pakete korrekt definiert sind und keine Versionskonflikte bestehen. Führe npm install aus und verifiziere, dass keine Fehler auftreten.",
-      "category": "config",
-      "priority": "critical",
-      "target_agent": "fix",
+      "title": "Status-Badge Komponente mit Farbkodierung erstellen",
+      "description": "Erstelle eine 'StatusBadge'-Komponente die den Status visuell als Badge anzeigt. Farbkodierung: 'offen' = Blau (#2b336a), 'in Bearbeitung' = abgetoentes Gelb/Amber, 'erledigt' = Gruen, 'zurueckgestellt' = Grau (#7c7c6b). Der Badge soll klickbar sein und ein Dropdown-Menu (shadcn/ui DropdownMenu) oeffnen um den Status direkt zu wechseln. Glassmorphism-Styling fuer das Dropdown.",
+      "category": "code",
+      "priority": "high",
+      "target_agent": "coder",
       "affected_files": [
-        "package.json"
+        "components/status-badge.tsx"
       ],
-      "dependencies": [],
-      "source_issue": "[TASK-008] Package.json Dependencies prüfen und korrigieren: Server konnte nicht gestartet werden",
-      "source_type": "reviewer",
+      "dependencies": [
+        "TASK-006",
+        "TASK-008"
+      ],
+      "source_issue": "der status muss gewechselt werden können",
+      "source_type": "initial",
       "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-24T16:14:46.941682",
-      "started_at": "2026-02-24T16:14:47.150031",
+      "created_at": "2026-02-26T13:41:05.336764",
+      "started_at": null,
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"openai/gpt-oss-120b:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"OpenInference\",\"is_byok\":false}},\"user_id\":\"user_2wZeGHQVFxb9G0hgVpIfdJPrjvI\"}",
+      "error_message": null,
       "modified_files": [],
-      "retry_count": 1,
+      "retry_count": 0,
       "max_retries": 2,
       "timeout_seconds": 120
     },
     {
       "id": "TASK-012",
-      "title": "API-Route status_types Syntax-Fehler beheben",
-      "description": "Analysiere app/api/status_types/route.js auf Syntax-Fehler. Prüfe korrekte Export-Statements für GET/POST/PUT/DELETE Handler, validiere async/await Syntax und stelle sicher, dass alle Response-Objekte korrekt formatiert sind.",
+      "title": "Typ-Badge Komponente fuer Bug/Idee Unterscheidung",
+      "description": "Erstelle eine 'TypBadge'-Komponente die visuell zwischen 'Bug' (Rot #870010, mit dezentem Bug-Icon) und 'Idee' (Blau #2b336a, mit dezentem Gluehbirnen-Icon) unterscheidet. Glassmorphism-Effekt auf dem Badge. Die Icons sollen minimal und elegant sein (Regel 19: Icons auf Minimum beschraenken).",
       "category": "code",
-      "priority": "critical",
-      "target_agent": "fix",
+      "priority": "medium",
+      "target_agent": "coder",
       "affected_files": [
-        "app/api/status_types/route.js"
+        "components/typ-badge.tsx"
       ],
-      "dependencies": [],
-      "source_issue": "[TASK-010] API-Route status_types Syntax prüfen: Server konnte nicht gestartet werden",
-      "source_type": "reviewer",
-      "status": "completed",
+      "dependencies": [
+        "TASK-008"
+      ],
+      "source_issue": "erstelle eine umfassende todoliste webapp für mich in welcher ich code bugs und neue ideen erfassen kann",
+      "source_type": "initial",
+      "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-24T16:14:46.941692",
-      "started_at": "2026-02-24T16:14:47.168286",
-      "completed_at": "2026-02-24T16:15:24.841911",
-      "result": "### CORRECTION: app/api/status_types/route.js\n```javascript\nimport { open } from 'sqlite';\nimport sqlite3 from 'sqlite3';\n\n/**\n * Helper to get a SQLite database connection.\n */\nasync function getDb() {\n  return open({\n    filename: './database.sqlite',\n    driver: sqlite3.Database,\n  });\n}\n\n/**\n * GET handler – returns all status types.\n */\nexport async function GET(request) {\n  try {\n    const db = await getDb();\n    const rows = await db.all('SELECT * FROM status_types');\n    await db.close();\n\n    return new Response(JSON.stringify(rows), {\n      status: 200,\n      headers: { 'Content-Type': 'application/json' },\n    });\n  } catch (error) {\n    return new Response(JSON.stringify({ error: error.message }), {\n      status: 500,\n      headers: { 'Content-Type': 'application/json' },\n    });\n  }\n}\n\n/**\n * POST handler – creates a new status type.\n * Expects a JSON body: { name: string }\n */\nexport async function POST(request) {\n  try {\n    const { name } = await request.json();\n    if (!name) {\n      return new Response(JSON.stringify({ error: 'Missing name' }), {\n        status: 400,\n        headers: { 'Content-Type': 'application/json' },\n      });\n    }\n\n    const db = await getDb();\n    const result = await db.run('INSERT INTO status_types (name) VALUES (?)', name);\n    await db.close();\n\n    return new Response(JSON.stringify({ id: result.lastID, name }), {\n      status: 201,\n      headers: { 'Content-Type': 'application/json' },\n    });\n  } catch (error) {\n    return new Response(JSON.stringify({ error: error.message }), {\n      status: 500,\n      headers: { 'Content-Type': 'application/json' },\n    });\n  }\n}\n\n/**\n * PUT handler – updates an existing status type.\n * Expects a JSON body: { id: number, name: string }\n */\nexport async function PUT(request) {\n  try {\n    const { id, name } = await request.json();\n    if (!id || !name) {\n      return new Response(JSON.stringify({ error: 'Missing id or name' }), {\n        status: 400,\n        headers: { 'Content-Typ",
+      "created_at": "2026-02-26T13:41:05.336767",
+      "started_at": null,
+      "completed_at": null,
+      "result": null,
       "error_message": null,
-      "modified_files": [
-        "app/api/status_types/route.js"
-      ],
+      "modified_files": [],
       "retry_count": 0,
       "max_retries": 2,
       "timeout_seconds": 120
     },
     {
       "id": "TASK-013",
-      "title": "Server-Start-Skript debuggen",
-      "description": "Überprüfe run.bat auf korrekte Befehle und Pfade. Stelle sicher, dass npm run dev oder npm start korrekt aufgerufen wird. Füge Error-Handling und Logging hinzu, um Start-Probleme besser zu diagnostizieren.",
-      "category": "config",
+      "title": "Erfassungs-Dialog fuer neue Bugs/Ideen erstellen",
+      "description": "Erstelle eine 'CreateItemDialog'-Komponente mit shadcn/ui Dialog. Formularfelder: Name (Input, Pflichtfeld), Beschreibung (Textarea), Typ (Select: Bug/Idee). Glassmorphism-Styling fuer den Dialog-Overlay und Dialog-Content. Schicker 'Hinzufuegen'-Button mit Hover-Animation. Formularvalidierung mit Fehlermeldungen auf Deutsch. Nach erfolgreichem Erstellen: Dialog schliessen und Tabelle aktualisieren.",
+      "category": "code",
       "priority": "high",
-      "target_agent": "fix",
+      "target_agent": "coder",
       "affected_files": [
-        "run.bat"
+        "components/create-item-dialog.tsx"
       ],
       "dependencies": [
-        "TASK-001",
-        "TASK-002"
+        "TASK-005",
+        "TASK-008"
       ],
-      "source_issue": "Server konnte nicht gestartet werden",
-      "source_type": "reviewer",
-      "status": "completed",
+      "source_issue": "die bugs und ideen müssen erfasst werden können",
+      "source_type": "initial",
+      "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-24T16:14:46.941697",
-      "started_at": "2026-02-24T16:17:17.756107",
-      "completed_at": "2026-02-24T16:17:47.107243",
-      "result": "### CORRECTION: run.bat\n```\n@echo off\nrem Change to the directory where this script resides\ncd /d \"%~dp0\"\n\necho Starting Next.js development server...\nnpm run dev\n\nrem Check if the npm command succeeded\nif %errorlevel% neq 0 (\n    echo Error: Failed to start the server (exit code %errorlevel%).\n) else (\n    echo Server started successfully.\n)\n\npause\n```",
+      "created_at": "2026-02-26T13:41:05.336769",
+      "started_at": null,
+      "completed_at": null,
+      "result": null,
       "error_message": null,
-      "modified_files": [
-        "run.bat"
-      ],
+      "modified_files": [],
       "retry_count": 0,
       "max_retries": 2,
       "timeout_seconds": 120
     },
     {
       "id": "TASK-014",
-      "title": "API-Verbindung für Review-Modelle prüfen",
-      "description": "Überprüfe die API-Konfiguration für litellm/OpenRouter. Verifiziere API-Keys, Endpoints und Rate-Limits. Implementiere Retry-Logik und Fallback-Mechanismen für RateLimitErrors.",
-      "category": "config",
-      "priority": "medium",
+      "title": "Bearbeitungs-Dialog fuer bestehende Items erstellen",
+      "description": "Erstelle eine 'EditItemDialog'-Komponente die beim Klick auf eine Tabellenzeile oeffnet. Vorbefuellte Felder: Name, Beschreibung, Typ, Status. Gleicher Glassmorphism-Stil wie CreateItemDialog. Speichern- und Abbrechen-Buttons. Optional: Loeschen-Button mit Bestaetigungsdialog (shadcn/ui AlertDialog). Aktualisiert die Tabelle nach Aenderungen.",
+      "category": "code",
+      "priority": "high",
       "target_agent": "coder",
-      "affected_files": [],
-      "dependencies": [],
-      "source_issue": "litellm.RateLimitError: RateLimitError: OpenrouterException - Provider returned",
-      "source_type": "reviewer",
+      "affected_files": [
+        "components/edit-item-dialog.tsx"
+      ],
+      "dependencies": [
+        "TASK-007",
+        "TASK-013"
+      ],
+      "source_issue": "die bugs und ideen müssen erfasst werden können und der status muss gewechselt werden können",
+      "source_type": "initial",
       "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-24T16:14:46.941701",
-      "started_at": "2026-02-24T16:14:47.213782",
+      "created_at": "2026-02-26T13:41:05.336771",
+      "started_at": null,
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"qwen/qwen3-coder:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"Venice\",\"is_byok\":false}},\"user_id\":\"user_2wZeGHQVFxb9G0hgVpIfdJPrjvI\"}",
+      "error_message": null,
       "modified_files": [],
-      "retry_count": 1,
+      "retry_count": 0,
       "max_retries": 2,
       "timeout_seconds": 120
     },
     {
       "id": "TASK-015",
-      "title": "Server-Startproblem diagnostizieren und beheben",
-      "description": "Analysiere warum der Next.js Server nicht startet. Prüfe: 1) package.json auf fehlende Dependencies (next, react, react-dom), 2) Syntax-Fehler in app/layout.js und app/page.js, 3) Port-Konflikte oder Umgebungsvariablen, 4) Node.js Version Kompatibilität",
-      "category": "config",
-      "priority": "critical",
-      "target_agent": "fix",
+      "title": "Client-seitigen Daten-Hook (useItems) implementieren",
+      "description": "Erstelle einen custom React Hook 'useItems' der die API-Kommunikation kapselt. Funktionen: fetchItems(), createItem(), updateItem(), deleteItem(), updateStatus(). Implementiere optimistisches UI-Update fuer Status-Wechsel. Fehlerbehandlung mit Toast-Benachrichtigungen (shadcn/ui Toast/Sonner). Loading-States fuer alle Operationen.",
+      "category": "code",
+      "priority": "high",
+      "target_agent": "coder",
       "affected_files": [
-        "package.json",
-        "app/layout.js",
-        "app/page.js"
+        "hooks/use-items.ts"
       ],
-      "dependencies": [],
-      "source_issue": "Server konnte nicht gestartet werden",
-      "source_type": "sandbox",
+      "dependencies": [
+        "TASK-004",
+        "TASK-005",
+        "TASK-006",
+        "TASK-007"
+      ],
+      "source_issue": "die bugs und ideen müssen erfasst werden können und der status muss gewechselt werden können",
+      "source_type": "initial",
       "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-24T16:28:27.545286",
-      "started_at": "2026-02-24T16:28:27.757934",
+      "created_at": "2026-02-26T13:41:05.336774",
+      "started_at": null,
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"openai/gpt-oss-120b:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"OpenInference\",\"is_byok\":false}},\"user_id\":\"user_2wZeGHQVFxb9G0hgVpIfdJPrjvI\"}",
+      "error_message": null,
       "modified_files": [],
-      "retry_count": 1,
+      "retry_count": 0,
       "max_retries": 2,
       "timeout_seconds": 120
     },
     {
       "id": "TASK-016",
-      "title": "run.bat Script auf korrektes Start-Command prüfen",
-      "description": "Verifiziere dass run.bat das korrekte npm/yarn Command zum Starten des Next.js Servers verwendet (npm run dev oder yarn dev). Stelle sicher dass alle Pfade korrekt sind und das Script ausführbar ist",
-      "category": "config",
+      "title": "Hauptseite zusammenbauen und integrieren",
+      "description": "Integriere alle Komponenten auf der Hauptseite app/page.tsx: Header, ItemTable, CreateItemDialog (via Button), EditItemDialog, StatusBadge, TypBadge. Verbinde alles mit dem useItems-Hook. Implementiere einen schoenen 'Neuer Eintrag'-Button mit Glassmorphism und Hover-Effekt. Fuege eine Statistik-Leiste hinzu (Anzahl Bugs offen, Anzahl Ideen, etc.) als Glassmorphism-Karten.",
+      "category": "code",
       "priority": "high",
-      "target_agent": "fix",
+      "target_agent": "coder",
       "affected_files": [
-        "run.bat"
+        "app/page.tsx"
       ],
       "dependencies": [
-        "TASK-001"
+        "TASK-009",
+        "TASK-010",
+        "TASK-011",
+        "TASK-012",
+        "TASK-013",
+        "TASK-014",
+        "TASK-015"
       ],
-      "source_issue": "Server konnte nicht gestartet werden",
-      "source_type": "sandbox",
-      "status": "completed",
+      "source_issue": "erstelle eine umfassende todoliste webapp für mich",
+      "source_type": "initial",
+      "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-24T16:28:27.545302",
-      "started_at": "2026-02-24T16:30:49.268926",
-      "completed_at": "2026-02-24T16:33:06.801033",
-      "result": "### CORRECTION: run.bat\n```\n@echo off\nrem Change to the directory where this script resides\ncd /d \"%~dp0\"\n\nrem Start the Next.js development server\nnpm run dev\n\nrem If the command fails, output an error message and exit with the same code\nif %errorlevel% neq 0 (\n  echo Error: Failed to start the Next.js server.\n  exit /b %errorlevel%\n)\n```",
+      "created_at": "2026-02-26T13:41:05.336776",
+      "started_at": null,
+      "completed_at": null,
+      "result": null,
       "error_message": null,
-      "modified_files": [
-        "run.bat"
-      ],
+      "modified_files": [],
       "retry_count": 0,
       "max_retries": 2,
       "timeout_seconds": 120
     },
     {
       "id": "TASK-017",
-      "title": "API Route auf Syntax-Fehler prüfen",
-      "description": "Überprüfe app/api/status_types/route.js auf Syntax-Fehler, fehlende Exports oder falsche Handler-Definitionen. Stelle sicher dass GET/POST Handler korrekt exportiert sind",
+      "title": "Filter- und Suchfunktion implementieren",
+      "description": "Erstelle eine 'FilterBar'-Komponente mit: Textsuche (durchsucht Name und Beschreibung), Filter nach Typ (Alle/Bugs/Ideen), Filter nach Status (Alle/Offen/In Bearbeitung/Erledigt/Zurueckgestellt). Glassmorphism-Styling fuer die Filterleiste. Filterung soll client-seitig erfolgen fuer schnelle Reaktionszeit.",
       "category": "code",
-      "priority": "high",
-      "target_agent": "fix",
+      "priority": "medium",
+      "target_agent": "coder",
       "affected_files": [
-        "app/api/status_types/route.js"
+        "components/filter-bar.tsx"
       ],
       "dependencies": [
-        "TASK-001"
+        "TASK-010",
+        "TASK-015"
       ],
-      "source_issue": "Server konnte nicht gestartet werden",
-      "source_type": "sandbox",
+      "source_issue": "erstelle eine umfassende todoliste webapp für mich in welcher ich code bugs und neue ideen erfassen kann",
+      "source_type": "initial",
       "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-24T16:28:27.545306",
-      "started_at": "2026-02-24T16:33:07.008376",
+      "created_at": "2026-02-26T13:41:05.336778",
+      "started_at": null,
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"openai/gpt-oss-120b:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"OpenInference\",\"is_byok\":false}},\"user_id\":\"user_2wZeGHQVFxb9G0hgVpIfdJPrjvI\"}",
+      "error_message": null,
       "modified_files": [],
-      "retry_count": 1,
+      "retry_count": 0,
       "max_retries": 2,
       "timeout_seconds": 120
     },
     {
       "id": "TASK-018",
-      "title": "Datenbankverbindung in lib/db.js erstellen und prüfen",
-      "description": "Erstelle die fehlende lib/db.js Datei mit korrekter SQLite-Verbindung. Implementiere die getDb-Funktion mit sqlite3 und sqlite Modulen. Stelle sicher, dass die Datenbankdatei './database.sqlite' korrekt referenziert wird und die async/await Syntax korrekt ist.",
-      "category": "code",
-      "priority": "critical",
-      "target_agent": "coder",
+      "title": "API-Routen Unit-Tests schreiben",
+      "description": "Erstelle Tests fuer alle API-Routen mit vitest oder jest: GET /api/items (leere Liste, gefuellte Liste), POST /api/items (valide Daten, invalide Daten, Pflichtfeld-Validierung), PATCH /api/items/[id] (Status-Update, nicht existierendes Item), PUT /api/items/[id], DELETE /api/items/[id]. Deutsche Assert-Nachrichten gemaess Regel 14.",
+      "category": "test",
+      "priority": "high",
+      "target_agent": "tester",
       "affected_files": [
-        "lib/db.js"
+        "tests/api/items.test.ts"
       ],
-      "dependencies": [],
-      "source_issue": "Server konnte nicht gestartet werden - getDb-Funktion fehlt oder hat Syntaxfehler",
-      "source_type": "reviewer",
+      "dependencies": [
+        "TASK-004",
+        "TASK-005",
+        "TASK-006",
+        "TASK-007"
+      ],
+      "source_issue": "die bugs sollen in einer lokalen sqlite datenbank gespeichert werden",
+      "source_type": "initial",
       "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-24T16:36:01.206461",
-      "started_at": "2026-02-24T16:36:01.388198",
+      "created_at": "2026-02-26T13:41:05.336781",
+      "started_at": null,
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"qwen/qwen3-coder:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"Venice\",\"is_byok\":false}},\"user_id\":\"user_2wZeGHQVFxb9G0hgVpIfdJPrjvI\"}",
+      "error_message": null,
       "modified_files": [],
-      "retry_count": 1,
+      "retry_count": 0,
       "max_retries": 2,
       "timeout_seconds": 120
     },
     {
       "id": "TASK-019",
-      "title": "SQLite-Dependencies in package.json hinzufügen",
-      "description": "Überprüfe und ergänze die package.json mit den erforderlichen SQLite-Dependencies: 'sqlite3' und 'sqlite'. Stelle sicher, dass die Versionen kompatibel mit Next.js sind. Füge auch eventuelle Build-Dependencies für native Module hinzu.",
-      "category": "config",
-      "priority": "critical",
-      "target_agent": "fix",
+      "title": "Komponenten-Tests fuer UI erstellen",
+      "description": "Erstelle Tests mit React Testing Library und vitest: ItemTable rendert korrekt mit Daten, StatusBadge zeigt richtigen Status und Farbe, CreateItemDialog Formular-Validierung funktioniert, TypBadge unterscheidet Bug/Idee korrekt. Deutsche Assert-Nachrichten. Mindestens 70% Test-Coverage anstreben.",
+      "category": "test",
+      "priority": "high",
+      "target_agent": "tester",
       "affected_files": [
-        "package.json"
+        "tests/components/item-table.test.tsx",
+        "tests/components/status-badge.test.tsx",
+        "tests/components/create-item-dialog.test.tsx"
       ],
-      "dependencies": [],
-      "source_issue": "SQLite3-Kompilierungsfehler aufgrund fehlender Build-Tools",
-      "source_type": "reviewer",
-      "status": "completed",
+      "dependencies": [
+        "TASK-010",
+        "TASK-011",
+        "TASK-013"
+      ],
+      "source_issue": "erstelle eine umfassende todoliste webapp",
+      "source_type": "initial",
+      "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-24T16:36:01.206479",
-      "started_at": "2026-02-24T16:36:01.403408",
-      "completed_at": "2026-02-24T16:38:26.103857",
-      "result": "### CORRECTION: package.json\n```json\n{\n  \"name\": \"my-next-app\",\n  \"version\": \"1.0.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"dev\": \"next dev\",\n    \"build\": \"next build\",\n    \"start\": \"next start\"\n  },\n  \"dependencies\": {\n    \"next\": \"latest\",\n    \"react\": \"latest\",\n    \"react-dom\": \"latest\",\n    \"sqlite3\": \"^5.1.6\",\n    \"sqlite\": \"^4.2.0\"\n  }\n}\n```",
+      "created_at": "2026-02-26T13:41:05.336784",
+      "started_at": null,
+      "completed_at": null,
+      "result": null,
       "error_message": null,
-      "modified_files": [
-        "package.json"
-      ],
+      "modified_files": [],
       "retry_count": 0,
       "max_retries": 2,
       "timeout_seconds": 120
     },
     {
       "id": "TASK-020",
-      "title": "Next.js Konfigurationsdatei erstellen",
-      "description": "Erstelle eine next.config.js Datei mit korrekter Konfiguration für experimentelle App-Directory Unterstützung und API-Rewrites. Stelle sicher, dass die Konfiguration mit dem aktuellen Next.js Setup kompatibel ist.",
-      "category": "config",
-      "priority": "high",
-      "target_agent": "coder",
+      "title": "SQL-Injection Schutz und Input-Sanitierung pruefen",
+      "description": "Pruefe alle API-Routen auf SQL-Injection-Anfaelligkeit. Stelle sicher, dass Prepared Statements / parametrisierte Queries verwendet werden. Validiere und sanitiere alle User-Inputs (Name, Beschreibung, Typ, Status) serverseitig. Pruefe auf XSS-Vektoren in der Beschreibung. Dokumentiere die Sicherheitsmassnahmen.",
+      "category": "security",
+      "priority": "critical",
+      "target_agent": "security",
       "affected_files": [
-        "next.config.js"
+        "app/api/items/route.ts",
+        "app/api/items/[id]/route.ts",
+        "lib/db.ts"
       ],
-      "dependencies": [],
-      "source_issue": "Fehlende Next.js-Konfiguration könnte Server-Start verhindern",
-      "source_type": "reviewer",
+      "dependencies": [
+        "TASK-004",
+        "TASK-005",
+        "TASK-006",
+        "TASK-007"
+      ],
+      "source_issue": "die bugs sollen in einer lokalen sqlite datenbank gespeichert werden",
+      "source_type": "initial",
       "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-24T16:36:01.206483",
-      "started_at": "2026-02-24T16:36:01.446910",
+      "created_at": "2026-02-26T13:41:05.336786",
+      "started_at": null,
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"qwen/qwen3-coder:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"Venice\",\"is_byok\":false}},\"user_id\":\"user_2wZeGHQVFxb9G0hgVpIfdJPrjvI\"}",
+      "error_message": null,
       "modified_files": [],
-      "retry_count": 1,
+      "retry_count": 0,
       "max_retries": 2,
       "timeout_seconds": 120
     },
     {
       "id": "TASK-021",
-      "title": "API Route status_types auf Datenbankverbindung prüfen",
-      "description": "Überprüfe app/api/status_types/route.js auf korrekte Import-Statements der getDb-Funktion. Stelle sicher, dass alle async/await Calls korrekt sind und Fehlerbehandlung implementiert ist. Prüfe, ob die Route korrekt exportiert wird.",
+      "title": "TypeScript Typen-Definitionen erstellen",
+      "description": "Erstelle zentrale TypeScript-Typen und Interfaces: Item (id, nr, name, beschreibung, typ, status, created_at, updated_at), ItemCreate (ohne id/nr/timestamps), ItemUpdate (Partial), ItemStatus (Union-Type), ItemTyp (Union-Type). Exportiere alle Typen aus einer zentralen Datei fuer Single Source of Truth.",
       "category": "code",
       "priority": "high",
-      "target_agent": "fix",
+      "target_agent": "coder",
       "affected_files": [
-        "app/api/status_types/route.js"
+        "lib/types.ts"
       ],
       "dependencies": [
         "TASK-001"
       ],
-      "source_issue": "API Route könnte Syntaxfehler haben die Server-Start verhindern",
-      "source_type": "reviewer",
-      "status": "completed",
+      "source_issue": "ich brauche eine spalte NR, Name, Beschreibung, Status",
+      "source_type": "initial",
+      "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-24T16:36:01.206486",
-      "started_at": "2026-02-24T16:38:46.998284",
-      "completed_at": "2026-02-24T16:41:31.392219",
-      "result": "### CORRECTION: app/api/status_types/route.js\n```\nimport { getDb } from '@/lib/db';\n\n/**\n * GET handler – returns all status types.\n */\nexport async function GET(request) {\n  try {\n    const db = await getDb();\n    const rows = await db.all('SELECT * FROM status_types');\n    return new Response(JSON.stringify(rows), {\n      status: 200,\n      headers: { 'Content-Type': 'application/json' },\n    });\n  } catch (error) {\n    console.error('GET /api/status_types error:', error);\n    return new Response(JSON.stringify({ error: 'Internal Server Error' }), {\n      status: 500,\n      headers: { 'Content-Type': 'application/json' },\n    });\n  }\n}\n\n/**\n * POST handler – creates a new status type.\n * Expects a JSON body with a \"name\" field.\n */\nexport async function POST(request) {\n  try {\n    const { name } = await request.json();\n    if (!name) {\n      throw new Error('Missing name');\n    }\n\n    const db = await getDb();\n    const result = await db.run('INSERT INTO status_types (name) VALUES (?)', [name]);\n\n    return new Response(JSON.stringify({ id: result.lastID, name }), {\n      status: 201,\n      headers: { 'Content-Type': 'application/json' },\n    });\n  } catch (error) {\n    console.error('POST /api/status_types error:', error);\n    return new Response(JSON.stringify({ error: 'Bad Request' }), {\n      status: 400,\n      headers: { 'Content-Type': 'application/json' },\n    });\n  }\n}\n```",
+      "created_at": "2026-02-26T13:41:05.336789",
+      "started_at": null,
+      "completed_at": null,
+      "result": null,
       "error_message": null,
-      "modified_files": [
-        "request.json",
-        "app/api/status_types/route.js"
-      ],
+      "modified_files": [],
       "retry_count": 0,
       "max_retries": 2,
       "timeout_seconds": 120
     },
     {
       "id": "TASK-022",
-      "title": "Datenbankinitialisierung implementieren",
-      "description": "Erstelle ein Skript zur Datenbankinitialisierung, das die SQLite-Datenbank mit allen erforderlichen Tabellen (todo_items, status_types, activity_log) erstellt. Füge die Initial-Daten für status_types hinzu. Integriere dies in den Server-Start-Prozess.",
+      "title": "SQLite Datenbank mit better-sqlite3 einrichten",
+      "description": "Installiere 'better-sqlite3' als Dependency. Erstelle eine Datenbankinitialisierung unter lib/db.ts. Definiere das Schema: Tabelle 'tasks' mit Spalten id (INTEGER PRIMARY KEY AUTOINCREMENT), nr (INTEGER UNIQUE), name (TEXT NOT NULL), description (TEXT), status (TEXT DEFAULT 'offen'), type (TEXT CHECK IN 'bug','idee'), created_at (DATETIME DEFAULT CURRENT_TIMESTAMP), updated_at (DATETIME). Erstelle die Tabelle beim ersten Zugriff automatisch.",
       "category": "code",
-      "priority": "high",
+      "priority": "critical",
       "target_agent": "coder",
-      "affected_files": [
-        "lib/initDb.js"
-      ],
+      "affected_files": [],
       "dependencies": [
         "TASK-001"
       ],
-      "source_issue": "Fehlende Datenbank oder Tabellen könnten Server-Start verhindern",
-      "source_type": "reviewer",
+      "source_issue": "die bugs sollen in einer lokalen sqlite datenbank gespeichert werden",
+      "source_type": "initial",
       "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-24T16:36:01.206488",
-      "started_at": "2026-02-24T16:41:31.961354",
+      "created_at": "2026-02-25T18:30:22.825580",
+      "started_at": null,
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.RateLimitError: RateLimitError: OpenrouterException - {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"qwen/qwen3-coder:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"Venice\",\"is_byok\":false}},\"user_id\":\"user_2wZeGHQVFxb9G0hgVpIfdJPrjvI\"}",
+      "error_message": null,
       "modified_files": [],
-      "retry_count": 1,
+      "retry_count": 0,
       "max_retries": 2,
       "timeout_seconds": 120
     },
     {
       "id": "TASK-023",
-      "title": "Server/Start-Problem beheben",
-      "description": "Serverstart-Problem oder Sandbox-Fehler beheben\n\nOriginal: Server konnte nicht gestartet werden",
+      "title": "API Route GET /api/tasks fuer Auflistung",
+      "description": "Erstelle eine Next.js API Route unter app/api/tasks/route.ts mit GET Handler. Lese alle Tasks aus der SQLite Datenbank sortiert nach NR aufsteigend. Gib JSON Array zurueck mit allen Feldern. Implementiere Error Handling mit aussagekraeftigen Fehlermeldungen.",
       "category": "code",
-      "priority": "high",
-      "target_agent": "fix",
+      "priority": "critical",
+      "target_agent": "coder",
       "affected_files": [],
-      "dependencies": [],
-      "source_issue": "Server konnte nicht gestartet werden",
-      "source_type": "sandbox",
-      "status": "completed",
-      "dart_id": null,
-      "created_at": "2026-02-22T15:14:16.112493",
-      "started_at": "2026-02-22T15:14:16.511107",
-      "completed_at": "2026-02-22T15:14:26.538220",
-      "result": "Um den Server‑Start‑Fehler zu beheben, benötige ich den aktuellen Inhalt der Datei, die den Server startet (z. B. `server.js`, `index.js` oder eine ähnliche Datei). Bitte stellen Sie mir den vollständigen Code dieser Datei zur Verfügung, damit ich die genaue Ursache finden und gezielt korrigieren kann.",
-      "error_message": null,
-      "modified_files": [
-        "index.js",
-        "server.js"
+      "dependencies": [
+        "TASK-004"
       ],
+      "source_issue": "die bugs und ideen müssen erfasst werden können",
+      "source_type": "initial",
+      "status": "pending",
+      "dart_id": null,
+      "created_at": "2026-02-25T18:30:22.825582",
+      "started_at": null,
+      "completed_at": null,
+      "result": null,
+      "error_message": null,
+      "modified_files": [],
       "retry_count": 0,
       "max_retries": 2,
       "timeout_seconds": 120
     },
     {
       "id": "TASK-024",
-      "title": "Feedback von reviewer bearbeiten",
-      "description": "⚠️ FEHLER ERKANNT - KORREKTUR ERFORDERLICH\n\n**Analysiere SANDBOX/DOCKER-ERGEBNIS:**\n\n### 1. URSACHE:\nDer Serverstart schlug fehl, weil `index.html` auf ein nicht existierendes Script (`/src/main.jsx`) verweist. Die korrekte Client-Einstiegsdatei liegt unter `/src/client/main.jsx`.\n\n### 2. BETROFFENE DATEIEN:\n- [DATEI:index.html]\n- [DATEI:package.json]\n- [DATEI:src/hooks/useItems.js]\n\n### 3. LOESUNG:\nPasse den Script-Pfad in `index.html` an, stelle die Build-/Start-Skripte in `package.json` sicher und pruefe die Imports in `src/hooks/useItems.js` auf konsistente Pfade.",
+      "title": "API Route POST /api/tasks fuer Erstellung",
+      "description": "Erweitere app/api/tasks/route.ts um POST Handler. Validiere Eingaben: name (Pflicht), description (optional), type ('bug' oder 'idee'), status (Default 'offen'). Generiere die NR automatisch als naechste fortlaufende Nummer. Speichere in SQLite und gib den erstellten Task als JSON zurueck. Implementiere Eingabevalidierung und SQL-Injection-Schutz ueber Prepared Statements.",
       "category": "code",
-      "priority": "medium",
-      "target_agent": "fix",
-      "affected_files": [
-        "index.html",
-        "package.json",
-        "src/hooks/useItems.js"
+      "priority": "critical",
+      "target_agent": "coder",
+      "affected_files": [],
+      "dependencies": [
+        "TASK-004",
+        "TASK-005"
       ],
-      "dependencies": [],
-      "source_issue": "⚠️ FEHLER ERKANNT - KORREKTUR ERFORDERLICH\n\n**Analysiere SANDBOX/DOCKER-ERGEBNIS:**\n\n### 1. URSACHE:\n`index.html` verweist auf ein nicht vorhandenes Script (`/src/main.jsx`) statt auf die tatsaechliche Datei `/src/client/main.jsx`.\n\n### 2. BETROFFENE DATEIEN:\n- [DATEI:index.html]\n- [DATEI:package.json]\n- [DATEI:src/hooks/useItems.js]\n\n### 3. LOESUNG:\nKorrigiere den Entry-Point in `index.html`, validiere Startskripte in `package.json` und vereinheitliche Pfad-Referenzen in `src/hooks/useItems.js`.",
-      "source_type": "reviewer",
-      "status": "completed",
+      "source_issue": "die bugs und ideen müssen erfasst werden können",
+      "source_type": "initial",
+      "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-22T15:14:28.195832",
-      "started_at": "2026-02-22T15:14:28.661303",
-      "completed_at": "2026-02-22T15:14:42.919333",
-      "result": "### CORRECTION: index.html\n```\n<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"UTF-8\" />\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n  <title>React App</title>\n</head>\n<body>\n  <div id=\"root\"></div>\n  <script type=\"module\" src=\"/src/client/main.jsx\"></script>\n</body>\n</html>\n```",
+      "created_at": "2026-02-25T18:30:22.825583",
+      "started_at": null,
+      "completed_at": null,
+      "result": null,
       "error_message": null,
-      "modified_files": [
-        "index.html",
-        "/src/client/main.jsx"
-      ],
+      "modified_files": [],
       "retry_count": 0,
       "max_retries": 2,
       "timeout_seconds": 120
     },
     {
       "id": "TASK-025",
-      "title": "Server/Start-Problem beheben",
-      "description": "Serverstart-Problem oder Sandbox-Fehler beheben\n\nOriginal: Sandbox-Fehler",
+      "title": "API Route PATCH /api/tasks/[id] fuer Status-Update",
+      "description": "Erstelle app/api/tasks/[id]/route.ts mit PATCH Handler. Ermoeglicht Aenderung des Status-Feldes eines Tasks anhand der ID. Erlaubte Status-Werte: 'offen', 'in Bearbeitung', 'erledigt', 'verworfen'. Validiere die ID und den neuen Status. Setze updated_at auf aktuelle Zeit. Gib aktualisierten Task zurueck.",
       "category": "code",
-      "priority": "high",
-      "target_agent": "fix",
+      "priority": "critical",
+      "target_agent": "coder",
       "affected_files": [],
-      "dependencies": [],
-      "source_issue": "Sandbox-Fehler",
-      "source_type": "reviewer",
+      "dependencies": [
+        "TASK-004"
+      ],
+      "source_issue": "der status muss gewechselt werden können",
+      "source_type": "initial",
       "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-20T14:16:44.869159",
-      "started_at": "2026-02-20T14:16:44.994748",
+      "created_at": "2026-02-25T18:30:22.825585",
+      "started_at": null,
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 148612 tokens (17540 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": null,
       "modified_files": [],
-      "retry_count": 1,
+      "retry_count": 0,
       "max_retries": 2,
       "timeout_seconds": 120
     },
     {
       "id": "TASK-026",
-      "title": "Server/Start-Problem beheben",
-      "description": "Serverstart-Problem oder Sandbox-Fehler beheben\n\nOriginal: Sandbox-Fehler",
+      "title": "API Route DELETE /api/tasks/[id] fuer Loeschung",
+      "description": "Erweitere app/api/tasks/[id]/route.ts um DELETE Handler. Loesche einen Task anhand der ID aus der Datenbank. Pruefe ob der Task existiert und gib entsprechende Fehlermeldung bei nicht vorhandener ID. Gib Erfolgsmeldung als JSON zurueck.",
       "category": "code",
       "priority": "high",
-      "target_agent": "fix",
+      "target_agent": "coder",
       "affected_files": [],
-      "dependencies": [],
-      "source_issue": "Sandbox-Fehler",
-      "source_type": "sandbox",
+      "dependencies": [
+        "TASK-004",
+        "TASK-007"
+      ],
+      "source_issue": "die bugs und ideen müssen erfasst werden können",
+      "source_type": "initial",
       "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-20T14:20:30.745535",
-      "started_at": "2026-02-20T14:20:30.907452",
+      "created_at": "2026-02-25T18:30:22.825590",
+      "started_at": null,
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 149417 tokens (18345 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": null,
       "modified_files": [],
-      "retry_count": 1,
+      "retry_count": 0,
       "max_retries": 2,
       "timeout_seconds": 120
     },
     {
       "id": "TASK-027",
-      "title": "Server/Start-Problem beheben",
-      "description": "Serverstart-Problem oder Sandbox-Fehler beheben\n\nOriginal: Sandbox-Fehler",
+      "title": "Glassmorphism CSS Utilities und globale Styles",
+      "description": "Erstelle in globals.css globale Glassmorphism-Utilities: .glass-card mit backdrop-filter: blur(16px), background: rgba(255,255,255,0.08), border: 1px solid rgba(255,255,255,0.15), border-radius: 16px, box-shadow mit mehreren Layern. Erstelle .glass-frost fuer staerkeren Frost-Effekt (blur 24px). Erstelle Hover-Varianten mit erhoehter Opacity und verstaerktem Schatten. Erstelle smooth Transitions (0.3s ease). Dunkler Hintergrund basierend auf #2b336a. KEINE blue-purple Gradients.",
       "category": "code",
       "priority": "high",
-      "target_agent": "fix",
+      "target_agent": "coder",
       "affected_files": [],
-      "dependencies": [],
-      "source_issue": "Sandbox-Fehler",
-      "source_type": "reviewer",
+      "dependencies": [
+        "TASK-002",
+        "TASK-003"
+      ],
+      "source_issue": "schönen glassmorphismus elementen mit hover und schatten effekten und frost glas elementen. sauber und modern.",
+      "source_type": "initial",
       "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-20T14:20:31.467570",
-      "started_at": "2026-02-20T14:20:31.590088",
+      "created_at": "2026-02-25T18:30:22.825592",
+      "started_at": null,
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 150222 tokens (19150 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": null,
       "modified_files": [],
-      "retry_count": 1,
+      "retry_count": 0,
       "max_retries": 2,
       "timeout_seconds": 120
     },
     {
       "id": "TASK-028",
-      "title": "Server/Start-Problem beheben",
-      "description": "Serverstart-Problem oder Sandbox-Fehler beheben\n\nOriginal: Sandbox-Fehler",
+      "title": "Haupt-Layout mit Header und Glassmorphism Background",
+      "description": "Erstelle das Root-Layout in app/layout.tsx und die Hauptseite app/page.tsx. Der Hintergrund soll ein dunkler, eleganter Gradient basierend auf #2b336a sein (kein blue-purple Gradient!). Erstelle einen Glass-Header mit App-Titel 'BugTracker'. Nutze eine moderne Schriftart (z.B. Inter oder Outfit via Google Fonts, NICHT Times New Roman). Responsive Layout mit max-width Container. Subtile dekorative Elemente im Hintergrund (z.B. verschwommene farbige Kreise).",
       "category": "code",
       "priority": "high",
-      "target_agent": "fix",
+      "target_agent": "coder",
       "affected_files": [],
-      "dependencies": [],
-      "source_issue": "Sandbox-Fehler",
-      "source_type": "sandbox",
+      "dependencies": [
+        "TASK-003",
+        "TASK-009"
+      ],
+      "source_issue": "ich brauche eine umwerfende GUI mit perfekter usability",
+      "source_type": "initial",
       "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-20T14:25:07.307148",
-      "started_at": "2026-02-20T14:25:07.422259",
+      "created_at": "2026-02-25T18:30:22.825594",
+      "started_at": null,
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 151027 tokens (19955 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": null,
       "modified_files": [],
-      "retry_count": 1,
+      "retry_count": 0,
       "max_retries": 2,
       "timeout_seconds": 120
     },
     {
       "id": "TASK-029",
-      "title": "Server/Start-Problem beheben",
-      "description": "Serverstart-Problem oder Sandbox-Fehler beheben\n\nOriginal: Sandbox-Fehler",
+      "title": "TaskTable Komponente mit NR, Name, Beschreibung, Status",
+      "description": "Erstelle components/TaskTable.tsx als Client-Komponente. Nutze shadcn Table-Komponente. Spalten: NR (sortierbar, schmal), Name (mittlere Breite), Beschreibung (breit, ggf. truncated mit Tooltip), Status (als farbiger Badge), Typ-Indikator (Bug/Idee Icon), Aktionen-Spalte. Lade Tasks via fetch von /api/tasks. Zeige Lade-Skeleton waehrend des Ladens. Glassmorphism-Stil fuer die Tabelle. Hover-Effekt auf Zeilen mit leichtem Glow.",
       "category": "code",
-      "priority": "high",
-      "target_agent": "fix",
+      "priority": "critical",
+      "target_agent": "coder",
       "affected_files": [],
-      "dependencies": [],
-      "source_issue": "Sandbox-Fehler",
-      "source_type": "reviewer",
+      "dependencies": [
+        "TASK-005",
+        "TASK-009",
+        "TASK-010"
+      ],
+      "source_issue": "ich brauche eine spalte NR, Name, Beschreibung, Status",
+      "source_type": "initial",
       "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-20T14:25:07.976054",
-      "started_at": "2026-02-20T14:25:08.110583",
+      "created_at": "2026-02-25T18:30:22.825595",
+      "started_at": null,
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 151832 tokens (20760 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": null,
       "modified_files": [],
-      "retry_count": 1,
+      "retry_count": 0,
       "max_retries": 2,
       "timeout_seconds": 120
     },
     {
       "id": "TASK-030",
-      "title": "Server/Start-Problem beheben",
-      "description": "Serverstart-Problem oder Sandbox-Fehler beheben\n\nOriginal: Sandbox-Fehler",
+      "title": "TaskForm Dialog fuer neue Bugs und Ideen",
+      "description": "Erstelle components/TaskForm.tsx als Client-Komponente. Nutze shadcn Dialog mit Glassmorphism-Styling. Formularfelder: Name (Input, Pflicht), Beschreibung (Textarea), Typ (Select: Bug oder Idee). Submit sendet POST an /api/tasks. Nach Erfolg: Dialog schliessen und Tabelle aktualisieren. Validierung im Frontend: Name darf nicht leer sein. Erstelle zwei Buttons im Header: 'Bug melden' (rot) und 'Idee erfassen' (blau), die den Dialog mit vorausgewaehltem Typ oeffnen.",
       "category": "code",
-      "priority": "high",
-      "target_agent": "fix",
+      "priority": "critical",
+      "target_agent": "coder",
       "affected_files": [],
-      "dependencies": [],
-      "source_issue": "Sandbox-Fehler",
-      "source_type": "sandbox",
+      "dependencies": [
+        "TASK-006",
+        "TASK-009",
+        "TASK-010"
+      ],
+      "source_issue": "die bugs und ideen müssen erfasst werden können",
+      "source_type": "initial",
       "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-20T14:27:56.216989",
-      "started_at": "2026-02-20T14:27:56.360402",
+      "created_at": "2026-02-25T18:30:22.825597",
+      "started_at": null,
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 152637 tokens (21565 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": null,
       "modified_files": [],
-      "retry_count": 1,
+      "retry_count": 0,
       "max_retries": 2,
       "timeout_seconds": 120
     },
     {
       "id": "TASK-031",
-      "title": "Server/Start-Problem beheben",
-      "description": "Serverstart-Problem oder Sandbox-Fehler beheben\n\nOriginal: Sandbox-Fehler",
+      "title": "StatusBadge Komponente mit Farbcodierung",
+      "description": "Erstelle components/StatusBadge.tsx. Zeige den Status als farbcodierten Badge an: 'offen' = #7c7c6b (Grau), 'in Bearbeitung' = #2b336a (Blau), 'erledigt' = gruenlicher Ton, 'verworfen' = #870010 (Rot). Badge soll Glassmorphism-Effekt haben. Klick auf Badge oeffnet ein Dropdown (shadcn Select) zum direkten Status-Wechsel. Sende PATCH an /api/tasks/[id] bei Aenderung.",
       "category": "code",
       "priority": "high",
-      "target_agent": "fix",
+      "target_agent": "coder",
       "affected_files": [],
-      "dependencies": [],
-      "source_issue": "Sandbox-Fehler",
-      "source_type": "reviewer",
+      "dependencies": [
+        "TASK-007",
+        "TASK-009"
+      ],
+      "source_issue": "der status muss gewechselt werden können",
+      "source_type": "initial",
       "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-20T14:27:56.918661",
-      "started_at": "2026-02-20T14:27:57.048747",
+      "created_at": "2026-02-25T18:30:22.825599",
+      "started_at": null,
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 153442 tokens (22370 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": null,
       "modified_files": [],
-      "retry_count": 1,
+      "retry_count": 0,
       "max_retries": 2,
       "timeout_seconds": 120
     },
     {
       "id": "TASK-032",
-      "title": "Server/Start-Problem beheben",
-      "description": "Serverstart-Problem oder Sandbox-Fehler beheben\n\nOriginal: Sandbox-Fehler",
+      "title": "State Management mit React Hooks und Refetch",
+      "description": "Erstelle hooks/useTasks.ts als Custom Hook. Implementiere: fetchTasks() fuer GET, createTask() fuer POST, updateStatus() fuer PATCH, deleteTask() fuer DELETE. Nutze useState und useCallback. Implementiere optimistisches UI-Update beim Status-Wechsel. Implementiere Error-State und Loading-State. Exportiere den Hook fuer Verwendung in TaskTable und TaskForm.",
       "category": "code",
       "priority": "high",
-      "target_agent": "fix",
+      "target_agent": "coder",
       "affected_files": [],
-      "dependencies": [],
-      "source_issue": "Sandbox-Fehler",
-      "source_type": "sandbox",
+      "dependencies": [
+        "TASK-005",
+        "TASK-006",
+        "TASK-007",
+        "TASK-008"
+      ],
+      "source_issue": "die bugs und ideen müssen erfasst werden können und der status muss gewechselt werden können",
+      "source_type": "initial",
       "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-20T14:31:08.283574",
-      "started_at": "2026-02-20T14:31:08.420795",
+      "created_at": "2026-02-25T18:30:22.825600",
+      "started_at": null,
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 154247 tokens (23175 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": null,
       "modified_files": [],
-      "retry_count": 1,
+      "retry_count": 0,
       "max_retries": 2,
       "timeout_seconds": 120
     },
     {
       "id": "TASK-033",
-      "title": "Fehlendes Verzeichnis erstellen",
-      "description": "Fehlendes Verzeichnis oder Datei anlegen\n\nOriginal: mkdir",
+      "title": "Hover-Animationen und Shadow-Effekte verfeinern",
+      "description": "Ueberarbeite alle interaktiven Elemente: Buttons mit scale(1.02) und glow-shadow auf Hover. Tabellenzeilen mit leichtem translateY(-1px) und verstaerktem Schatten auf Hover. Dialog mit Einblend-Animation (fade + scale). Badge-Wechsel mit kurzer Farb-Transition. Cards mit mehrstufigem Box-Shadow (naher + ferner Schatten). Alle Transitionen smooth mit cubic-bezier. Focus-States fuer Accessibility.",
       "category": "code",
-      "priority": "high",
-      "target_agent": "fix",
+      "priority": "medium",
+      "target_agent": "coder",
       "affected_files": [],
-      "dependencies": [],
-      "source_issue": "mkdir",
-      "source_type": "reviewer",
+      "dependencies": [
+        "TASK-009",
+        "TASK-011",
+        "TASK-012",
+        "TASK-013"
+      ],
+      "source_issue": "hover und schatten effekten und frost glas elementen. sauber und modern. trau dich etwas.",
+      "source_type": "initial",
       "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-20T14:31:09.095208",
-      "started_at": "2026-02-20T14:31:09.236376",
+      "created_at": "2026-02-25T18:30:22.825602",
+      "started_at": null,
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 155047 tokens (23975 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": null,
       "modified_files": [],
-      "retry_count": 1,
+      "retry_count": 0,
       "max_retries": 2,
       "timeout_seconds": 120
     },
     {
       "id": "TASK-034",
-      "title": "Server/Start-Problem beheben",
-      "description": "Serverstart-Problem oder Sandbox-Fehler beheben\n\nOriginal: Sandbox-Fehler",
+      "title": "Loeschfunktion mit Bestaetigungsdialog",
+      "description": "Erstelle components/DeleteConfirmDialog.tsx. Zeige einen Bestaetigungsdialog beim Loeschen eines Tasks (shadcn AlertDialog mit Glassmorphism). Text: 'Moechten Sie diesen Eintrag wirklich loeschen?'. Bei Bestaetigung: DELETE an /api/tasks/[id] senden und Tabelle aktualisieren. Loeschbutton als Icon in der Aktionen-Spalte der Tabelle.",
       "category": "code",
-      "priority": "high",
-      "target_agent": "fix",
+      "priority": "medium",
+      "target_agent": "coder",
       "affected_files": [],
-      "dependencies": [],
-      "source_issue": "Sandbox-Fehler",
-      "source_type": "reviewer",
+      "dependencies": [
+        "TASK-008",
+        "TASK-011",
+        "TASK-014"
+      ],
+      "source_issue": "die bugs und ideen müssen erfasst werden können",
+      "source_type": "initial",
       "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-20T14:31:09.095718",
-      "started_at": "2026-02-20T14:31:09.245292",
+      "created_at": "2026-02-25T18:30:22.825604",
+      "started_at": null,
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 155852 tokens (24780 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": null,
       "modified_files": [],
-      "retry_count": 1,
+      "retry_count": 0,
       "max_retries": 2,
       "timeout_seconds": 120
     },
     {
       "id": "TASK-035",
-      "title": "Server/Start-Problem beheben",
-      "description": "Serverstart-Problem oder Sandbox-Fehler beheben\n\nOriginal: Sandbox-Fehler",
-      "category": "code",
-      "priority": "high",
-      "target_agent": "fix",
+      "title": "SQL Injection Schutz und Input Sanitization",
+      "description": "Pruefe alle API Routes auf SQL-Injection-Sicherheit. Stelle sicher dass ausschliesslich Prepared Statements mit Parameterbindung verwendet werden. Validiere alle Eingaben serverseitig: Name max 200 Zeichen, Beschreibung max 2000 Zeichen, Status nur erlaubte Werte, Type nur 'bug' oder 'idee'. Sanitize HTML in Textfeldern. Pruefe auf XSS in der Ausgabe.",
+      "category": "security",
+      "priority": "critical",
+      "target_agent": "security",
       "affected_files": [],
-      "dependencies": [],
-      "source_issue": "Sandbox-Fehler",
-      "source_type": "sandbox",
+      "dependencies": [
+        "TASK-005",
+        "TASK-006",
+        "TASK-007",
+        "TASK-008"
+      ],
+      "source_issue": "die bugs sollen in einer lokalen sqlite datenbank gespeichert werden",
+      "source_type": "initial",
       "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-20T14:36:00.187946",
-      "started_at": "2026-02-20T14:36:00.335203",
+      "created_at": "2026-02-25T18:30:22.825605",
+      "started_at": null,
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 156657 tokens (25585 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": null,
       "modified_files": [],
-      "retry_count": 1,
+      "retry_count": 0,
       "max_retries": 2,
       "timeout_seconds": 120
     },
     {
       "id": "TASK-036",
-      "title": "Server/Start-Problem beheben",
-      "description": "Serverstart-Problem oder Sandbox-Fehler beheben\n\nOriginal: Sandbox-Fehler",
-      "category": "code",
+      "title": "Unit Tests fuer API Routes",
+      "description": "Erstelle tests/api/tasks.test.ts. Teste alle API Endpoints: GET /api/tasks (leere Liste, Liste mit Eintraegen), POST /api/tasks (valide Erstellung, fehlende Pflichtfelder, ungueltige Werte), PATCH /api/tasks/[id] (Status-Wechsel, ungueltiger Status, nicht existierende ID), DELETE /api/tasks/[id] (erfolgreiche Loeschung, nicht existierende ID). Nutze eine separate Test-Datenbank. Mindestens 10 Testfaelle.",
+      "category": "test",
       "priority": "high",
-      "target_agent": "fix",
+      "target_agent": "tester",
       "affected_files": [],
-      "dependencies": [],
-      "source_issue": "Sandbox-Fehler",
-      "source_type": "reviewer",
+      "dependencies": [
+        "TASK-005",
+        "TASK-006",
+        "TASK-007",
+        "TASK-008"
+      ],
+      "source_issue": "die bugs sollen in einer lokalen sqlite datenbank gespeichert werden",
+      "source_type": "initial",
       "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-20T14:36:00.864456",
-      "started_at": "2026-02-20T14:36:01.000563",
+      "created_at": "2026-02-25T18:30:22.825607",
+      "started_at": null,
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 157462 tokens (26390 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": null,
       "modified_files": [],
-      "retry_count": 1,
+      "retry_count": 0,
       "max_retries": 2,
       "timeout_seconds": 120
     },
     {
       "id": "TASK-037",
-      "title": "Server/Start-Problem beheben",
-      "description": "Serverstart-Problem oder Sandbox-Fehler beheben\n\nOriginal: Sandbox-Fehler",
-      "category": "code",
+      "title": "Komponenten-Tests fuer Frontend",
+      "description": "Erstelle tests/components/TaskTable.test.tsx und tests/components/TaskForm.test.tsx. Teste: TaskTable rendert korrekte Spalten, zeigt Daten an, Leer-Zustand. TaskForm validiert Pflichtfelder, sendet korrekte Daten, schliesst nach Erfolg. StatusBadge zeigt korrekte Farben, Dropdown funktioniert. Nutze React Testing Library und Jest/Vitest.",
+      "category": "test",
       "priority": "high",
-      "target_agent": "fix",
+      "target_agent": "tester",
       "affected_files": [],
-      "dependencies": [],
-      "source_issue": "Sandbox-Fehler",
-      "source_type": "reviewer",
+      "dependencies": [
+        "TASK-011",
+        "TASK-012",
+        "TASK-013"
+      ],
+      "source_issue": "erstelle eine umfassende todoliste webapp",
+      "source_type": "initial",
       "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-20T11:47:12.215993",
-      "started_at": "2026-02-20T11:47:12.311936",
+      "created_at": "2026-02-25T18:30:22.825608",
+      "started_at": null,
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 160733 tokens (29661 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": null,
       "modified_files": [],
-      "retry_count": 1,
+      "retry_count": 0,
       "max_retries": 2,
       "timeout_seconds": 120
     },
     {
       "id": "TASK-038",
-      "title": "Server/Start-Problem beheben",
-      "description": "Serverstart-Problem oder Sandbox-Fehler beheben\n\nOriginal: Sandbox-Fehler",
-      "category": "code",
-      "priority": "high",
-      "target_agent": "fix",
+      "title": "Projektdokumentation und README erstellen",
+      "description": "Erstelle eine README.md mit: Projektbeschreibung (BugTracker Todo-Liste), Tech-Stack (Next.js, React, TypeScript, Tailwind, shadcn/ui, SQLite), Installationsanleitung (npm install, npm run dev), Verfuegbare Scripts, Datenbankstruktur, API-Endpunkte Uebersicht, Farbschema-Dokumentation. Author-Header gemaess Regel 8.",
+      "category": "docs",
+      "priority": "low",
+      "target_agent": "docs",
       "affected_files": [],
-      "dependencies": [],
-      "source_issue": "Sandbox-Fehler",
-      "source_type": "sandbox",
+      "dependencies": [
+        "TASK-011",
+        "TASK-012",
+        "TASK-013",
+        "TASK-014"
+      ],
+      "source_issue": "erstelle eine umfassende todoliste webapp für mich",
+      "source_type": "initial",
       "status": "pending",
       "dart_id": null,
-      "created_at": "2026-02-20T11:49:01.774298",
-      "started_at": "2026-02-20T11:49:01.891841",
+      "created_at": "2026-02-25T18:30:22.825610",
+      "started_at": null,
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 161538 tokens (30466 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": null,
       "modified_files": [],
-      "retry_count": 1,
+      "retry_count": 0,
       "max_retries": 2,
       "timeout_seconds": 120
     },
@@ -1000,7 +1072,7 @@
       "started_at": "2026-02-20T11:49:02.622961",
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 162343 tokens (31271 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 162343 tokens (31271 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":[REDACTED_CODE],\"metadata\":{\"provider_name\":null}}}",
       "modified_files": [],
       "retry_count": 1,
       "max_retries": 2,
@@ -1023,7 +1095,7 @@
       "started_at": "2026-02-20T11:51:17.945926",
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 163148 tokens (32076 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 163148 tokens (32076 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":[REDACTED_CODE],\"metadata\":{\"provider_name\":null}}}",
       "modified_files": [],
       "retry_count": 1,
       "max_retries": 2,
@@ -1046,7 +1118,7 @@
       "started_at": "2026-02-20T11:51:18.693782",
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 163956 tokens (32884 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 163956 tokens (32884 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":[REDACTED_CODE],\"metadata\":{\"provider_name\":null}}}",
       "modified_files": [],
       "retry_count": 1,
       "max_retries": 2,
@@ -1069,7 +1141,7 @@
       "started_at": "2026-02-20T11:51:18.701777",
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 164761 tokens (33689 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 164761 tokens (33689 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":[REDACTED_CODE],\"metadata\":{\"provider_name\":null}}}",
       "modified_files": [],
       "retry_count": 1,
       "max_retries": 2,
@@ -1092,7 +1164,7 @@
       "started_at": "2026-02-20T11:52:55.486810",
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 165566 tokens (34494 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 165566 tokens (34494 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":[REDACTED_CODE],\"metadata\":{\"provider_name\":null}}}",
       "modified_files": [],
       "retry_count": 1,
       "max_retries": 2,
@@ -1115,7 +1187,7 @@
       "started_at": "2026-02-20T11:52:56.216694",
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 166374 tokens (35302 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 166374 tokens (35302 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":[REDACTED_CODE],\"metadata\":{\"provider_name\":null}}}",
       "modified_files": [],
       "retry_count": 1,
       "max_retries": 2,
@@ -1138,7 +1210,7 @@
       "started_at": "2026-02-20T11:52:56.225033",
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 167179 tokens (36107 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 167179 tokens (36107 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":[REDACTED_CODE],\"metadata\":{\"provider_name\":null}}}",
       "modified_files": [],
       "retry_count": 1,
       "max_retries": 2,
@@ -1161,7 +1233,7 @@
       "started_at": "2026-02-14T12:13:18.685550",
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 167160 tokens (36088 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 167160 tokens (36088 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":[REDACTED_CODE],\"metadata\":{\"provider_name\":null}}}",
       "modified_files": [],
       "retry_count": 1,
       "max_retries": 2,
@@ -1184,7 +1256,7 @@
       "started_at": "2026-02-14T12:13:19.234532",
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 167965 tokens (36893 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 167965 tokens (36893 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":[REDACTED_CODE],\"metadata\":{\"provider_name\":null}}}",
       "modified_files": [],
       "retry_count": 1,
       "max_retries": 2,
@@ -1207,7 +1279,7 @@
       "started_at": "2026-02-14T12:15:10.713770",
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 168770 tokens (37698 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 168770 tokens (37698 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":[REDACTED_CODE],\"metadata\":{\"provider_name\":null}}}",
       "modified_files": [],
       "retry_count": 1,
       "max_retries": 2,
@@ -1230,7 +1302,7 @@
       "started_at": "2026-02-14T12:15:11.410837",
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 169575 tokens (38503 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 169575 tokens (38503 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":[REDACTED_CODE],\"metadata\":{\"provider_name\":null}}}",
       "modified_files": [],
       "retry_count": 1,
       "max_retries": 2,
@@ -1253,7 +1325,7 @@
       "started_at": "2026-02-14T12:17:11.447182",
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 170380 tokens (39308 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 170380 tokens (39308 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":[REDACTED_CODE],\"metadata\":{\"provider_name\":null}}}",
       "modified_files": [],
       "retry_count": 1,
       "max_retries": 2,
@@ -1276,7 +1348,7 @@
       "started_at": "2026-02-14T12:17:12.089216",
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 171185 tokens (40113 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 171185 tokens (40113 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":[REDACTED_CODE],\"metadata\":{\"provider_name\":null}}}",
       "modified_files": [],
       "retry_count": 1,
       "max_retries": 2,
@@ -1299,7 +1371,7 @@
       "started_at": "2026-02-14T12:19:33.860740",
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 171990 tokens (40918 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 171990 tokens (40918 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":[REDACTED_CODE],\"metadata\":{\"provider_name\":null}}}",
       "modified_files": [],
       "retry_count": 1,
       "max_retries": 2,
@@ -1322,7 +1394,7 @@
       "started_at": "2026-02-14T12:19:34.563425",
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 172795 tokens (41723 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 172795 tokens (41723 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":[REDACTED_CODE],\"metadata\":{\"provider_name\":null}}}",
       "modified_files": [],
       "retry_count": 1,
       "max_retries": 2,
@@ -1345,7 +1417,7 @@
       "started_at": "2026-02-14T12:21:54.816118",
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 173600 tokens (42528 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 173600 tokens (42528 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":[REDACTED_CODE],\"metadata\":{\"provider_name\":null}}}",
       "modified_files": [],
       "retry_count": 1,
       "max_retries": 2,
@@ -1368,7 +1440,7 @@
       "started_at": "2026-02-14T12:21:55.618179",
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 174405 tokens (43333 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 174405 tokens (43333 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":[REDACTED_CODE],\"metadata\":{\"provider_name\":null}}}",
       "modified_files": [],
       "retry_count": 1,
       "max_retries": 2,
@@ -1391,7 +1463,7 @@
       "started_at": "2026-02-14T12:24:27.506184",
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 175210 tokens (44138 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 175210 tokens (44138 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":[REDACTED_CODE],\"metadata\":{\"provider_name\":null}}}",
       "modified_files": [],
       "retry_count": 1,
       "max_retries": 2,
@@ -1414,7 +1486,7 @@
       "started_at": "2026-02-14T12:24:28.308955",
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 176015 tokens (44943 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 176015 tokens (44943 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":[REDACTED_CODE],\"metadata\":{\"provider_name\":null}}}",
       "modified_files": [],
       "retry_count": 1,
       "max_retries": 2,
@@ -1437,7 +1509,7 @@
       "started_at": "2026-02-14T12:27:20.791019",
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 176820 tokens (45748 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 176820 tokens (45748 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":[REDACTED_CODE],\"metadata\":{\"provider_name\":null}}}",
       "modified_files": [],
       "retry_count": 1,
       "max_retries": 2,
@@ -1460,7 +1532,7 @@
       "started_at": "2026-02-14T12:27:21.445908",
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 177625 tokens (46553 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 177625 tokens (46553 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":[REDACTED_CODE],\"metadata\":{\"provider_name\":null}}}",
       "modified_files": [],
       "retry_count": 1,
       "max_retries": 2,
@@ -1483,7 +1555,7 @@
       "started_at": "2026-02-14T12:29:10.566794",
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 178430 tokens (47358 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 178430 tokens (47358 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":[REDACTED_CODE],\"metadata\":{\"provider_name\":null}}}",
       "modified_files": [],
       "retry_count": 1,
       "max_retries": 2,
@@ -1506,7 +1578,7 @@
       "started_at": "2026-02-14T12:29:11.371504",
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 179235 tokens (48163 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 179235 tokens (48163 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":[REDACTED_CODE],\"metadata\":{\"provider_name\":null}}}",
       "modified_files": [],
       "retry_count": 1,
       "max_retries": 2,
@@ -1529,7 +1601,7 @@
       "started_at": "2026-02-14T12:33:06.490204",
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 180040 tokens (48968 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 180040 tokens (48968 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":[REDACTED_CODE],\"metadata\":{\"provider_name\":null}}}",
       "modified_files": [],
       "retry_count": 1,
       "max_retries": 2,
@@ -1552,7 +1624,7 @@
       "started_at": "2026-02-14T12:33:07.277788",
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 180845 tokens (49773 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 180845 tokens (49773 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":[REDACTED_CODE],\"metadata\":{\"provider_name\":null}}}",
       "modified_files": [],
       "retry_count": 1,
       "max_retries": 2,
@@ -1575,7 +1647,7 @@
       "started_at": "2026-02-14T12:36:46.996200",
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 181650 tokens (50578 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 181650 tokens (50578 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":[REDACTED_CODE],\"metadata\":{\"provider_name\":null}}}",
       "modified_files": [],
       "retry_count": 1,
       "max_retries": 2,
@@ -1598,7 +1670,7 @@
       "started_at": "2026-02-14T12:36:47.795705",
       "completed_at": null,
       "result": null,
-      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 182455 tokens (51383 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":400,\"metadata\":{\"provider_name\":null}}}",
+      "error_message": "Retry geplant. Fehler: litellm.BadRequestError: OpenrouterException - {\"error\":{\"message\":\"This endpoint's maximum context length is 131072 tokens. However, you requested about 182455 tokens (51383 of text input, 131072 in the output). Please reduce the length of either one, or use the \\\"middle-out\\\" transform to compress your prompt automatically.\",\"code\":[REDACTED_CODE],\"metadata\":{\"provider_name\":null}}}",
       "modified_files": [],
       "retry_count": 1,
       "max_retries": 2,
@@ -1606,731 +1678,6 @@
     }
   ],
   "sessions": [
-    {
-      "timestamp": "2026-02-20T11:49:01.795009",
-      "source": "sandbox",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.0019960403442382812,
-      "task_ids": [
-        "TASK-038"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T11:49:02.523565",
-      "source": "reviewer",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.0027878284454345703,
-      "task_ids": [
-        "TASK-039"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T11:51:17.832279",
-      "source": "sandbox",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.001995086669921875,
-      "task_ids": [
-        "TASK-040"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T11:51:18.590062",
-      "source": "reviewer",
-      "total_tasks": 2,
-      "tasks_by_category": {
-        "code": 2
-      },
-      "tasks_by_priority": {
-        "critical": 1,
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 2
-      },
-      "derivation_time_seconds": 0.002354145050048828,
-      "task_ids": [
-        "TASK-041",
-        "TASK-042"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T11:52:55.375112",
-      "source": "sandbox",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.002842426300048828,
-      "task_ids": [
-        "TASK-043"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T11:52:56.107117",
-      "source": "reviewer",
-      "total_tasks": 2,
-      "tasks_by_category": {
-        "code": 2
-      },
-      "tasks_by_priority": {
-        "critical": 1,
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 2
-      },
-      "derivation_time_seconds": 0.0030040740966796875,
-      "task_ids": [
-        "TASK-044",
-        "TASK-045"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T12:07:10.208024",
-      "source": "initial",
-      "total_tasks": 3,
-      "tasks_by_category": {
-        "security": 2,
-        "config": 1
-      },
-      "tasks_by_priority": {
-        "critical": 2,
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "security": 2,
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.1099550724029541,
-      "task_ids": [
-        "TASK-002",
-        "TASK-003",
-        "TASK-001"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T12:29:13.638284",
-      "source": "sandbox",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.006003856658935547,
-      "task_ids": [
-        "TASK-001"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T12:29:14.441381",
-      "source": "reviewer",
-      "total_tasks": 2,
-      "tasks_by_category": {
-        "config": 1,
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 2
-      },
-      "tasks_by_agent": {
-        "fix": 2
-      },
-      "derivation_time_seconds": 0.0052051544189453125,
-      "task_ids": [
-        "TASK-002",
-        "TASK-003"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T12:32:46.901653",
-      "source": "sandbox",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.003942251205444336,
-      "task_ids": [
-        "TASK-004"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T12:32:47.605438",
-      "source": "reviewer",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.005128145217895508,
-      "task_ids": [
-        "TASK-005"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T12:35:16.089726",
-      "source": "sandbox",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.0046045780181884766,
-      "task_ids": [
-        "TASK-006"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T12:35:16.763410",
-      "source": "reviewer",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.0050427913665771484,
-      "task_ids": [
-        "TASK-007"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T12:38:20.258026",
-      "source": "sandbox",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.002010345458984375,
-      "task_ids": [
-        "TASK-008"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T12:38:20.911847",
-      "source": "reviewer",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.003002643585205078,
-      "task_ids": [
-        "TASK-009"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T12:40:54.289807",
-      "source": "sandbox",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.0029098987579345703,
-      "task_ids": [
-        "TASK-010"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T12:40:55.563270",
-      "source": "reviewer",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.002859830856323242,
-      "task_ids": [
-        "TASK-011"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T12:43:03.903096",
-      "source": "sandbox",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.0032944679260253906,
-      "task_ids": [
-        "TASK-012"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T12:43:04.711809",
-      "source": "reviewer",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.0036470890045166016,
-      "task_ids": [
-        "TASK-013"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T12:47:09.869993",
-      "source": "sandbox",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.002629518508911133,
-      "task_ids": [
-        "TASK-014"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T12:47:10.842849",
-      "source": "reviewer",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.004427671432495117,
-      "task_ids": [
-        "TASK-015"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T12:49:23.216900",
-      "source": "sandbox",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.0019948482513427734,
-      "task_ids": [
-        "TASK-016"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T12:49:23.995806",
-      "source": "reviewer",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.00384521484375,
-      "task_ids": [
-        "TASK-017"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T13:18:55.215416",
-      "source": "initial",
-      "total_tasks": 3,
-      "tasks_by_category": {
-        "security": 2,
-        "config": 1
-      },
-      "tasks_by_priority": {
-        "critical": 2,
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "security": 2,
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.08700942993164062,
-      "task_ids": [
-        "TASK-002",
-        "TASK-003",
-        "TASK-001"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T13:44:57.775146",
-      "source": "security",
-      "total_tasks": 3,
-      "tasks_by_category": {
-        "security": 3
-      },
-      "tasks_by_priority": {
-        "critical": 3
-      },
-      "tasks_by_agent": {
-        "security": 3
-      },
-      "derivation_time_seconds": 0.0025665760040283203,
-      "task_ids": [
-        "TASK-001",
-        "TASK-002",
-        "TASK-003"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T13:45:35.809442",
-      "source": "sandbox",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.0015921592712402344,
-      "task_ids": [
-        "TASK-004"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T13:45:36.966701",
-      "source": "reviewer",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.0030612945556640625,
-      "task_ids": [
-        "TASK-005"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T13:50:34.770198",
-      "source": "sandbox",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.001997709274291992,
-      "task_ids": [
-        "TASK-006"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T13:50:35.321072",
-      "source": "reviewer",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.0040204524993896484,
-      "task_ids": [
-        "TASK-007"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T13:55:12.050957",
-      "source": "sandbox",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.0034520626068115234,
-      "task_ids": [
-        "TASK-008"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T13:55:12.642573",
-      "source": "reviewer",
-      "total_tasks": 2,
-      "tasks_by_category": {
-        "code": 2
-      },
-      "tasks_by_priority": {
-        "high": 2
-      },
-      "tasks_by_agent": {
-        "fix": 2
-      },
-      "derivation_time_seconds": 0.0037190914154052734,
-      "task_ids": [
-        "TASK-009",
-        "TASK-010"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T13:57:57.082456",
-      "source": "sandbox",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.002643108367919922,
-      "task_ids": [
-        "TASK-011"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T13:57:57.667092",
-      "source": "reviewer",
-      "total_tasks": 2,
-      "tasks_by_category": {
-        "code": 2
-      },
-      "tasks_by_priority": {
-        "high": 2
-      },
-      "tasks_by_agent": {
-        "fix": 2
-      },
-      "derivation_time_seconds": 0.004384279251098633,
-      "task_ids": [
-        "TASK-012",
-        "TASK-013"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T14:05:57.679359",
-      "source": "sandbox",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.0022296905517578125,
-      "task_ids": [
-        "TASK-014"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T14:05:58.496470",
-      "source": "reviewer",
-      "total_tasks": 2,
-      "tasks_by_category": {
-        "code": 2
-      },
-      "tasks_by_priority": {
-        "high": 2
-      },
-      "tasks_by_agent": {
-        "fix": 2
-      },
-      "derivation_time_seconds": 0.004836320877075195,
-      "task_ids": [
-        "TASK-015",
-        "TASK-016"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T14:09:31.511135",
-      "source": "sandbox",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.0031235218048095703,
-      "task_ids": [
-        "TASK-017"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T14:09:32.124064",
-      "source": "reviewer",
-      "total_tasks": 2,
-      "tasks_by_category": {
-        "code": 2
-      },
-      "tasks_by_priority": {
-        "high": 2
-      },
-      "tasks_by_agent": {
-        "fix": 2
-      },
-      "derivation_time_seconds": 0.004748344421386719,
-      "task_ids": [
-        "TASK-018",
-        "TASK-019"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T14:14:46.825424",
-      "source": "sandbox",
-      "total_tasks": 1,
-      "tasks_by_category": {
-        "code": 1
-      },
-      "tasks_by_priority": {
-        "high": 1
-      },
-      "tasks_by_agent": {
-        "fix": 1
-      },
-      "derivation_time_seconds": 0.003056049346923828,
-      "task_ids": [
-        "TASK-020"
-      ]
-    },
-    {
-      "timestamp": "2026-02-20T14:14:47.452459",
-      "source": "reviewer",
-      "total_tasks": 2,
-      "tasks_by_category": {
-        "code": 2
-      },
-      "tasks_by_priority": {
-        "high": 2
-      },
-      "tasks_by_agent": {
-        "fix": 2
-      },
-      "derivation_time_seconds": 0.003468036651611328,
-      "task_ids": [
-        "TASK-021",
-        "TASK-022"
-      ]
-    },
     {
       "timestamp": "2026-02-20T14:16:44.299287",
       "source": "sandbox",
@@ -3608,22 +2955,1371 @@
         "TASK-005",
         "TASK-006"
       ]
+    },
+    {
+      "timestamp": "2026-02-24T20:26:05.703202",
+      "source": "initial",
+      "total_tasks": 10,
+      "tasks_by_category": {
+        "config": 2,
+        "code": 8
+      },
+      "tasks_by_priority": {
+        "critical": 4,
+        "high": 5,
+        "medium": 1
+      },
+      "tasks_by_agent": {
+        "coder": 10
+      },
+      "derivation_time_seconds": 59.28830885887146,
+      "task_ids": [
+        "TASK-001",
+        "TASK-003",
+        "TASK-004",
+        "TASK-009",
+        "TASK-002",
+        "TASK-005",
+        "TASK-006",
+        "TASK-007",
+        "TASK-008",
+        "TASK-010"
+      ]
+    },
+    {
+      "timestamp": "2026-02-25T07:19:16.643957",
+      "source": "initial",
+      "total_tasks": 10,
+      "tasks_by_category": {
+        "config": 2,
+        "code": 8
+      },
+      "tasks_by_priority": {
+        "critical": 2,
+        "high": 6,
+        "medium": 2
+      },
+      "tasks_by_agent": {
+        "coder": 10
+      },
+      "derivation_time_seconds": 62.42960453033447,
+      "task_ids": [
+        "TASK-001",
+        "TASK-002",
+        "TASK-003",
+        "TASK-004",
+        "TASK-005",
+        "TASK-006",
+        "TASK-007",
+        "TASK-008",
+        "TASK-009",
+        "TASK-010"
+      ]
+    },
+    {
+      "timestamp": "2026-02-25T07:37:35.592234",
+      "source": "sandbox",
+      "total_tasks": 4,
+      "tasks_by_category": {
+        "code": 3,
+        "config": 1
+      },
+      "tasks_by_priority": {
+        "critical": 2,
+        "high": 1,
+        "medium": 1
+      },
+      "tasks_by_agent": {
+        "fix": 4
+      },
+      "derivation_time_seconds": 38.74433183670044,
+      "task_ids": [
+        "TASK-001",
+        "TASK-002",
+        "TASK-004",
+        "TASK-003"
+      ]
+    },
+    {
+      "timestamp": "2026-02-25T07:54:27.849181",
+      "source": "initial",
+      "total_tasks": 11,
+      "tasks_by_category": {
+        "config": 3,
+        "code": 8
+      },
+      "tasks_by_priority": {
+        "critical": 4,
+        "high": 4,
+        "medium": 2,
+        "low": 1
+      },
+      "tasks_by_agent": {
+        "coder": 11
+      },
+      "derivation_time_seconds": 68.14569687843323,
+      "task_ids": [
+        "TASK-001",
+        "TASK-003",
+        "TASK-004",
+        "TASK-006",
+        "TASK-002",
+        "TASK-005",
+        "TASK-007",
+        "TASK-008",
+        "TASK-009",
+        "TASK-010",
+        "TASK-011"
+      ]
+    },
+    {
+      "timestamp": "2026-02-25T08:46:05.756756",
+      "source": "sandbox",
+      "total_tasks": 4,
+      "tasks_by_category": {
+        "config": 2,
+        "code": 2
+      },
+      "tasks_by_priority": {
+        "critical": 1,
+        "high": 2,
+        "medium": 1
+      },
+      "tasks_by_agent": {
+        "fix": 3,
+        "coder": 1
+      },
+      "derivation_time_seconds": 28.440186500549316,
+      "task_ids": [
+        "TASK-001",
+        "TASK-002",
+        "TASK-003",
+        "TASK-004"
+      ]
+    },
+    {
+      "timestamp": "2026-02-25T09:18:29.033545",
+      "source": "reviewer",
+      "total_tasks": 7,
+      "tasks_by_category": {
+        "code": 7
+      },
+      "tasks_by_priority": {
+        "critical": 4,
+        "high": 3
+      },
+      "tasks_by_agent": {
+        "coder": 2,
+        "fix": 5
+      },
+      "derivation_time_seconds": 44.713945150375366,
+      "task_ids": [
+        "TASK-005",
+        "TASK-006",
+        "TASK-007",
+        "TASK-008",
+        "TASK-009",
+        "TASK-010",
+        "TASK-011"
+      ]
+    },
+    {
+      "timestamp": "2026-02-25T09:36:17.669604",
+      "source": "initial",
+      "total_tasks": 10,
+      "tasks_by_category": {
+        "config": 1,
+        "code": 9
+      },
+      "tasks_by_priority": {
+        "critical": 2,
+        "high": 4,
+        "medium": 2,
+        "low": 2
+      },
+      "tasks_by_agent": {
+        "coder": 10
+      },
+      "derivation_time_seconds": 70.65020823478699,
+      "task_ids": [
+        "TASK-001",
+        "TASK-002",
+        "TASK-003",
+        "TASK-005",
+        "TASK-006",
+        "TASK-008",
+        "TASK-004",
+        "TASK-007",
+        "TASK-009",
+        "TASK-010"
+      ]
+    },
+    {
+      "timestamp": "2026-02-25T09:53:06.668714",
+      "source": "initial",
+      "total_tasks": 10,
+      "tasks_by_category": {
+        "config": 2,
+        "code": 8
+      },
+      "tasks_by_priority": {
+        "critical": 2,
+        "high": 6,
+        "medium": 2
+      },
+      "tasks_by_agent": {
+        "coder": 10
+      },
+      "derivation_time_seconds": 55.95250868797302,
+      "task_ids": [
+        "TASK-001",
+        "TASK-002",
+        "TASK-003",
+        "TASK-005",
+        "TASK-006",
+        "TASK-007",
+        "TASK-008",
+        "TASK-009",
+        "TASK-004",
+        "TASK-010"
+      ]
+    },
+    {
+      "timestamp": "2026-02-25T10:17:04.252548",
+      "source": "initial",
+      "total_tasks": 12,
+      "tasks_by_category": {
+        "config": 1,
+        "code": 11
+      },
+      "tasks_by_priority": {
+        "critical": 2,
+        "high": 6,
+        "medium": 3,
+        "low": 1
+      },
+      "tasks_by_agent": {
+        "coder": 12
+      },
+      "derivation_time_seconds": 69.23367524147034,
+      "task_ids": [
+        "TASK-001",
+        "TASK-002",
+        "TASK-003",
+        "TASK-004",
+        "TASK-005",
+        "TASK-006",
+        "TASK-007",
+        "TASK-008",
+        "TASK-009",
+        "TASK-010",
+        "TASK-011",
+        "TASK-012"
+      ]
+    },
+    {
+      "timestamp": "2026-02-25T12:01:23.028951",
+      "source": "initial",
+      "total_tasks": 10,
+      "tasks_by_category": {
+        "config": 1,
+        "code": 9
+      },
+      "tasks_by_priority": {
+        "critical": 2,
+        "high": 4,
+        "medium": 3,
+        "low": 1
+      },
+      "tasks_by_agent": {
+        "coder": 10
+      },
+      "derivation_time_seconds": 54.619788646698,
+      "task_ids": [
+        "TASK-001",
+        "TASK-002",
+        "TASK-003",
+        "TASK-004",
+        "TASK-005",
+        "TASK-006",
+        "TASK-007",
+        "TASK-008",
+        "TASK-009",
+        "TASK-010"
+      ]
+    },
+    {
+      "timestamp": "2026-02-25T12:35:41.865252",
+      "source": "sandbox",
+      "total_tasks": 5,
+      "tasks_by_category": {
+        "code": 3,
+        "config": 1,
+        "test": 1
+      },
+      "tasks_by_priority": {
+        "critical": 3,
+        "high": 2
+      },
+      "tasks_by_agent": {
+        "fix": 2,
+        "coder": 2,
+        "tester": 1
+      },
+      "derivation_time_seconds": 40.94323229789734,
+      "task_ids": [
+        "TASK-001",
+        "TASK-003",
+        "TASK-004",
+        "TASK-002",
+        "TASK-005"
+      ]
+    },
+    {
+      "timestamp": "2026-02-25T12:40:10.129405",
+      "source": "reviewer",
+      "total_tasks": 9,
+      "tasks_by_category": {
+        "code": 7,
+        "config": 2
+      },
+      "tasks_by_priority": {
+        "critical": 4,
+        "high": 5
+      },
+      "tasks_by_agent": {
+        "fix": 9
+      },
+      "derivation_time_seconds": 57.570674896240234,
+      "task_ids": [
+        "TASK-006",
+        "TASK-008",
+        "TASK-009",
+        "TASK-010",
+        "TASK-007",
+        "TASK-011",
+        "TASK-012",
+        "TASK-013",
+        "TASK-014"
+      ]
+    },
+    {
+      "timestamp": "2026-02-25T13:20:07.121711",
+      "source": "security",
+      "total_tasks": 1,
+      "tasks_by_category": {
+        "security": 1
+      },
+      "tasks_by_priority": {
+        "critical": 1
+      },
+      "tasks_by_agent": {
+        "security": 1
+      },
+      "derivation_time_seconds": 18.210695266723633,
+      "task_ids": [
+        "TASK-015"
+      ]
+    },
+    {
+      "timestamp": "2026-02-25T13:24:25.996618",
+      "source": "sandbox",
+      "total_tasks": 3,
+      "tasks_by_category": {
+        "config": 1,
+        "test": 1,
+        "code": 1
+      },
+      "tasks_by_priority": {
+        "high": 2,
+        "medium": 1
+      },
+      "tasks_by_agent": {
+        "coder": 1,
+        "tester": 1,
+        "fix": 1
+      },
+      "derivation_time_seconds": 38.71077036857605,
+      "task_ids": [
+        "TASK-017",
+        "TASK-018",
+        "TASK-016"
+      ]
+    },
+    {
+      "timestamp": "2026-02-25T13:59:46.376151",
+      "source": "initial",
+      "total_tasks": 10,
+      "tasks_by_category": {
+        "config": 1,
+        "code": 9
+      },
+      "tasks_by_priority": {
+        "critical": 2,
+        "high": 6,
+        "medium": 2
+      },
+      "tasks_by_agent": {
+        "coder": 10
+      },
+      "derivation_time_seconds": 56.94259214401245,
+      "task_ids": [
+        "TASK-001",
+        "TASK-002",
+        "TASK-003",
+        "TASK-004",
+        "TASK-005",
+        "TASK-006",
+        "TASK-007",
+        "TASK-008",
+        "TASK-009",
+        "TASK-010"
+      ]
+    },
+    {
+      "timestamp": "2026-02-25T14:36:36.486814",
+      "source": "sandbox",
+      "total_tasks": 14,
+      "tasks_by_category": {
+        "config": 4,
+        "code": 10
+      },
+      "tasks_by_priority": {
+        "critical": 9,
+        "high": 3,
+        "medium": 2
+      },
+      "tasks_by_agent": {
+        "fix": 14
+      },
+      "derivation_time_seconds": 60.47580289840698,
+      "task_ids": [
+        "TASK-001",
+        "TASK-002",
+        "TASK-003",
+        "TASK-004",
+        "TASK-005",
+        "TASK-006",
+        "TASK-007",
+        "TASK-008",
+        "TASK-014",
+        "TASK-009",
+        "TASK-010",
+        "TASK-011",
+        "TASK-012",
+        "TASK-013"
+      ]
+    },
+    {
+      "timestamp": "2026-02-25T14:46:50.304295",
+      "source": "initial",
+      "total_tasks": 21,
+      "tasks_by_category": {
+        "config": 3,
+        "code": 14,
+        "security": 1,
+        "test": 2,
+        "docs": 1
+      },
+      "tasks_by_priority": {
+        "critical": 6,
+        "high": 11,
+        "medium": 3,
+        "low": 1
+      },
+      "tasks_by_agent": {
+        "coder": 17,
+        "security": 1,
+        "tester": 2,
+        "docs": 1
+      },
+      "derivation_time_seconds": 94.4392626285553,
+      "task_ids": [
+        "TASK-001",
+        "TASK-004",
+        "TASK-005",
+        "TASK-006",
+        "TASK-007",
+        "TASK-020",
+        "TASK-002",
+        "TASK-003",
+        "TASK-008",
+        "TASK-009",
+        "TASK-010",
+        "TASK-011",
+        "TASK-012",
+        "TASK-013",
+        "TASK-014",
+        "TASK-018",
+        "TASK-019",
+        "TASK-015",
+        "TASK-016",
+        "TASK-017",
+        "TASK-021"
+      ]
+    },
+    {
+      "timestamp": "2026-02-25T15:01:56.739150",
+      "source": "initial",
+      "total_tasks": 15,
+      "tasks_by_category": {
+        "config": 2,
+        "code": 10,
+        "security": 1,
+        "test": 1,
+        "docs": 1
+      },
+      "tasks_by_priority": {
+        "critical": 7,
+        "high": 6,
+        "medium": 1,
+        "low": 1
+      },
+      "tasks_by_agent": {
+        "coder": 12,
+        "security": 1,
+        "tester": 1,
+        "docs": 1
+      },
+      "derivation_time_seconds": 71.79624223709106,
+      "task_ids": [
+        "TASK-001",
+        "TASK-003",
+        "TASK-005",
+        "TASK-008",
+        "TASK-009",
+        "TASK-010",
+        "TASK-013",
+        "TASK-002",
+        "TASK-004",
+        "TASK-006",
+        "TASK-007",
+        "TASK-011",
+        "TASK-014",
+        "TASK-012",
+        "TASK-015"
+      ]
+    },
+    {
+      "timestamp": "2026-02-25T17:13:22.434321",
+      "source": "initial",
+      "total_tasks": 21,
+      "tasks_by_category": {
+        "config": 3,
+        "code": 14,
+        "security": 1,
+        "test": 2,
+        "docs": 1
+      },
+      "tasks_by_priority": {
+        "critical": 4,
+        "high": 14,
+        "medium": 2,
+        "low": 1
+      },
+      "tasks_by_agent": {
+        "coder": 17,
+        "security": 1,
+        "tester": 2,
+        "docs": 1
+      },
+      "derivation_time_seconds": 88.72599649429321,
+      "task_ids": [
+        "TASK-001",
+        "TASK-002",
+        "TASK-004",
+        "TASK-018",
+        "TASK-003",
+        "TASK-005",
+        "TASK-006",
+        "TASK-007",
+        "TASK-008",
+        "TASK-010",
+        "TASK-011",
+        "TASK-012",
+        "TASK-013",
+        "TASK-014",
+        "TASK-015",
+        "TASK-016",
+        "TASK-019",
+        "TASK-020",
+        "TASK-009",
+        "TASK-017",
+        "TASK-021"
+      ]
+    },
+    {
+      "timestamp": "2026-02-25T17:28:20.726830",
+      "source": "initial",
+      "total_tasks": 20,
+      "tasks_by_category": {
+        "config": 2,
+        "code": 15,
+        "security": 1,
+        "test": 1,
+        "docs": 1
+      },
+      "tasks_by_priority": {
+        "critical": 9,
+        "high": 7,
+        "medium": 3,
+        "low": 1
+      },
+      "tasks_by_agent": {
+        "coder": 17,
+        "security": 1,
+        "tester": 1,
+        "docs": 1
+      },
+      "derivation_time_seconds": 84.21171045303345,
+      "task_ids": [
+        "TASK-001",
+        "TASK-003",
+        "TASK-004",
+        "TASK-005",
+        "TASK-006",
+        "TASK-008",
+        "TASK-010",
+        "TASK-011",
+        "TASK-012",
+        "TASK-002",
+        "TASK-007",
+        "TASK-009",
+        "TASK-013",
+        "TASK-015",
+        "TASK-016",
+        "TASK-019",
+        "TASK-014",
+        "TASK-017",
+        "TASK-018",
+        "TASK-020"
+      ]
+    },
+    {
+      "timestamp": "2026-02-25T18:04:20.308403",
+      "source": "initial",
+      "total_tasks": 14,
+      "tasks_by_category": {
+        "config": 3,
+        "code": 9,
+        "test": 1,
+        "docs": 1
+      },
+      "tasks_by_priority": {
+        "critical": 4,
+        "high": 7,
+        "medium": 2,
+        "low": 1
+      },
+      "tasks_by_agent": {
+        "coder": 12,
+        "tester": 1,
+        "docs": 1
+      },
+      "derivation_time_seconds": 75.68837189674377,
+      "task_ids": [
+        "TASK-001",
+        "TASK-003",
+        "TASK-004",
+        "TASK-005",
+        "TASK-002",
+        "TASK-006",
+        "TASK-007",
+        "TASK-008",
+        "TASK-009",
+        "TASK-010",
+        "TASK-013",
+        "TASK-011",
+        "TASK-012",
+        "TASK-014"
+      ]
+    },
+    {
+      "timestamp": "2026-02-25T18:29:30.523633",
+      "source": "initial",
+      "total_tasks": 18,
+      "tasks_by_category": {
+        "config": 3,
+        "code": 11,
+        "security": 1,
+        "test": 2,
+        "docs": 1
+      },
+      "tasks_by_priority": {
+        "critical": 7,
+        "high": 8,
+        "medium": 2,
+        "low": 1
+      },
+      "tasks_by_agent": {
+        "coder": 14,
+        "security": 1,
+        "tester": 2,
+        "docs": 1
+      },
+      "derivation_time_seconds": 89.8275740146637,
+      "task_ids": [
+        "TASK-001",
+        "TASK-002",
+        "TASK-003",
+        "TASK-004",
+        "TASK-005",
+        "TASK-006",
+        "TASK-015",
+        "TASK-007",
+        "TASK-008",
+        "TASK-009",
+        "TASK-010",
+        "TASK-011",
+        "TASK-012",
+        "TASK-016",
+        "TASK-017",
+        "TASK-013",
+        "TASK-014",
+        "TASK-018"
+      ]
+    },
+    {
+      "timestamp": "2026-02-25T18:30:22.825653",
+      "source": "initial",
+      "total_tasks": 20,
+      "tasks_by_category": {
+        "config": 3,
+        "code": 13,
+        "security": 1,
+        "test": 2,
+        "docs": 1
+      },
+      "tasks_by_priority": {
+        "critical": 8,
+        "high": 9,
+        "medium": 2,
+        "low": 1
+      },
+      "tasks_by_agent": {
+        "coder": 16,
+        "security": 1,
+        "tester": 2,
+        "docs": 1
+      },
+      "derivation_time_seconds": 94.14606809616089,
+      "task_ids": [
+        "TASK-019",
+        "TASK-022",
+        "TASK-023",
+        "TASK-024",
+        "TASK-025",
+        "TASK-029",
+        "TASK-030",
+        "TASK-035",
+        "TASK-020",
+        "TASK-021",
+        "TASK-026",
+        "TASK-027",
+        "TASK-028",
+        "TASK-031",
+        "TASK-032",
+        "TASK-036",
+        "TASK-037",
+        "TASK-033",
+        "TASK-034",
+        "TASK-038"
+      ]
+    },
+    {
+      "timestamp": "2026-02-25T18:47:08.501840",
+      "source": "initial",
+      "total_tasks": 12,
+      "tasks_by_category": {
+        "config": 2,
+        "code": 7,
+        "security": 1,
+        "test": 1,
+        "docs": 1
+      },
+      "tasks_by_priority": {
+        "critical": 4,
+        "high": 6,
+        "medium": 1,
+        "low": 1
+      },
+      "tasks_by_agent": {
+        "coder": 9,
+        "security": 1,
+        "tester": 1,
+        "docs": 1
+      },
+      "derivation_time_seconds": 63.18582582473755,
+      "task_ids": [
+        "TASK-001",
+        "TASK-003",
+        "TASK-004",
+        "TASK-009",
+        "TASK-002",
+        "TASK-005",
+        "TASK-006",
+        "TASK-007",
+        "TASK-008",
+        "TASK-010",
+        "TASK-011",
+        "TASK-012"
+      ]
+    },
+    {
+      "timestamp": "2026-02-25T19:02:17.435602",
+      "source": "initial",
+      "total_tasks": 14,
+      "tasks_by_category": {
+        "config": 2,
+        "code": 8,
+        "security": 1,
+        "test": 2,
+        "docs": 1
+      },
+      "tasks_by_priority": {
+        "critical": 4,
+        "high": 8,
+        "medium": 1,
+        "low": 1
+      },
+      "tasks_by_agent": {
+        "coder": 10,
+        "security": 1,
+        "tester": 2,
+        "docs": 1
+      },
+      "derivation_time_seconds": 77.8983006477356,
+      "task_ids": [
+        "TASK-001",
+        "TASK-003",
+        "TASK-005",
+        "TASK-011",
+        "TASK-002",
+        "TASK-004",
+        "TASK-006",
+        "TASK-007",
+        "TASK-008",
+        "TASK-009",
+        "TASK-012",
+        "TASK-013",
+        "TASK-010",
+        "TASK-014"
+      ]
+    },
+    {
+      "timestamp": "2026-02-25T19:14:10.508585",
+      "source": "initial",
+      "total_tasks": 14,
+      "tasks_by_category": {
+        "config": 1,
+        "code": 10,
+        "security": 1,
+        "test": 1,
+        "docs": 1
+      },
+      "tasks_by_priority": {
+        "critical": 4,
+        "high": 5,
+        "medium": 4,
+        "low": 1
+      },
+      "tasks_by_agent": {
+        "coder": 11,
+        "security": 1,
+        "tester": 1,
+        "docs": 1
+      },
+      "derivation_time_seconds": 73.21217775344849,
+      "task_ids": [
+        "TASK-001",
+        "TASK-002",
+        "TASK-003",
+        "TASK-011",
+        "TASK-004",
+        "TASK-005",
+        "TASK-006",
+        "TASK-007",
+        "TASK-012",
+        "TASK-008",
+        "TASK-009",
+        "TASK-010",
+        "TASK-013",
+        "TASK-014"
+      ]
+    },
+    {
+      "timestamp": "2026-02-25T19:28:54.423202",
+      "source": "initial",
+      "total_tasks": 14,
+      "tasks_by_category": {
+        "config": 2,
+        "code": 9,
+        "security": 1,
+        "test": 1,
+        "docs": 1
+      },
+      "tasks_by_priority": {
+        "critical": 5,
+        "high": 7,
+        "medium": 1,
+        "low": 1
+      },
+      "tasks_by_agent": {
+        "coder": 11,
+        "security": 1,
+        "tester": 1,
+        "docs": 1
+      },
+      "derivation_time_seconds": 70.91612553596497,
+      "task_ids": [
+        "TASK-001",
+        "TASK-003",
+        "TASK-004",
+        "TASK-005",
+        "TASK-012",
+        "TASK-002",
+        "TASK-006",
+        "TASK-007",
+        "TASK-008",
+        "TASK-009",
+        "TASK-010",
+        "TASK-013",
+        "TASK-011",
+        "TASK-014"
+      ]
+    },
+    {
+      "timestamp": "2026-02-25T20:00:22.083034",
+      "source": "sandbox",
+      "total_tasks": 5,
+      "tasks_by_category": {
+        "config": 2,
+        "code": 3
+      },
+      "tasks_by_priority": {
+        "critical": 3,
+        "high": 2
+      },
+      "tasks_by_agent": {
+        "fix": 5
+      },
+      "derivation_time_seconds": 39.45840120315552,
+      "task_ids": [
+        "TASK-001",
+        "TASK-003",
+        "TASK-004",
+        "TASK-002",
+        "TASK-005"
+      ]
+    },
+    {
+      "timestamp": "2026-02-25T20:17:01.481481",
+      "source": "reviewer",
+      "total_tasks": 3,
+      "tasks_by_category": {
+        "config": 2,
+        "refactor": 1
+      },
+      "tasks_by_priority": {
+        "critical": 2,
+        "high": 1
+      },
+      "tasks_by_agent": {
+        "fix": 3
+      },
+      "derivation_time_seconds": 30.842035055160522,
+      "task_ids": [
+        "TASK-006",
+        "TASK-008",
+        "TASK-007"
+      ]
+    },
+    {
+      "timestamp": "2026-02-25T21:22:06.871060",
+      "source": "initial",
+      "total_tasks": 19,
+      "tasks_by_category": {
+        "config": 2,
+        "code": 14,
+        "security": 1,
+        "test": 1,
+        "docs": 1
+      },
+      "tasks_by_priority": {
+        "critical": 6,
+        "high": 8,
+        "medium": 4,
+        "low": 1
+      },
+      "tasks_by_agent": {
+        "coder": 16,
+        "security": 1,
+        "tester": 1,
+        "docs": 1
+      },
+      "derivation_time_seconds": 86.28695249557495,
+      "task_ids": [
+        "TASK-001",
+        "TASK-003",
+        "TASK-004",
+        "TASK-005",
+        "TASK-006",
+        "TASK-018",
+        "TASK-002",
+        "TASK-008",
+        "TASK-009",
+        "TASK-010",
+        "TASK-011",
+        "TASK-012",
+        "TASK-014",
+        "TASK-017",
+        "TASK-007",
+        "TASK-013",
+        "TASK-015",
+        "TASK-016",
+        "TASK-019"
+      ]
+    },
+    {
+      "timestamp": "2026-02-26T08:24:35.703012",
+      "source": "initial",
+      "total_tasks": 21,
+      "tasks_by_category": {
+        "config": 2,
+        "code": 15,
+        "security": 1,
+        "test": 2,
+        "docs": 1
+      },
+      "tasks_by_priority": {
+        "critical": 7,
+        "high": 11,
+        "medium": 2,
+        "low": 1
+      },
+      "tasks_by_agent": {
+        "coder": 17,
+        "security": 1,
+        "tester": 2,
+        "docs": 1
+      },
+      "derivation_time_seconds": 95.86270689964294,
+      "task_ids": [
+        "TASK-001",
+        "TASK-002",
+        "TASK-004",
+        "TASK-005",
+        "TASK-006",
+        "TASK-007",
+        "TASK-020",
+        "TASK-003",
+        "TASK-008",
+        "TASK-009",
+        "TASK-010",
+        "TASK-011",
+        "TASK-012",
+        "TASK-013",
+        "TASK-014",
+        "TASK-015",
+        "TASK-018",
+        "TASK-019",
+        "TASK-016",
+        "TASK-017",
+        "TASK-021"
+      ]
+    },
+    {
+      "timestamp": "2026-02-26T08:56:29.207238",
+      "source": "sandbox",
+      "total_tasks": 8,
+      "tasks_by_category": {
+        "config": 2,
+        "code": 5,
+        "test": 1
+      },
+      "tasks_by_priority": {
+        "critical": 5,
+        "high": 3
+      },
+      "tasks_by_agent": {
+        "fix": 3,
+        "coder": 4,
+        "tester": 1
+      },
+      "derivation_time_seconds": 146.9320845603943,
+      "task_ids": [
+        "TASK-001",
+        "TASK-002",
+        "TASK-003",
+        "TASK-004",
+        "TASK-005",
+        "TASK-006",
+        "TASK-007",
+        "TASK-008"
+      ]
+    },
+    {
+      "timestamp": "2026-02-26T09:21:30.315769",
+      "source": "initial",
+      "total_tasks": 5,
+      "tasks_by_category": {
+        "security": 1,
+        "code": 3,
+        "test": 1
+      },
+      "tasks_by_priority": {
+        "critical": 1,
+        "high": 4
+      },
+      "tasks_by_agent": {
+        "security": 1,
+        "coder": 3,
+        "tester": 1
+      },
+      "derivation_time_seconds": 35.02039813995361,
+      "task_ids": [
+        "TASK-005",
+        "TASK-001",
+        "TASK-002",
+        "TASK-003",
+        "TASK-004"
+      ]
+    },
+    {
+      "timestamp": "2026-02-26T09:25:38.232333",
+      "source": "initial",
+      "total_tasks": 17,
+      "tasks_by_category": {
+        "config": 2,
+        "code": 11,
+        "security": 1,
+        "test": 2,
+        "docs": 1
+      },
+      "tasks_by_priority": {
+        "critical": 3,
+        "high": 12,
+        "medium": 1,
+        "low": 1
+      },
+      "tasks_by_agent": {
+        "coder": 13,
+        "security": 1,
+        "tester": 2,
+        "docs": 1
+      },
+      "derivation_time_seconds": 70.11377835273743,
+      "task_ids": [
+        "TASK-001",
+        "TASK-003",
+        "TASK-014",
+        "TASK-002",
+        "TASK-004",
+        "TASK-005",
+        "TASK-006",
+        "TASK-007",
+        "TASK-009",
+        "TASK-010",
+        "TASK-011",
+        "TASK-012",
+        "TASK-013",
+        "TASK-015",
+        "TASK-016",
+        "TASK-008",
+        "TASK-017"
+      ]
+    },
+    {
+      "timestamp": "2026-02-26T10:05:18.600950",
+      "source": "initial",
+      "total_tasks": 19,
+      "tasks_by_category": {
+        "config": 2,
+        "code": 13,
+        "security": 1,
+        "test": 2,
+        "docs": 1
+      },
+      "tasks_by_priority": {
+        "critical": 6,
+        "high": 10,
+        "medium": 2,
+        "low": 1
+      },
+      "tasks_by_agent": {
+        "coder": 15,
+        "security": 1,
+        "tester": 2,
+        "docs": 1
+      },
+      "derivation_time_seconds": 84.57804441452026,
+      "task_ids": [
+        "TASK-001",
+        "TASK-003",
+        "TASK-004",
+        "TASK-005",
+        "TASK-006",
+        "TASK-018",
+        "TASK-002",
+        "TASK-007",
+        "TASK-008",
+        "TASK-009",
+        "TASK-010",
+        "TASK-011",
+        "TASK-012",
+        "TASK-013",
+        "TASK-016",
+        "TASK-017",
+        "TASK-014",
+        "TASK-015",
+        "TASK-019"
+      ]
+    },
+    {
+      "timestamp": "2026-02-26T10:16:59.016066",
+      "source": "initial",
+      "total_tasks": 15,
+      "tasks_by_category": {
+        "config": 3,
+        "code": 9,
+        "security": 1,
+        "test": 1,
+        "docs": 1
+      },
+      "tasks_by_priority": {
+        "critical": 8,
+        "high": 6,
+        "low": 1
+      },
+      "tasks_by_agent": {
+        "coder": 12,
+        "security": 1,
+        "tester": 1,
+        "docs": 1
+      },
+      "derivation_time_seconds": 71.1937141418457,
+      "task_ids": [
+        "TASK-001",
+        "TASK-002",
+        "TASK-004",
+        "TASK-006",
+        "TASK-009",
+        "TASK-010",
+        "TASK-011",
+        "TASK-013",
+        "TASK-003",
+        "TASK-005",
+        "TASK-007",
+        "TASK-008",
+        "TASK-012",
+        "TASK-014",
+        "TASK-015"
+      ]
+    },
+    {
+      "timestamp": "2026-02-26T10:59:48.904881",
+      "source": "sandbox",
+      "total_tasks": 2,
+      "tasks_by_category": {
+        "code": 2
+      },
+      "tasks_by_priority": {
+        "high": 2
+      },
+      "tasks_by_agent": {
+        "fix": 2
+      },
+      "derivation_time_seconds": 246.79249906539917,
+      "task_ids": [
+        "TASK-001",
+        "TASK-002"
+      ]
+    },
+    {
+      "timestamp": "2026-02-26T11:10:42.978697",
+      "source": "reviewer",
+      "total_tasks": 2,
+      "tasks_by_category": {
+        "config": 1,
+        "test": 1
+      },
+      "tasks_by_priority": {
+        "critical": 1,
+        "high": 1
+      },
+      "tasks_by_agent": {
+        "fix": 1,
+        "tester": 1
+      },
+      "derivation_time_seconds": 17.57565474510193,
+      "task_ids": [
+        "TASK-003",
+        "TASK-004"
+      ]
+    },
+    {
+      "timestamp": "2026-02-26T13:41:05.336853",
+      "source": "initial",
+      "total_tasks": 21,
+      "tasks_by_category": {
+        "config": 2,
+        "code": 16,
+        "security": 1,
+        "test": 2
+      },
+      "tasks_by_priority": {
+        "critical": 6,
+        "high": 13,
+        "medium": 2
+      },
+      "tasks_by_agent": {
+        "coder": 18,
+        "security": 1,
+        "tester": 2
+      },
+      "derivation_time_seconds": 89.50533390045166,
+      "task_ids": [
+        "TASK-001",
+        "TASK-003",
+        "TASK-004",
+        "TASK-005",
+        "TASK-006",
+        "TASK-020",
+        "TASK-002",
+        "TASK-007",
+        "TASK-008",
+        "TASK-009",
+        "TASK-010",
+        "TASK-011",
+        "TASK-013",
+        "TASK-014",
+        "TASK-015",
+        "TASK-016",
+        "TASK-018",
+        "TASK-019",
+        "TASK-021",
+        "TASK-012",
+        "TASK-017"
+      ]
     }
   ],
   "summary": {
     "total": 65,
-    "completed": 8,
+    "completed": 0,
     "failed": 0,
-    "pending": 53,
-    "success_rate": 0.12307692307692308,
+    "pending": 65,
+    "success_rate": 0.0,
     "sources": [
-      "sandbox",
+      "reviewer",
       "initial",
-      "reviewer"
+      "sandbox"
     ],
     "agents_used": [
+      "security",
+      "fix",
       "coder",
-      "fix"
+      "docs",
+      "tester"
     ]
   }
 }
